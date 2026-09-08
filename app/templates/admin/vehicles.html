@@ -1,0 +1,58 @@
+{% extends "admin/base.html" %}
+{% block title %}Fleet — {{ company_name }} staff{% endblock %}
+
+{% block admin_content %}
+<div class="panel__head">
+  <h1 style="font-size:2rem;margin:0">Fleet</h1>
+  <a class="btn btn--primary" href="{{ url_for('admin.vehicle_form') }}">Add a vehicle</a>
+</div>
+
+<div class="panel">
+  {% if vehicles %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th></th><th>Vehicle</th><th>Type</th><th class="nowrap">Per day</th><th class="nowrap">Per week</th><th>Seats</th><th>Listed</th><th>Bookings</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for vehicle in vehicles %}
+            <tr>
+              <td style="width:72px">
+                <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="" width="64" style="background:var(--soft);border-radius:6px">
+              </td>
+              <td>
+                <strong style="color:var(--ink)">{{ vehicle.name }}</strong><br>
+                <span class="small muted">{{ vehicle.year }} &middot; {{ vehicle.transmission }} &middot; {{ vehicle.fuel }}</span>
+              </td>
+              <td>{{ vehicle.category }}</td>
+              <td class="nowrap">{{ vehicle.daily_rate | money }}</td>
+              <td class="nowrap">{{ vehicle.weekly_rate | money if vehicle.weekly_rate else '—' }}</td>
+              <td>{{ vehicle.seats }}</td>
+              <td><span class="tag tag--{{ 'on' if vehicle.is_active else 'off' }}">{{ 'Listed' if vehicle.is_active else 'Hidden' }}</span></td>
+              <td>{{ vehicle.bookings | length }}</td>
+              <td>
+                <div class="actions">
+                  <a class="btn btn--ghost btn--sm" href="{{ url_for('admin.vehicle_form', vehicle_id=vehicle.id) }}">Edit</a>
+                  <form class="inline-form" method="post" action="{{ url_for('admin.toggle_vehicle', vehicle_id=vehicle.id) }}">
+                    <button class="btn btn--ghost btn--sm" type="submit">{{ 'Hide' if vehicle.is_active else 'List' }}</button>
+                  </form>
+                  <form class="inline-form" method="post" action="{{ url_for('admin.delete_vehicle', vehicle_id=vehicle.id) }}"
+                        onsubmit="return confirm('Delete {{ vehicle.name }}? This cannot be undone.')">
+                    <button class="btn btn--danger btn--sm" type="submit">Delete</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">
+      <h3>No vehicles yet</h3>
+      <p>Add your first car and it will appear on the website straight away.</p>
+      <a class="btn btn--primary" href="{{ url_for('admin.vehicle_form') }}">Add a vehicle</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

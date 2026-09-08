@@ -1,0 +1,75 @@
+{% extends "admin/base.html" %}
+{% block title %}Bookings — {{ company_name }} staff{% endblock %}
+
+{% block admin_content %}
+<div class="panel__head">
+  <h1 style="font-size:2rem;margin:0">Bookings</h1>
+  <div class="actions">
+    <a class="btn btn--sm {{ 'btn--primary' if not status else 'btn--ghost' }}" href="{{ url_for('admin.bookings') }}">All</a>
+    {% for item in statuses %}
+      <a class="btn btn--sm {{ 'btn--primary' if status == item else 'btn--ghost' }}"
+         href="{{ url_for('admin.bookings', status=item) }}">{{ item | capitalize }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="panel">
+  {% if bookings %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Ref</th><th>Car</th><th>Customer</th><th class="nowrap">Dates</th><th>Locations</th><th class="nowrap">Total</th><th>Status</th><th>Change to</th></tr>
+        </thead>
+        <tbody>
+          {% for booking in bookings %}
+            <tr>
+              <td class="reference nowrap">{{ booking.reference }}</td>
+              <td>
+                {{ booking.vehicle.name }}<br>
+                <span class="small muted">{{ booking.days }} day{{ 's' if booking.days != 1 }}</span>
+              </td>
+              <td>
+                {{ booking.customer_name }}<br>
+                <span class="small muted">
+                  <a href="mailto:{{ booking.email }}">{{ booking.email }}</a>
+                  {% if booking.phone %}<br>{{ booking.phone }}{% endif %}
+                </span>
+              </td>
+              <td class="nowrap">
+                {{ booking.start_date | nice_date }}<br>
+                <span class="small muted">to {{ booking.end_date | nice_date }}</span>
+              </td>
+              <td>
+                <span class="small">{{ booking.pickup_location }}</span>
+                {% if booking.dropoff_location != booking.pickup_location %}
+                  <br><span class="small muted">back to {{ booking.dropoff_location }}</span>
+                {% endif %}
+              </td>
+              <td class="nowrap">{{ booking.total_price | money }}</td>
+              <td><span class="tag tag--{{ booking.status }}">{{ booking.status }}</span></td>
+              <td>
+                <form method="post" action="{{ url_for('admin.update_booking_status', booking_id=booking.id) }}" class="actions">
+                  <select name="status" style="width:auto;padding:7px 10px;font-size:.85rem">
+                    {% for item in statuses %}
+                      <option value="{{ item }}" {{ 'selected' if booking.status == item }}>{{ item | capitalize }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn--ghost btn--sm" type="submit">Update</button>
+                </form>
+                {% if booking.notes %}
+                  <p class="small muted" style="margin:8px 0 0;max-width:24ch">“{{ booking.notes }}”</p>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">
+      <h3>No bookings{{ ' with that status' if status }}</h3>
+      <p>Requests made on the website show up here straight away.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

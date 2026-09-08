@@ -1,0 +1,85 @@
+{% extends "admin/base.html" %}
+{% block title %}Dashboard — {{ company_name }} staff{% endblock %}
+
+{% block admin_content %}
+<div class="panel__head">
+  <div>
+    <p class="eyebrow" style="margin:0">Staff area</p>
+    <h1 style="font-size:2rem;margin:0">Dashboard</h1>
+  </div>
+  <a class="btn btn--primary" href="{{ url_for('admin.vehicle_form') }}">Add a vehicle</a>
+</div>
+
+<div class="stat-cards">
+  <div class="stat"><div class="stat__label">Awaiting confirmation</div><div class="stat__value">{{ stats.pending }}</div></div>
+  <div class="stat"><div class="stat__label">Confirmed</div><div class="stat__value">{{ stats.confirmed }}</div></div>
+  <div class="stat"><div class="stat__label">Out today</div><div class="stat__value">{{ stats.out_today }}</div></div>
+  <div class="stat"><div class="stat__label">Cars listed</div><div class="stat__value">{{ stats.active_vehicles }}<span class="small muted"> / {{ stats.vehicles }}</span></div></div>
+  <div class="stat"><div class="stat__label">Unread enquiries</div><div class="stat__value">{{ stats.unread_enquiries }}</div></div>
+  <div class="stat"><div class="stat__label">Booked, last 30 days</div><div class="stat__value">{{ revenue_30d | money }}</div></div>
+</div>
+
+<div class="panel" style="margin-top:26px">
+  <div class="panel__head">
+    <h2 style="font-size:1.3rem">Coming up</h2>
+    <a href="{{ url_for('admin.bookings') }}">All bookings</a>
+  </div>
+  {% if upcoming %}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Ref</th><th>Car</th><th>Customer</th><th class="nowrap">Pick-up</th><th class="nowrap">Return</th><th>Total</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for booking in upcoming %}
+            <tr>
+              <td class="reference nowrap">{{ booking.reference }}</td>
+              <td>{{ booking.vehicle.name }}</td>
+              <td>{{ booking.customer_name }}<br><span class="small muted">{{ booking.email }}</span></td>
+              <td class="nowrap">{{ booking.start_date | nice_date }}<br><span class="small muted">{{ booking.pickup_location }}</span></td>
+              <td class="nowrap">{{ booking.end_date | nice_date }}</td>
+              <td class="nowrap">{{ booking.total_price | money }}</td>
+              <td><span class="tag tag--{{ booking.status }}">{{ booking.status }}</span></td>
+              <td class="nowrap">
+                {% if booking.status == 'pending' %}
+                  <form class="inline-form" method="post" action="{{ url_for('admin.update_booking_status', booking_id=booking.id) }}">
+                    <input type="hidden" name="status" value="confirmed">
+                    <button class="btn btn--primary btn--sm" type="submit">Confirm</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty"><h3>Nothing booked yet</h3><p>New requests from the website land here.</p></div>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <div class="panel__head"><h2 style="font-size:1.3rem">Latest requests</h2></div>
+  {% if recent %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Ref</th><th>Car</th><th>Customer</th><th class="nowrap">Dates</th><th>Total</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for booking in recent %}
+            <tr>
+              <td class="reference nowrap">{{ booking.reference }}</td>
+              <td>{{ booking.vehicle.name }}</td>
+              <td>{{ booking.customer_name }}</td>
+              <td class="nowrap">{{ booking.start_date | nice_date }} → {{ booking.end_date | nice_date }}</td>
+              <td class="nowrap">{{ booking.total_price | money }}</td>
+              <td><span class="tag tag--{{ booking.status }}">{{ booking.status }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty"><p>No requests yet.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

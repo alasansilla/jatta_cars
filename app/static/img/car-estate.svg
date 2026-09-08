@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 330" role="img" aria-label="Car illustration">
+  <ellipse cx="360" cy="304" rx="300" ry="14" fill="#010103" opacity="0.07"/>
+  <path d="M74 248 L74 202 C74 188 82 180 98 176 L140 156 C168 92 204 74 258 72 L400 72 C448 74 480 92 486 132 L516 172 L596 186 C618 190 630 200 630 216 L630 240 C630 246 626 248 620 248 Z" fill="#12876a"/>
+  <path d="M156 150 C182 94 214 84 262 82 L321 82 L321 148 Z" fill="#dfe6ef"/>
+  <path d="M337 82 L396 82 C442 86 470 102 474 130 L337 130 Z" fill="#dfe6ef"/>
+  <rect x="76" y="198" width="16" height="18" rx="6" fill="#3fae90"/>
+  <rect x="612" y="200" width="18" height="18" rx="7" fill="#ffe9b8"/>
+  <g fill="#1b1c22">
+    <circle cx="168" cy="250" r="50"/>
+    <circle cx="532" cy="250" r="50"/>
+  </g>
+  <g fill="#cfd6e0">
+    <circle cx="168" cy="250" r="21"/>
+    <circle cx="532" cy="250" r="21"/>
+  </g>
+</svg>

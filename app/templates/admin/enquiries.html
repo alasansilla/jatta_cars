@@ -1,0 +1,44 @@
+{% extends "admin/base.html" %}
+{% block title %}Enquiries — {{ company_name }} staff{% endblock %}
+
+{% block admin_content %}
+<div class="panel__head">
+  <h1 style="font-size:2rem;margin:0">Enquiries</h1>
+  <p class="small muted" style="margin:0">Messages sent through the contact form.</p>
+</div>
+
+<div class="panel">
+  {% if enquiries %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th class="nowrap">Received</th><th>From</th><th>Subject</th><th>Message</th><th></th></tr></thead>
+        <tbody>
+          {% for enquiry in enquiries %}
+            <tr style="{{ 'opacity:.6' if enquiry.is_read }}">
+              <td class="nowrap small">{{ enquiry.created_at.strftime('%d %b %Y') }}<br><span class="muted">{{ enquiry.created_at.strftime('%H:%M') }}</span></td>
+              <td>
+                <strong style="color:var(--ink)">{{ enquiry.name }}</strong><br>
+                <span class="small muted">
+                  <a href="mailto:{{ enquiry.email }}">{{ enquiry.email }}</a>
+                  {% if enquiry.phone %}<br>{{ enquiry.phone }}{% endif %}
+                </span>
+              </td>
+              <td>{{ enquiry.subject or '—' }}</td>
+              <td style="max-width:420px">{{ enquiry.message }}</td>
+              <td class="nowrap">
+                <form method="post" action="{{ url_for('admin.toggle_enquiry', enquiry_id=enquiry.id) }}">
+                  <button class="btn btn--ghost btn--sm" type="submit">
+                    {{ 'Mark unread' if enquiry.is_read else 'Mark read' }}
+                  </button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty"><h3>No enquiries yet</h3><p>Contact form messages arrive here.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

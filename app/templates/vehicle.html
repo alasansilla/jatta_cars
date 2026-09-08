@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import seat, door, gearbox, fuel, luggage, car, calendar, pin, check, check_circle %}
+
+{% block title %}{{ vehicle.name }} — {{ company_name }}{% endblock %}
+{% block description %}Hire a {{ vehicle.year }} {{ vehicle.name }} from {{ vehicle.daily_rate | money }} a day, insurance and unlimited kilometres included.{% endblock %}
+
+{% block content %}
+<section class="section section--tight">
+  <div class="wrap">
+    {% if tabs %}
+      <div class="car-tabs">
+        {% for item in tabs %}
+          <a class="car-tab {{ 'is-active' if item.id == vehicle.id }}"
+             href="{{ url_for('public.vehicle_detail', vehicle_id=item.id, start=start, end=end, pickup=pickup) }}">{{ item.name }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="section" style="padding-top:24px">
+  <div class="wrap detail-layout">
+    <div>
+      <div class="detail-media">
+        <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="{{ vehicle.name }}">
+      </div>
+
+      <div style="margin-top:44px">
+        <p class="eyebrow">{{ vehicle.category }}</p>
+        <h1 style="font-size:clamp(2rem,4vw,2.8rem)">{{ vehicle.name }}</h1>
+        {% if vehicle.description %}
+          <p class="lede">{{ vehicle.description }}</p>
+        {% endif %}
+      </div>
+
+      {% if vehicle.feature_list %}
+        <div style="margin-top:36px">
+          <h3>What's on board</h3>
+          <ul class="feature-list">
+            {% for feature in vehicle.feature_list %}
+              <li>{{ check(18) }} <span>{{ feature }}</span></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <div style="margin-top:36px">
+        <h3>Included in every hire</h3>
+        <ul class="feature-list">
+          <li>{{ check(18) }} <span>Comprehensive insurance</span></li>
+          <li>{{ check(18) }} <span>Unlimited kilometres</span></li>
+          <li>{{ check(18) }} <span>24/7 roadside assistance</span></li>
+          <li>{{ check(18) }} <span>Second driver at no charge</span></li>
+        </ul>
+        <p class="small muted" style="margin-top:18px">
+          Refundable deposit of {{ vehicle.deposit | money }}, taken when you collect the car and
+          returned once it is back with us. Drivers must be 21 or over and have held a
+          licence for at least a year.
+        </p>
+      </div>
+    </div>
+
+    <div>
+      <div class="booking-box">
+        <div class="price-lead">{{ vehicle.daily_rate | money }}</div>
+        <p>per day{% if vehicle.weekly_rate %} &middot; {{ vehicle.weekly_rate | money }} per week{% endif %}</p>
+
+        <ul class="spec-list">
+          <li>{{ car(20) }} <span>Type: <strong>{{ vehicle.category }}</strong></span></li>
+          <li>{{ door(20) }} <span>Doors: <strong>{{ vehicle.doors }}</strong></span></li>
+          <li>{{ seat(20) }} <span>Seats: <strong>{{ vehicle.seats }}</strong></span></li>
+          <li>{{ luggage(20) }} <span>Luggage: <strong>{{ vehicle.luggage }} bag{{ 's' if vehicle.luggage != 1 }}</strong></span></li>
+          <li>{{ gearbox(20) }} <span>Transmission: <strong>{{ vehicle.transmission }}</strong></span></li>
+          <li>{{ fuel(20) }} <span>Fuel: <strong>{{ vehicle.fuel }}</strong></span></li>
+        </ul>
+
+        <form method="post" action="{{ url_for('public.book', vehicle_id=vehicle.id) }}">
+          <h3 style="font-size:1.15rem">Your dates</h3>
+          <div class="field-row">
+            <div class="field">
+              <label class="label-icon" for="start">{{ calendar(18) }} Pick-up</label>
+              <input type="date" id="start" name="start" value="{{ start }}" min="{{ today }}" required>
+            </div>
+            <div class="field">
+              <label class="label-icon" for="end">{{ calendar(18) }} Return</label>
+              <input type="date" id="end" name="end" value="{{ end }}" min="{{ today }}" required>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="label-icon" for="pickup_location">{{ pin(18) }} Collect from</label>
+              <select id="pickup_location" name="pickup_location" required>
+                {% for location in locations %}
+                  <option value="{{ location }}" {{ 'selected' if pickup == location }}>{{ location }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label class="label-icon" for="dropoff_location">{{ pin(18) }} Return to</label>
+              <select id="dropoff_location" name="dropoff_location" required>
+                {% for location in locations %}
+                  <option value="{{ location }}" {{ 'selected' if pickup == location }}>{{ location }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          {% if quote %}
+            <div style="background:var(--soft);border-radius:var(--radius-sm);padding:18px;margin-top:24px">
+              <div class="quote-line">
+                <span>{{ vehicle.daily_rate | money }} × {{ days }} day{{ 's' if days != 1 }}</span>
+                <span>{{ (vehicle.daily_rate | float * days) | money }}</span>
+              </div>
+              {% if quote < (vehicle.daily_rate | float * days) %}
+                <div class="quote-line" style="color:var(--good)">
+                  <span>Weekly rate discount</span>
+                  <span>&minus;{{ ((vehicle.daily_rate | float * days) - quote) | money }}</span>
+                </div>
+              {% endif %}
+              <div class="quote-line"><span>Insurance &amp; unlimited km</span><span>Included</span></div>
+              <div class="quote-total">
+                <span style="color:var(--ink);font-weight:600">Total</span>
+                <strong>{{ quote | money }}</strong>
+              </div>
+            </div>
+          {% else %}
+            <p class="hint" style="margin-top:18px">Choose your dates to see the total for the hire.</p>
+          {% endif %}
+
+          <h3 style="font-size:1.15rem;margin-top:30px">Your details</h3>
+          <div class="field">
+            <label for="customer_name">Full name</label>
+            <input type="text" id="customer_name" name="customer_name" required autocomplete="name">
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" required autocomplete="email">
+            </div>
+            <div class="field">
+              <label for="phone">Phone <span class="muted" style="font-weight:400">(optional)</span></label>
+              <input type="tel" id="phone" name="phone" autocomplete="tel">
+            </div>
+          </div>
+          <div class="field">
+            <label for="notes">Anything we should know? <span class="muted" style="font-weight:400">(optional)</span></label>
+            <textarea id="notes" name="notes" rows="3" style="min-height:90px" placeholder="Child seat, late arrival, second driver…"></textarea>
+          </div>
+
+          <button type="submit" class="btn btn--primary btn--block btn--lg" style="margin-top:24px">
+            Request this car {{ check_circle(20) }}
+          </button>
+          <p class="hint center" style="margin-top:14px">
+            Nothing to pay now. We confirm by email, usually within the hour.
+          </p>
+        </form>
+      </div>
+
+      <p class="center" style="margin-top:24px">
+        Prefer to talk? <a href="tel:{{ company_phone | replace(' ', '') }}"><strong>{{ company_phone }}</strong></a>
+      </p>
+    </div>
+  </div>
+</section>
+
+{% if similar %}
+<section class="section section--soft">
+  <div class="wrap">
+    <div class="section-head" style="margin-bottom:40px">
+      <p class="eyebrow">Alternatives</p>
+      <h2>Other {{ vehicle.category | lower }} cars</h2>
+    </div>
+    <div class="grid grid--3">
+      {% for vehicle in similar %}{% include "partials/vehicle_card.html" %}{% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,31 @@
+{# Expects `vehicle`. Optional: `quotes` (id -> total) and `days` for a period price. #}
+{% from "partials/icons.html" import seat, gearbox, fuel, luggage %}
+<article class="card">
+  <a class="card__media" href="{{ url_for('public.vehicle_detail', vehicle_id=vehicle.id, **card_query|default({})) }}">
+    <span class="card__badge">{{ vehicle.category }}</span>
+    <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="{{ vehicle.name }}" loading="lazy">
+  </a>
+  <div class="card__body">
+    <h3 class="card__title">
+      <a href="{{ url_for('public.vehicle_detail', vehicle_id=vehicle.id, **card_query|default({})) }}" style="color:inherit">{{ vehicle.name }}</a>
+    </h3>
+    <p class="card__year">{{ vehicle.year }} &middot; {{ vehicle.transmission }}</p>
+    <ul class="card__specs">
+      <li>{{ vehicle.seats }} seats</li>
+      <li>{{ vehicle.doors }} doors</li>
+      <li>{{ vehicle.fuel }}</li>
+      {% if vehicle.luggage %}<li>{{ vehicle.luggage }} bags</li>{% endif %}
+    </ul>
+    <div class="card__footer">
+      <div>
+        {% if quotes is defined and quotes.get(vehicle.id) %}
+          <div class="price">{{ quotes[vehicle.id] | money }}</div>
+          <span class="small muted">total for {{ days }} day{{ 's' if days != 1 }}</span>
+        {% else %}
+          <div class="price">{{ vehicle.daily_rate | money }} <span>/ day</span></div>
+        {% endif %}
+      </div>
+      <a class="btn btn--primary btn--sm" href="{{ url_for('public.vehicle_detail', vehicle_id=vehicle.id, **card_query|default({})) }}">Book</a>
+    </div>
+  </div>
+</article>

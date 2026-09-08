@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import check_circle, calendar, pin, car %}
+
+{% block title %}Booking {{ booking.reference }} — {{ company_name }}{% endblock %}
+
+{% block content %}
+<section class="section">
+  <div class="wrap" style="max-width:820px">
+    <div class="panel">
+      <div style="display:flex;align-items:center;gap:14px;color:var(--accent);margin-bottom:10px">
+        {{ check_circle(30) }}
+        <p class="eyebrow" style="margin:0">Booking {{ booking.status }}</p>
+      </div>
+
+      {% if booking.status == 'pending' %}
+        <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">Thanks — we have your request</h1>
+        <p class="lede">
+          Your booking reference is <span class="reference">{{ booking.reference }}</span>.
+          We check the car over and confirm by email to
+          <strong>{{ booking.email }}</strong>, usually within the hour.
+        </p>
+      {% elif booking.status == 'confirmed' %}
+        <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">You're all set</h1>
+        <p class="lede">
+          Booking <span class="reference">{{ booking.reference }}</span> is confirmed.
+          Bring your driving licence and the card the deposit will go on.
+        </p>
+      {% elif booking.status == 'cancelled' %}
+        <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">This booking was cancelled</h1>
+        <p class="lede">
+          Booking <span class="reference">{{ booking.reference }}</span> is no longer active.
+          Get in touch if that is not what you expected.
+        </p>
+      {% else %}
+        <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">Hire complete</h1>
+        <p class="lede">
+          Booking <span class="reference">{{ booking.reference }}</span> is closed. Thanks for driving with us.
+        </p>
+      {% endif %}
+
+      <div class="table-scroll" style="margin-top:32px">
+        <table>
+          <tbody>
+            <tr>
+              <th style="width:34%">Car</th>
+              <td>
+                <a href="{{ url_for('public.vehicle_detail', vehicle_id=booking.vehicle.id) }}">
+                  <strong>{{ booking.vehicle.name }}</strong>
+                </a>
+                <span class="muted">&middot; {{ booking.vehicle.year }} &middot; {{ booking.vehicle.transmission }}</span>
+              </td>
+            </tr>
+            <tr><th>Pick-up</th><td>{{ booking.start_date | nice_date }} &middot; {{ booking.pickup_location }}</td></tr>
+            <tr><th>Return</th><td>{{ booking.end_date | nice_date }} &middot; {{ booking.dropoff_location }}</td></tr>
+            <tr><th>Length</th><td>{{ booking.days }} day{{ 's' if booking.days != 1 }}</td></tr>
+            <tr><th>Booked by</th><td>{{ booking.customer_name }} &middot; {{ booking.email }}{% if booking.phone %} &middot; {{ booking.phone }}{% endif %}</td></tr>
+            {% if booking.notes %}<tr><th>Your notes</th><td>{{ booking.notes }}</td></tr>{% endif %}
+            <tr>
+              <th>Total</th>
+              <td><strong style="font-size:1.3rem;color:var(--ink)">{{ booking.total_price | money }}</strong>
+              <span class="muted">&middot; insurance and unlimited km included</span></td>
+            </tr>
+            <tr><th>Deposit at pick-up</th><td>{{ booking.vehicle.deposit | money }}, refundable</td></tr>
+            <tr><th>Status</th><td><span class="tag tag--{{ booking.status }}">{{ booking.status }}</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="small muted" style="margin-top:26px">
+        Need to change or cancel? Call {{ company_phone }} or email
+        <a href="mailto:{{ company_email }}?subject=Booking%20{{ booking.reference }}">{{ company_email }}</a>
+        quoting {{ booking.reference }}. Cancellation is free up to 24 hours before pick-up.
+      </p>
+    </div>
+
+    <p class="center" style="margin-top:30px">
+      <a class="btn btn--ghost" href="{{ url_for('public.fleet') }}">Back to the fleet</a>
+    </p>
+  </div>
+</section>
+{% endblock %}

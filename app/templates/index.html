@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import check_circle, arrow, car, calendar, pin, shield, coin, road, clock, building, fleet_icon, check %}
+
+{% block title %}{{ company_name }} — car hire in Berlin{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow">Plan your trip now</p>
+      <h1>Hire a car <em>without</em> the small print</h1>
+      <p class="lede">
+        A tidy, well-serviced fleet at four pick-up points across Berlin.
+        One price covers insurance, breakdown cover and unlimited kilometres —
+        what you see at booking is what you pay at the desk.
+      </p>
+      <div class="hero__actions">
+        <a class="btn btn--primary btn--lg" href="{{ url_for('public.fleet') }}">Book a car {{ check_circle(20) }}</a>
+        <a class="btn btn--dark btn--lg" href="{{ url_for('public.about') }}">Learn more {{ arrow(18) }}</a>
+      </div>
+    </div>
+    <div class="hero__art">
+      <img src="{{ url_for('static', filename='img/car-economy.svg') }}" alt="" width="700" height="330">
+    </div>
+  </div>
+</section>
+
+<section class="booking-band">
+  <div class="wrap">
+    <div class="booking-panel">
+      {% if promo_message %}<div class="booking-panel__ribbon">{{ promo_message }}</div>{% endif %}
+      <h2>Book a car</h2>
+      <form method="get" action="{{ url_for('public.fleet') }}">
+        <div class="booking-grid booking-grid--full">
+          <div class="field">
+            <label class="label-icon" for="category">{{ car(20) }} Type of car</label>
+            <select name="category" id="category">
+              <option value="">Any type — show me everything</option>
+              {% for item in categories %}<option value="{{ item }}">{{ item }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="booking-grid" style="margin-top:26px">
+          <div class="field">
+            <label class="label-icon" for="pickup">{{ pin(20) }} Pick-up point</label>
+            <select name="pickup" id="pickup">
+              {% for location in locations %}<option value="{{ location }}">{{ location }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label class="label-icon" for="start">{{ calendar(20) }} Pick-up date</label>
+            <input type="date" name="start" id="start" value="{{ default_start }}" min="{{ today }}">
+          </div>
+          <div class="field">
+            <label class="label-icon" for="end">{{ calendar(20) }} Return date</label>
+            <input type="date" name="end" id="end" value="{{ default_end }}" min="{{ today }}">
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--block btn--lg" style="margin-top:30px">
+          Search available cars
+        </button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<section class="section section--soft">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Our fleet</p>
+      <h2>Pick the car that fits the trip</h2>
+      <p>Every car is under four years old, serviced on schedule and cleaned between hires.</p>
+    </div>
+
+    {% if featured %}
+      <div class="grid grid--3">
+        {% for vehicle in featured %}{% include "partials/vehicle_card.html" %}{% endfor %}
+      </div>
+      <p class="center" style="margin-top:44px;margin-bottom:0">
+        <a class="btn btn--dark btn--lg" href="{{ url_for('public.fleet') }}">See the whole fleet {{ arrow(18) }}</a>
+      </p>
+    {% else %}
+      <div class="empty">
+        <h3>The fleet is being set up</h3>
+        <p>Vehicles added in the staff area will appear here.</p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap split">
+    <div>
+      <p class="eyebrow">Why choose us</p>
+      <h2>The price you were quoted, and nothing else</h2>
+      <p>
+        Most of what makes car hire irritating is added at the counter. We took the
+        other route: one rate, everything in it, and a deposit that goes back on
+        your card the day the car comes home.
+      </p>
+      <p style="margin-bottom:32px">
+        Book online in about two minutes. We confirm by email, usually within the hour.
+      </p>
+      <a class="btn btn--primary btn--lg" href="{{ url_for('public.fleet') }}">Find a car {{ arrow(18) }}</a>
+    </div>
+
+    <div class="reasons">
+      <div class="reason">
+        <div class="reason__icon">{{ coin(40) }}</div>
+        <div>
+          <h3>All-inclusive pricing</h3>
+          <p>Insurance, breakdown cover, VAT and unlimited kilometres are in the rate. No airport surcharge, no young-driver fee, no fuel-service charge.</p>
+        </div>
+      </div>
+      <div class="reason">
+        <div class="reason__icon">{{ shield(40) }}</div>
+        <div>
+          <h3>Cover that actually covers</h3>
+          <p>Comprehensive insurance comes as standard with a {{ default_excess | money }} excess. Reduce it to zero at the desk if you would rather not think about it.</p>
+        </div>
+      </div>
+      <div class="reason">
+        <div class="reason__icon">{{ road(40) }}</div>
+        <div>
+          <h3>Take it where you like</h3>
+          <p>Unlimited kilometres across Germany, and travel into the EU at no extra cost — just tell us where you are heading so the paperwork travels with you.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--soft">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">How it works</p>
+      <h2>Three steps and you are driving</h2>
+    </div>
+    <ol class="steps">
+      <li>
+        <h3>Choose your dates</h3>
+        <p>Tell us when and where. Only cars that are genuinely free for those days are shown — no phantom availability.</p>
+      </li>
+      <li>
+        <h3>Book in two minutes</h3>
+        <p>Name, email, phone. Nothing to pay online; we take the deposit when you collect the car.</p>
+      </li>
+      <li>
+        <h3>Collect and go</h3>
+        <p>Bring your licence and the card the deposit goes on. Keys in hand in about ten minutes.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap split">
+    <div>
+      <p class="eyebrow">About us</p>
+      <h2>You start the engine, your trip starts properly</h2>
+      <p>
+        Jatta Cars is a family-run hire company working out of Berlin. We are small
+        enough that the person who answers the phone is the person who hands you the
+        keys, and stubborn enough to keep the pricing honest while the big chains
+        take the other approach.
+      </p>
+      <p style="margin-bottom:32px">
+        Every car is bought new or nearly new, kept on a strict service schedule and
+        retired before it can become someone's bad day.
+      </p>
+      <a class="btn btn--dark btn--lg" href="{{ url_for('public.about') }}">More about us {{ arrow(18) }}</a>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-block">
+        {{ fleet_icon(38) }}
+        <div class="stat-block__value">{{ stats.vehicles }}</div>
+        <div class="stat-block__label">Cars in the fleet</div>
+      </div>
+      <div class="stat-block">
+        {{ building(38) }}
+        <div class="stat-block__value">{{ locations | length }}</div>
+        <div class="stat-block__label">Pick-up points</div>
+      </div>
+      <div class="stat-block">
+        {{ clock(38) }}
+        <div class="stat-block__value">7</div>
+        <div class="stat-block__label">Days a week, 7am–9pm</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--tint">
+  <div class="wrap">
+    <div class="section-head" style="margin-bottom:40px">
+      <p class="eyebrow">Included as standard</p>
+      <h2>Everything below is in the price</h2>
+    </div>
+    <ul class="feature-list" style="max-width:900px;margin:0 auto;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+      <li>{{ check(18) }} <span>Comprehensive insurance</span></li>
+      <li>{{ check(18) }} <span>24/7 roadside assistance</span></li>
+      <li>{{ check(18) }} <span>Unlimited kilometres</span></li>
+      <li>{{ check(18) }} <span>Second driver at no charge</span></li>
+      <li>{{ check(18) }} <span>Winter tyres, October to Easter</span></li>
+      <li>{{ check(18) }} <span>Free cancellation up to 24h before</span></li>
+      <li>{{ check(18) }} <span>Child seats on request</span></li>
+      <li>{{ check(18) }} <span>VAT and all local charges</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="section section--tight">
+  <div class="wrap center">
+    <h2>Ready when you are</h2>
+    <p class="lede" style="margin:0 auto 30px">
+      Have a look at what is available, or call us on
+      <a href="tel:{{ company_phone | replace(' ', '') }}">{{ company_phone }}</a> and we will sort it out over the phone.
+    </p>
+    <a class="btn btn--primary btn--lg" href="{{ url_for('public.fleet') }}">Browse the fleet {{ arrow(18) }}</a>
+  </div>
+</section>
+{% endblock %}

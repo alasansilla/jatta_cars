@@ -1,0 +1,52 @@
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <div class="brand" style="margin-bottom:18px">
+          <svg class="brand__mark" viewBox="0 0 64 44" fill="none" aria-hidden="true">
+            <path d="M6 32V25c0-3 2-5 5-6l7-2 5-7c1-2 3-3 5-3h14c2 0 4 1 5 3l5 7 7 2c3 1 5 3 5 6v7c0 2-1 3-3 3h-4a6 6 0 0 0-12 0H25a6 6 0 0 0-12 0H9c-2 0-3-1-3-3Z" fill="#ff4d30"/>
+            <circle cx="19" cy="35" r="6" fill="#ff4d30"/>
+            <circle cx="45" cy="35" r="6" fill="#ff4d30"/>
+            <path d="M44 12a10 10 0 0 1 8 4M47 6a17 17 0 0 1 13 7" stroke="#ff4d30" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <span class="brand__text">
+            <span class="brand__name">Jatta</span>
+            <span class="brand__sub">Cars</span>
+          </span>
+        </div>
+        <p style="max-width:34ch">{{ company_tagline }} Well-kept cars, honest prices and keys in your hand in under ten minutes.</p>
+      </div>
+
+      <div>
+        <h4>Company</h4>
+        <ul>
+          <li><a href="{{ url_for('public.about') }}">About us</a></li>
+          <li><a href="{{ url_for('public.fleet') }}">Our fleet</a></li>
+          <li><a href="{{ url_for('public.contact') }}">Contact</a></li>
+          <li><a href="{{ url_for('public.booking_lookup') }}">Manage a booking</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4>Pick-up points</h4>
+        <ul>
+          {% for location in locations %}<li>{{ location }}</li>{% endfor %}
+        </ul>
+      </div>
+
+      <div>
+        <h4>Get in touch</h4>
+        <ul>
+          <li><a href="tel:{{ company_phone | replace(' ', '') }}">{{ company_phone }}</a></li>
+          <li><a href="mailto:{{ company_email }}">{{ company_email }}</a></li>
+          <li>{{ company_address }}</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <span>&copy; {{ current_year }} {{ company_name }}. All rights reserved.</span>
+      <a href="{{ url_for('admin.dashboard') }}">Staff login</a>
+    </div>
+  </div>
+</footer>

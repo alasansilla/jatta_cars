@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import calendar, pin %}
+
+{% block title %}Our fleet — {{ company_name }}{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div class="wrap">
+    <p class="eyebrow">Our fleet</p>
+    <h1>Cars available to hire</h1>
+    <p>Set your dates to see live availability and the total for your trip.</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap fleet-layout">
+    <aside class="filters">
+      <h3>Filter</h3>
+      <form method="get" action="{{ url_for('public.fleet') }}">
+        <div class="field">
+          <label class="label-icon" for="f-start">{{ calendar(18) }} Pick-up</label>
+          <input type="date" id="f-start" name="start" value="{{ filters.start }}" min="{{ today }}">
+        </div>
+        <div class="field">
+          <label class="label-icon" for="f-end">{{ calendar(18) }} Return</label>
+          <input type="date" id="f-end" name="end" value="{{ filters.end }}" min="{{ today }}">
+        </div>
+        <div class="field">
+          <label class="label-icon" for="f-pickup">{{ pin(18) }} Pick-up point</label>
+          <select id="f-pickup" name="pickup">
+            <option value="">Any</option>
+            {% for location in locations %}
+              <option value="{{ location }}" {{ 'selected' if filters.pickup == location }}>{{ location }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-category">Type</label>
+          <select id="f-category" name="category">
+            <option value="">All types</option>
+            {% for item in categories %}
+              <option value="{{ item }}" {{ 'selected' if filters.category == item }}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-transmission">Transmission</label>
+          <select id="f-transmission" name="transmission">
+            <option value="">Any</option>
+            {% for item in transmissions %}
+              <option value="{{ item }}" {{ 'selected' if filters.transmission == item }}>{{ item }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-seats">Minimum seats</label>
+          <select id="f-seats" name="seats">
+            <option value="">Any</option>
+            {% for n in [2, 4, 5, 7, 9] %}
+              <option value="{{ n }}" {{ 'selected' if filters.seats == n|string }}>{{ n }}+</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-max">Maximum per day</label>
+          <input type="number" id="f-max" name="max_price" min="0" step="5" value="{{ filters.max_price }}" placeholder="Any">
+        </div>
+        <div class="field" style="margin-top:26px">
+          <button class="btn btn--primary btn--block" type="submit">Apply filters</button>
+        </div>
+        {% if filters.values() | select | list %}
+          <p class="center small" style="margin:14px 0 0">
+            <a href="{{ url_for('public.fleet') }}">Clear everything</a>
+          </p>
+        {% endif %}
+      </form>
+    </aside>
+
+    <div>
+      {% if date_errors %}
+        {% for error in date_errors %}<div class="flash flash--error">{{ error }}</div>{% endfor %}
+      {% endif %}
+
+      <div class="results-bar">
+        <p style="margin:0">
+          <strong style="color:var(--ink)">{{ vehicles | length }}</strong>
+          car{{ 's' if vehicles | length != 1 }}
+          {% if days %}available for your {{ days }}-day hire{% else %}in the fleet{% endif %}
+        </p>
+        <form method="get" action="{{ url_for('public.fleet') }}">
+          {% for key, value in filters.items() %}
+            {% if key != 'sort' and value %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}
+          {% endfor %}
+          <label for="sort" style="display:inline-block;margin:0 10px 0 0">Sort</label>
+          <select id="sort" name="sort" onchange="this.form.submit()" style="width:auto;display:inline-block">
+            <option value="price_asc" {{ 'selected' if filters.sort == 'price_asc' }}>Price, low to high</option>
+            <option value="price_desc" {{ 'selected' if filters.sort == 'price_desc' }}>Price, high to low</option>
+            <option value="seats_desc" {{ 'selected' if filters.sort == 'seats_desc' }}>Most seats</option>
+            <option value="newest" {{ 'selected' if filters.sort == 'newest' }}>Newest first</option>
+          </select>
+          <noscript><button class="btn btn--ghost btn--sm" type="submit">Go</button></noscript>
+        </form>
+      </div>
+
+      {% if vehicles %}
+        <div class="grid grid--3">
+          {% for vehicle in vehicles %}{% include "partials/vehicle_card.html" %}{% endfor %}
+        </div>
+      {% else %}
+        <div class="empty panel">
+          <h3>Nothing matches that search</h3>
+          <p>Try widening the dates, or clearing a filter or two.</p>
+          <a class="btn btn--ghost" href="{{ url_for('public.fleet') }}">Show every car</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

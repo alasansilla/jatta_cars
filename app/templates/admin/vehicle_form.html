@@ -1,0 +1,129 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ 'Edit' if vehicle else 'Add' }} vehicle — {{ company_name }} staff{% endblock %}
+
+{# `form` holds the submitted values when validation failed, so nothing is retyped. #}
+{% macro value(field, fallback='') %}
+  {%- if form is not none -%}{{ form.get(field, '') }}
+  {%- elif vehicle -%}{{ vehicle[field] if vehicle[field] is not none else '' }}
+  {%- else -%}{{ fallback }}{%- endif -%}
+{% endmacro %}
+
+{% block admin_content %}
+<div class="panel__head">
+  <h1 style="font-size:2rem;margin:0">{{ 'Edit ' + vehicle.name if vehicle else 'Add a vehicle' }}</h1>
+  <a href="{{ url_for('admin.vehicles') }}">Back to fleet</a>
+</div>
+
+<div class="panel" style="max-width:820px">
+  <form method="post">
+    <div class="field-row">
+      <div class="field">
+        <label for="make">Make</label>
+        <input type="text" id="make" name="make" value="{{ value('make') }}" required placeholder="Volkswagen">
+      </div>
+      <div class="field">
+        <label for="model">Model</label>
+        <input type="text" id="model" name="model" value="{{ value('model') }}" required placeholder="Golf">
+      </div>
+      <div class="field">
+        <label for="year">Year</label>
+        <input type="number" id="year" name="year" value="{{ value('year') }}" min="1950" max="2100" required>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="category">Category</label>
+        <select id="category" name="category" required>
+          {% set current_category = form.get('category') if form else (vehicle.category if vehicle else '') %}
+          {% for item in categories %}
+            <option value="{{ item }}" {{ 'selected' if current_category == item }}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="transmission">Transmission</label>
+        <select id="transmission" name="transmission" required>
+          {% set current_transmission = form.get('transmission') if form else (vehicle.transmission if vehicle else '') %}
+          {% for item in transmissions %}
+            <option value="{{ item }}" {{ 'selected' if current_transmission == item }}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="fuel">Fuel</label>
+        <select id="fuel" name="fuel" required>
+          {% set current_fuel = form.get('fuel') if form else (vehicle.fuel if vehicle else '') %}
+          {% for item in fuels %}
+            <option value="{{ item }}" {{ 'selected' if current_fuel == item }}>{{ item }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="seats">Seats</label>
+        <input type="number" id="seats" name="seats" value="{{ value('seats', 5) }}" min="1" max="20" required>
+      </div>
+      <div class="field">
+        <label for="doors">Doors</label>
+        <input type="number" id="doors" name="doors" value="{{ value('doors', 5) }}" min="1" max="8" required>
+      </div>
+      <div class="field">
+        <label for="luggage">Luggage (bags)</label>
+        <input type="number" id="luggage" name="luggage" value="{{ value('luggage', 2) }}" min="0" max="20">
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="daily_rate">Daily rate ({{ config.CURRENCY }})</label>
+        <input type="number" id="daily_rate" name="daily_rate" value="{{ value('daily_rate') }}" min="0" step="0.01" required>
+      </div>
+      <div class="field">
+        <label for="weekly_rate">Weekly rate ({{ config.CURRENCY }})</label>
+        <input type="number" id="weekly_rate" name="weekly_rate" value="{{ value('weekly_rate') }}" min="0" step="0.01">
+        <p class="hint">Optional. Used for whole weeks when it beats the daily rate.</p>
+      </div>
+      <div class="field">
+        <label for="deposit">Deposit ({{ config.CURRENCY }})</label>
+        <input type="number" id="deposit" name="deposit" value="{{ value('deposit', 250) }}" min="0" step="0.01" required>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="image">Photo</label>
+      <input type="text" id="image" name="image" value="{{ value('image') }}" placeholder="img/golf.jpg">
+      <p class="hint">
+        Path inside <code>app/static/</code>. Drop a photo in <code>app/static/img/</code> and put
+        <code>img/your-file.jpg</code> here. Leave blank to use the illustration for this category.
+      </p>
+    </div>
+
+    <div class="field">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" rows="4" placeholder="Who is this car for, and what is it like to drive?">{{ value('description') }}</textarea>
+    </div>
+
+    <div class="field">
+      <label for="features">Features</label>
+      <textarea id="features" name="features" rows="5" placeholder="Air conditioning&#10;Apple CarPlay&#10;Reversing camera">{{ value('features') }}</textarea>
+      <p class="hint">One per line.</p>
+    </div>
+
+    <div class="field">
+      <label class="checkbox">
+        {% set listed = (form.get('is_active') == 'on') if form else (vehicle.is_active if vehicle else True) %}
+        <input type="checkbox" name="is_active" {{ 'checked' if listed }}>
+        <span>Show this car on the website</span>
+      </label>
+    </div>
+
+    <div class="actions" style="margin-top:28px">
+      <button class="btn btn--primary" type="submit">{{ 'Save changes' if vehicle else 'Add vehicle' }}</button>
+      <a class="btn btn--ghost" href="{{ url_for('admin.vehicles') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

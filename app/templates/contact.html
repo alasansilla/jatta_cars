@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import pin, clock %}
+
+{% block title %}Contact us — {{ company_name }}{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div class="wrap">
+    <p class="eyebrow">Contact</p>
+    <h1>Talk to a person</h1>
+    <p>Questions about a booking, a long hire, or something the website does not cover.</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap split">
+    <div>
+      <div class="panel">
+        <h3>Send us a message</h3>
+        <form method="post">
+          <div class="field-row">
+            <div class="field">
+              <label for="name">Your name</label>
+              <input type="text" id="name" name="name" required autocomplete="name">
+            </div>
+            <div class="field">
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" required autocomplete="email">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="phone">Phone <span class="muted" style="font-weight:400">(optional)</span></label>
+              <input type="tel" id="phone" name="phone" autocomplete="tel">
+            </div>
+            <div class="field">
+              <label for="subject">Subject <span class="muted" style="font-weight:400">(optional)</span></label>
+              <input type="text" id="subject" name="subject" placeholder="Long-term hire, booking JC-…">
+            </div>
+          </div>
+          <div class="field">
+            <label for="message">Message</label>
+            <textarea id="message" name="message" required placeholder="How can we help?"></textarea>
+          </div>
+          <button class="btn btn--primary" type="submit" style="margin-top:22px">Send message</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="panel">
+        <h3>Get in touch directly</h3>
+        <p style="margin-bottom:8px"><strong style="color:var(--ink)">Phone</strong><br>
+          <a href="tel:{{ company_phone | replace(' ', '') }}">{{ company_phone }}</a></p>
+        <p style="margin-bottom:8px"><strong style="color:var(--ink)">Email</strong><br>
+          <a href="mailto:{{ company_email }}">{{ company_email }}</a></p>
+        <p style="margin-bottom:0"><strong style="color:var(--ink)">Office</strong><br>{{ company_address }}</p>
+      </div>
+
+      <div class="panel">
+        <h3>Where you can collect</h3>
+        <ul class="feature-list" style="grid-template-columns:1fr">
+          {% for location in locations %}
+            <li>{{ pin(18) }} <span>{{ location }}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3>Opening hours</h3>
+        <p style="margin:0">Monday to Sunday, 7am – 9pm. Out-of-hours pick-up by arrangement.</p>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

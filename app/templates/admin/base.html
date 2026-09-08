@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="admin-bar">
+  <div class="wrap">
+    {% set here = request.endpoint %}
+    <a href="{{ url_for('admin.dashboard') }}" class="{{ 'is-active' if here == 'admin.dashboard' }}">Dashboard</a>
+    <a href="{{ url_for('admin.vehicles') }}" class="{{ 'is-active' if here in ['admin.vehicles', 'admin.vehicle_form'] }}">Fleet</a>
+    <a href="{{ url_for('admin.bookings') }}" class="{{ 'is-active' if here == 'admin.bookings' }}">
+      Bookings{% if nav_pending %}<span class="pill-count">{{ nav_pending }}</span>{% endif %}
+    </a>
+    <a href="{{ url_for('admin.enquiries') }}" class="{{ 'is-active' if here == 'admin.enquiries' }}">
+      Enquiries{% if nav_unread %}<span class="pill-count">{{ nav_unread }}</span>{% endif %}
+    </a>
+    <span class="spacer"></span>
+    <a href="{{ url_for('public.index') }}">View site</a>
+    <a href="{{ url_for('admin.logout') }}">Sign out{% if admin_username %} ({{ admin_username }}){% endif %}</a>
+  </div>
+</div>
+
+<section class="section section--tight">
+  <div class="wrap">
+    {% block admin_content %}{% endblock %}
+  </div>
+</section>
+{% endblock %}
