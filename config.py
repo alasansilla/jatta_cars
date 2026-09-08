@@ -1,23 +1,180 @@
 """Machine-level configuration.
 
-Business details, page copy, pick-up points and booking rules are *not* here —
-they are edited in the staff area under Settings. Their starting values live in
-`app/settings.py`.
+Everything here comes from the environment, so the same code runs against local
+SQLite and hosted Postgres without edits. Business details, page copy and
+booking rules are *not* here — they are edited in the staff area.
+
+Nothing secret belongs in this file. `.env` is git-ignored; `.env.example`
+lists the names without the values.
 """
 import os
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 
-class Config:
-    # Change this in production: export JATTA_SECRET_KEY="..."
-    SECRET_KEY = os.environ.get("JATTA_SECRET_KEY", "dev-only-not-for-production")
+def _load_dotenv(path=None):
+    """Read a local .env into os.environ, without adding a dependency.
 
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "JATTA_DATABASE_URL", "sqlite:///" + os.path.join(BASE_DIR, "instance", "jatta.db")
-    )
+    Real environment variables always win, so a value set by the host (Vercel,
+    a shell export) is never overwritten by a stale local file.
+    """
+    path = path or os.path.join(BASE_DIR, ".env")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            os.environ.setdefault(key, value)
+
+
+_load_dotenv()
+
+DEV_SECRET = "dev-only-not-for-production"
+
+
+def _postgres_driver():
+    """Whichever psycopg is installed. psycopg 3 first — it has wheels for
+    every Python we support; psycopg2 needs a compiler on some of them."""
+    try:
+        import psycopg  # noqa: F401
+
+        return "psycopg"
+    except ImportError:
+        return "psycopg2"
+
+
+def _database_uri():
+    """Normalise whatever the host hands us into a SQLAlchemy URL.
+
+    Supabase (and most providers) publish `postgresql://…`. SQLAlchemy needs an
+    explicit driver, and the older `postgres://` scheme it no longer accepts at
+    all, so both are rewritten here rather than in five different runbooks.
+    """
+    url = os.environ.get("JATTA_DATABASE_URL") or os.environ.get("DATABASE_URL")
+    if not url:
+        return "sqlite:///" + os.path.join(BASE_DIR, "instance", "jatta.db")
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = f"postgresql+{_postgres_driver()}://" + url[len("postgresql://"):]
+    return url
+
+
+def _engine_options(uri):
+    """Connection-pool settings appropriate to where we are running.
+
+    Supabase offers three ways in. The transaction pooler (port 6543) is the one
+    for serverless: each invocation is short-lived and Supavisor owns the real
+    connections. Holding a SQLAlchemy pool on top of it would just pin
+    connections a frozen function is not using, so we use NullPool there and let
+    the pooler pool.
+
+    Transaction mode also cannot carry prepared statements across a checkout —
+    Supabase's documentation is explicit about it. psycopg 3 prepares statements
+    automatically after a few executions, so it is told not to; psycopg2 binds
+    parameters client-side and needs nothing.
+    """
+    if uri.startswith("sqlite"):
+        return {}
+
+    options = {
+        "pool_pre_ping": True,  # a pooled connection may have been closed under us
+        "connect_args": {
+            "connect_timeout": int(os.environ.get("JATTA_DB_CONNECT_TIMEOUT", "10")),
+            "application_name": os.environ.get("JATTA_APP_NAME", "jatta-cars"),
+        },
+    }
+
+    transaction_pooler = ":6543" in uri or os.environ.get("JATTA_DB_POOL") == "none"
+    if transaction_pooler:
+        from sqlalchemy.pool import NullPool
+
+        options["poolclass"] = NullPool
+        if "+psycopg" in uri and "+psycopg2" not in uri:
+            # psycopg 3 only. Transaction pooling cannot carry a prepared
+            # statement between checkouts, and Supavisor errors if you try.
+            options["connect_args"]["prepare_threshold"] = None
+    else:
+        options["pool_size"] = int(os.environ.get("JATTA_DB_POOL_SIZE", "5"))
+        options["max_overflow"] = int(os.environ.get("JATTA_DB_MAX_OVERFLOW", "5"))
+        options["pool_recycle"] = int(os.environ.get("JATTA_DB_POOL_RECYCLE", "1800"))
+
+    if os.environ.get("JATTA_DB_SSLMODE"):
+        options["connect_args"]["sslmode"] = os.environ["JATTA_DB_SSLMODE"]
+
+    return options
+
+
+class Config:
+    ENV_NAME = os.environ.get("JATTA_ENV", "development")
+
+    SECRET_KEY = os.environ.get("JATTA_SECRET_KEY", DEV_SECRET)
+
+    SQLALCHEMY_DATABASE_URI = _database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = _engine_options(SQLALCHEMY_DATABASE_URI)
 
     # Image uploads.
     MAX_CONTENT_LENGTH = 8 * 1024 * 1024  # 8 MB per upload
     ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
+
+    # Where uploaded pictures live. "local" writes into app/static/uploads,
+    # which is fine on a normal server and useless on a serverless host where
+    # the filesystem is read-only and thrown away. "supabase" is durable.
+    STORAGE_BACKEND = os.environ.get("JATTA_STORAGE", "").strip().lower() or None
+    SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "media")
+    # Browsers and the CDN may hold an uploaded image this long. Filenames carry
+    # a random suffix, so a changed picture is a new URL and never a stale one.
+    UPLOAD_CACHE_SECONDS = int(os.environ.get("JATTA_UPLOAD_CACHE_SECONDS", "31536000"))
+
+    @property
+    def is_production(self):
+        return self.ENV_NAME.lower() in ("production", "prod")
+
+
+def check_production_config(app):
+    """Every way a production deployment can be misconfigured.
+
+    Returns a list of problems. In production the app refuses to start if there
+    are any — it fails closed. A half-configured deployment is worse than none:
+    it takes real bookings from real customers and then loses them with the
+    container, or signs staff sessions with a key that is on GitHub.
+    """
+    problems = []
+    if app.config.get("ENV_NAME", "").lower() not in ("production", "prod"):
+        return problems
+
+    if app.config["SECRET_KEY"] == DEV_SECRET:
+        problems.append(
+            "JATTA_SECRET_KEY is still the development default. Set it to a long "
+            "random value; anyone who knows the default can forge a staff session."
+        )
+    if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+        problems.append(
+            "JATTA_DATABASE_URL is not set, so this would run on SQLite. On a "
+            "serverless host that file is discarded between invocations, so every "
+            "booking taken would be lost."
+        )
+
+    backend = app.config.get("STORAGE_BACKEND") or (
+        "supabase" if app.config.get("SUPABASE_URL") else "local")
+    if backend != "supabase":
+        problems.append(
+            "Uploads would go to the local filesystem, which a serverless host "
+            "throws away. Set JATTA_STORAGE=supabase and the SUPABASE_* variables."
+        )
+    elif not app.config.get("SUPABASE_SERVICE_ROLE_KEY"):
+        problems.append(
+            "SUPABASE_SERVICE_ROLE_KEY is missing, so no picture could be uploaded."
+        )
+    elif not app.config.get("SUPABASE_URL"):
+        problems.append("SUPABASE_URL is missing.")
+
+    return problems

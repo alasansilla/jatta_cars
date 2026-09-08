@@ -4,7 +4,7 @@
   <a class="card__media" href="{{ url_for('public.vehicle_detail', vehicle_id=vehicle.id, **card_query|default({})) }}">
     <span class="card__badge">{{ vehicle.category }}</span>
     {% if not vehicle.is_active %}<span class="card__badge card__badge--muted" style="left:auto;right:12px">Hidden</span>{% endif %}
-    <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="{{ vehicle.name }}" loading="lazy"
+    <img src="{{ media_url(vehicle.image_url) }}" alt="{{ vehicle.name }}" loading="lazy"
          data-edit-image="vehicle:{{ vehicle.id }}:image">
   </a>
   <div class="card__body">

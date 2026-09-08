@@ -96,7 +96,7 @@
       <label for="photo_file">Photo</label>
       {% if vehicle %}
         <div style="display:flex;gap:18px;align-items:center;margin-bottom:14px">
-          <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="" width="150"
+          <img src="{{ media_url(vehicle.image_url) }}" alt="" width="150"
                style="background:var(--soft);border-radius:8px">
           <span class="small muted">
             {% if vehicle.image %}Currently: <code>{{ vehicle.image }}</code>

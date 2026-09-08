@@ -1,0 +1,18 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "python tools/collect_static.py",
+  "functions": {
+    "wsgi.py": {
+      "maxDuration": 30,
+      "excludeFiles": "{tests/**,instance/**,.venv/**,**/*.db,app/static/uploads/**}"
+    }
+  },
+  "headers": [
+    {
+      "source": "/static/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
+      ]
+    }
+  ]
+}

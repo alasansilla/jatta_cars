@@ -22,7 +22,7 @@
   <div class="wrap detail-layout">
     <div>
       <div class="detail-media">
-        <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="{{ vehicle.name }}"
+        <img src="{{ media_url(vehicle.image_url) }}" alt="{{ vehicle.name }}"
              data-edit-image="vehicle:{{ vehicle.id }}:image">
       </div>
 

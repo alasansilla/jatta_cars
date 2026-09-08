@@ -7,20 +7,39 @@ from datetime import date
 from flask import Flask, render_template, request, session
 from markupsafe import Markup, escape
 
-from config import Config
+from config import Config, check_production_config
 from .models import db
 from .settings import current_settings, fill_tokens
+from .storage import media_url
 
 
 def create_app(config_object=Config):
     app = Flask(__name__)
     app.config.from_object(config_object)
 
-    # SQLite needs the instance folder to exist before it can create the file.
-    os.makedirs(os.path.join(app.root_path, "..", "instance"), exist_ok=True)
-    # Uploaded images are served straight out of the static folder.
     app.config["UPLOAD_FOLDER"] = os.path.join(app.root_path, "static", "uploads")
-    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+    # Only touch the filesystem when we are actually going to use it. A
+    # serverless host gives us a read-only tree, and a mkdir there is an
+    # immediate crash on a path that otherwise never needs writing.
+    if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+        _ensure_dir(os.path.join(app.root_path, "..", "instance"))
+    if (app.config.get("STORAGE_BACKEND") or
+            ("supabase" if app.config.get("SUPABASE_URL") else "local")) == "local":
+        _ensure_dir(app.config["UPLOAD_FOLDER"])
+
+    # Fail closed. In production every one of these is a reason not to serve:
+    # a guessable secret key lets anyone mint a staff session, SQLite loses the
+    # bookings, and missing storage credentials lose the pictures. Better a
+    # deployment that will not start than one that quietly drops customer data.
+    problems = check_production_config(app)
+    if problems:
+        for problem in problems:
+            app.logger.error("Configuration: %s", problem)
+        raise RuntimeError(
+            "Refusing to start: "
+            + " ".join(f"({n}) {p}" for n, p in enumerate(problems, 1))
+        )
 
     db.init_app(app)
 
@@ -35,6 +54,14 @@ def create_app(config_object=Config):
     register_cli(app)
 
     return app
+
+
+def _ensure_dir(path):
+    """Create a directory, tolerating a read-only filesystem."""
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        pass
 
 
 def register_template_helpers(app):
@@ -68,6 +95,8 @@ def register_template_helpers(app):
             return escape(text)
         head, _, tail = str(text).partition(phrase)
         return Markup(f"{escape(head)}<em>{escape(phrase)}</em>{escape(tail)}")
+
+    app.add_template_global(media_url, "media_url")
 
     @app.template_filter("approx")
     def approx(value):

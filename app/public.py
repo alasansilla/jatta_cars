@@ -5,6 +5,8 @@ from flask import (
     Blueprint, abort, current_app, flash, redirect, render_template, request, session, make_response, url_for
 )
 
+from sqlalchemy.exc import IntegrityError
+
 from .forms import parse_date, validate_customer, validate_rental_dates
 from .models import CATEGORIES, TRANSMISSIONS, Booking, Enquiry, Vehicle, db
 from .settings import current_settings
@@ -230,7 +232,29 @@ def book(vehicle_id):
         notes=(request.form.get("notes") or "").strip() or None,
     )
     db.session.add(booking)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # The availability check above is a read, and two requests can pass it
+        # at the same moment. On Postgres an exclusion constraint refuses the
+        # second write, which lands here rather than double-booking the car.
+        db.session.rollback()
+        current_app.logger.info(
+            "Booking race refused for vehicle %s, %s to %s", vehicle.id, start, end
+        )
+        flash(
+            "Sorry, someone booked that car for those dates a moment before you. "
+            "Try different dates or another vehicle.",
+            "error",
+        )
+        return redirect(
+            url_for(
+                "public.vehicle_detail",
+                vehicle_id=vehicle.id,
+                start=request.form.get("start", ""),
+                end=request.form.get("end", ""),
+            )
+        )
 
     session["booking_reference"] = booking.reference
     return redirect(url_for("public.booking_detail", reference=booking.reference))

@@ -19,3 +19,12 @@ instance/
 # Uploaded images are site data, not source
 app/static/uploads/*
 !app/static/uploads/.gitkeep
+
+# Vercel
+.vercel/
+public/static/
+
+# Local environment
+.env
+.env.*
+!.env.example

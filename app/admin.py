@@ -8,12 +8,15 @@ from functools import wraps
 
 import math
 
+from sqlalchemy.exc import IntegrityError
+
 from flask import (
     Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
     request, session, url_for
 )
 
 from .media import delete_asset, save_upload
+from .storage import media_url
 from .models import (
     CATEGORIES, FUELS, TRANSMISSIONS, AdminUser, Booking, Enquiry, MediaAsset,
     Setting, Vehicle, db
@@ -327,7 +330,18 @@ def update_booking_status(booking_id):
         return redirect(url_for("admin.bookings"))
 
     booking.status = new_status
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Confirming a booking can collide with another confirmed one the same
+        # way a customer request can; the database has the final say.
+        db.session.rollback()
+        flash(
+            f"{booking.vehicle.name} is already committed to another booking "
+            "for those dates.",
+            "error",
+        )
+        return redirect(request.referrer or url_for("admin.bookings"))
     flash(f"Booking {booking.reference} is now {new_status}.", "success")
     return redirect(request.referrer or url_for("admin.bookings"))
 
@@ -618,7 +632,7 @@ def api_upload():
         return jsonify({"error": error}), 400
     return jsonify({
         "path": asset.path,
-        "url": url_for("static", filename=asset.path),
+        "url": media_url(asset.path),
         "id": asset.id,
     })
 

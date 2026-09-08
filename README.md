@@ -85,9 +85,15 @@ up blank.
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python seed.py      # creates the database and the staff login
+.venv/bin/python -m migrations   # create the schema
+.venv/bin/python seed.py         # create the staff login
 .venv/bin/python run.py
 ```
+
+Locally that is SQLite in `instance/` and pictures on disk in
+`app/static/uploads`. Point `JATTA_DATABASE_URL` at Postgres and set the
+`SUPABASE_*` variables and the same code uses those instead — see
+[DEPLOYMENT.md](DEPLOYMENT.md).
 
 `seed.py` adds **no** vehicles — add your own under Fleet in the staff area.
 For development you can load a European sample fleet with `seed.py --demo`;
@@ -162,12 +168,34 @@ app/
     css/style.css  the whole stylesheet
     js/editor.js   the inline page editor
     uploads/       uploaded pictures (git-ignored)
-config.py          secrets, database URL, upload limits
-seed.py            database and staff login; --demo adds a sample fleet
+config.py          environment-driven config: database, storage, secrets
+wsgi.py            WSGI entrypoint (Vercel, gunicorn)
+seed.py            staff login; --demo adds a sample fleet
 run.py             development server
-tools/             one-off maintenance scripts
+migrations/        versioned schema steps; `python -m migrations`
+supabase/          bootstrap.sql for the Supabase SQL Editor
+tools/             collect_static, create_admin, transfer_to_postgres,
+                   clear_demo_fleet
 tests/             unittest suite (no pytest needed)
+DEPLOYMENT.md      hosting, environment variables, going live
 ```
+
+## Database and storage
+
+The schema is created by versioned steps in `migrations/`, run with
+`python -m migrations` (`--status` to list them). They work identically on
+SQLite and Postgres.
+
+One thing only Postgres can do: migration 0002 adds an exclusion constraint so
+two people cannot book the same car for overlapping dates even if their requests
+arrive at the same instant. The application checks availability first, but that
+is a read followed by a write; the constraint is what actually settles it. On
+SQLite the step is skipped and the application check stands alone.
+
+Pictures go through a storage abstraction (`app/storage.py`): the local disk in
+development, a Supabase Storage bucket in production. The same
+`uploads/<filename>` key works under both, so moving hosts does not rewrite the
+database.
 
 ## Not built yet
 

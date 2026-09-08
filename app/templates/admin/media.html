@@ -38,7 +38,7 @@
       {% for asset in assets %}
         <div class="card">
           <div class="card__media">
-            <img src="{{ url_for('static', filename=asset.path) }}" alt="{{ asset.alt_text or '' }}" loading="lazy">
+            <img src="{{ media_url(asset.path) }}" alt="{{ asset.alt_text or '' }}" loading="lazy">
           </div>
           <div class="card__body">
             <p class="small" style="margin:0 0 4px;color:var(--ink);font-weight:600;word-break:break-all">
@@ -51,7 +51,7 @@
               <code>{{ asset.path }}</code>
             </p>
             <div class="card__footer">
-              <a class="btn btn--ghost btn--sm" href="{{ url_for('static', filename=asset.path) }}" target="_blank" rel="noopener">View</a>
+              <a class="btn btn--ghost btn--sm" href="{{ media_url(asset.path) }}" target="_blank" rel="noopener">View</a>
               <form method="post" action="{{ url_for('admin.media_delete', asset_id=asset.id) }}"
                     onsubmit="return confirm('Delete {{ asset.original_name }}?')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="btn btn--danger btn--sm" type="submit">Delete</button>

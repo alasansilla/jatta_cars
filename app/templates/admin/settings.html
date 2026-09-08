@@ -29,7 +29,7 @@
 
     {% elif field.type == 'image' %}
       <div style="display:flex;gap:16px;align-items:center">
-        {% if value %}<img src="{{ url_for('static', filename=value) }}" alt="" width="120"
+        {% if value %}<img src="{{ media_url(value) }}" alt="" width="120"
                            style="background:var(--soft);border-radius:6px">{% endif %}
         <input type="text" id="f-{{ field.key }}" name="{{ field.key }}" value="{{ value }}">
       </div>

@@ -18,7 +18,7 @@
           {% for vehicle in vehicles %}
             <tr>
               <td style="width:72px">
-                <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="" width="64" style="background:var(--soft);border-radius:6px">
+                <img src="{{ media_url(vehicle.image_url) }}" alt="" width="64" style="background:var(--soft);border-radius:6px">
               </td>
               <td>
                 <strong style="color:var(--ink)">{{ vehicle.name }}</strong><br>

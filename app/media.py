@@ -1,13 +1,18 @@
-"""Image uploads for the staff area."""
-import os
+"""Image uploads for the staff area.
+
+Bytes go wherever the configured storage backend puts them; this module only
+decides what a file is called, records it, and refuses to delete one that a page
+still points at.
+"""
+import mimetypes
 import secrets
 
 from flask import current_app
 from werkzeug.utils import secure_filename
 
-from .models import MediaAsset, Vehicle, db
+from .models import MediaAsset, Setting, Vehicle, db
 from .settings import FIELDS
-from .models import Setting
+from .storage import UPLOAD_PREFIX, StorageError, get_storage
 
 
 def _extension(filename):
@@ -29,17 +34,27 @@ def save_upload(storage, alt_text=None):
     original = secure_filename(storage.filename) or "image"
     stem, _, extension = original.rpartition(".")
     stem = (stem or "image")[:60]
-    # A short random suffix keeps two uploads of "car.jpg" from colliding.
+    # A short random suffix keeps two uploads of "car.jpg" from colliding, and
+    # means a replaced picture is a new URL rather than a cached stale one.
     filename = f"{stem}-{secrets.token_hex(4)}.{extension.lower()}"
+    key = UPLOAD_PREFIX + filename
 
-    destination = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
-    storage.save(destination)
+    data = storage.read()
+    if not data:
+        return None, "That file is empty."
+
+    content_type = storage.mimetype or mimetypes.guess_type(filename)[0]
+    try:
+        get_storage().save(key, data, content_type)
+    except StorageError as error:
+        current_app.logger.exception("Upload failed")
+        return None, str(error)
 
     asset = MediaAsset(
         filename=filename,
         original_name=original,
         alt_text=(alt_text or "").strip() or None,
-        size_bytes=os.path.getsize(destination),
+        size_bytes=len(data),
     )
     db.session.add(asset)
     db.session.commit()
@@ -69,9 +84,12 @@ def delete_asset(asset):
     if used_by:
         return "Still in use by " + ", ".join(used_by) + ". Change those first."
 
-    path = os.path.join(current_app.config["UPLOAD_FOLDER"], asset.filename)
-    if os.path.exists(path):
-        os.remove(path)
+    try:
+        get_storage().delete(asset.path)
+    except StorageError as error:
+        current_app.logger.exception("Delete failed")
+        return str(error)
+
     db.session.delete(asset)
     db.session.commit()
     return None
