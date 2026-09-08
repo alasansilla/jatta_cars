@@ -106,11 +106,17 @@
         <div class="grid grid--3">
           {% for vehicle in vehicles %}{% include "partials/vehicle_card.html" %}{% endfor %}
         </div>
+        <p data-edit-only hidden style="margin-top:26px">
+          <button type="button" class="edit-add" data-edit-add-vehicle>+ Add a car</button>
+        </p>
       {% else %}
         <div class="empty panel">
           <h3>Nothing matches that search</h3>
           <p>Try widening the dates, or clearing a filter or two.</p>
           <a class="btn btn--ghost" href="{{ url_for('public.fleet') }}">Show every car</a>
+          <p data-edit-only hidden style="margin-top:20px">
+            <button type="button" class="edit-add" data-edit-add-vehicle>+ Add a car</button>
+          </p>
         </div>
       {% endif %}
     </div>

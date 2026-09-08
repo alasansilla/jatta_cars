@@ -41,6 +41,13 @@ Press **Edit this page** and the page itself becomes editable:
 - Lists get an **× ** on each item and an **+ Add item** button
 - **Save changes** writes everything at once and reloads; **Discard** throws it away
 
+The fleet is built the same way. On the fleet page, **+ Add a car** creates one
+and drops you on its page to fill in; a car starts hidden so a half-finished
+entry is never public. On a car's page you can edit make, model, year, seats,
+doors, luggage, rates and deposit in place, pick category, transmission and fuel
+from a list, replace the photo, and hide or remove the car. A car with an open
+booking cannot be removed.
+
 Wording lives in `app/settings.py` as defaults, and edits are stored in the
 database. Anything never edited falls back to the default, so a page cannot end
 up blank.
@@ -112,6 +119,11 @@ Environment variables override them:
 | `JATTA_DATABASE_URL` | Database URL. Defaults to SQLite in `instance/`. |
 | `JATTA_ADMIN_USER` | Admin username for `seed.py` (default `admin`). |
 | `JATTA_ADMIN_PASSWORD` | Admin password for `seed.py`. |
+
+Prices are shown in dalasi. To also show an approximate euro or pound figure,
+enter the rate under **Settings → Booking rules**; leave it at 0 and no
+conversion appears. Nothing fetches a live rate — you set it, and it is labelled
+as approximate.
 
 Uploads are capped at 8 MB and limited to JPG, PNG, WebP and GIF.
 

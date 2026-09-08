@@ -27,7 +27,7 @@
       </div>
 
       <div style="margin-top:44px">
-        <p class="eyebrow">{{ vehicle.category }}</p>
+        <p class="eyebrow">{{ vehicle.category }}{% if not vehicle.is_active %} &middot; hidden from the site{% endif %}</p>
         <h1 style="font-size:clamp(2rem,4vw,2.8rem)">
           <span data-edit="vehicle:{{ vehicle.id }}:make">{{ vehicle.make }}</span>
           <span data-edit="vehicle:{{ vehicle.id }}:model">{{ vehicle.model }}</span>
@@ -57,6 +57,10 @@
         <p class="small muted" style="margin-top:18px" data-edit="vehicle_terms_note">
           {{ site.vehicle_terms_note | tokens(deposit=vehicle.deposit | money) }}
         </p>
+        <h3 style="margin-top:30px">Deposit</h3>
+        <div class="small muted" data-edit="deposit_policy" data-edit-multiline>{{ site.deposit_policy | paragraphs }}</div>
+        <h3 style="margin-top:24px">Insurance</h3>
+        <div class="small muted" data-edit="insurance_note" data-edit-multiline>{{ site.insurance_note | paragraphs }}</div>
       </div>
     </div>
 
@@ -64,15 +68,20 @@
       <div class="booking-box">
         <div class="price-lead">{{ site.currency }}<span
              data-edit="vehicle:{{ vehicle.id }}:daily_rate">{{ '%.2f' | format(vehicle.daily_rate | float) }}</span></div>
-        <p>per day{% if vehicle.weekly_rate %} &middot; {{ vehicle.weekly_rate | money }} per week{% endif %}</p>
+        <p>
+          per day{% if show_editbar or vehicle.weekly_rate %} &middot;
+            {{ site.currency }}<span data-edit="vehicle:{{ vehicle.id }}:weekly_rate">{{ '%.2f' | format(vehicle.weekly_rate | float) }}</span> per week
+          {% endif %}
+        </p>
+        {% if approx_prices %}<p class="small muted approx">{{ vehicle.daily_rate | approx }} per day</p>{% endif %}
 
         <ul class="spec-list">
-          <li>{{ car(20) }} <span>Type: <strong>{{ vehicle.category }}</strong></span></li>
-          <li>{{ door(20) }} <span>Doors: <strong>{{ vehicle.doors }}</strong></span></li>
-          <li>{{ seat(20) }} <span>Seats: <strong>{{ vehicle.seats }}</strong></span></li>
-          <li>{{ luggage(20) }} <span>Luggage: <strong>{{ vehicle.luggage }} bag{{ 's' if vehicle.luggage != 1 }}</strong></span></li>
-          <li>{{ gearbox(20) }} <span>Transmission: <strong>{{ vehicle.transmission }}</strong></span></li>
-          <li>{{ fuel(20) }} <span>Fuel: <strong>{{ vehicle.fuel }}</strong></span></li>
+          <li>{{ car(20) }} <span>Type: <strong data-edit-choice="vehicle:{{ vehicle.id }}:category">{{ vehicle.category }}</strong></span></li>
+          <li>{{ door(20) }} <span>Doors: <strong data-edit="vehicle:{{ vehicle.id }}:doors">{{ vehicle.doors }}</strong></span></li>
+          <li>{{ seat(20) }} <span>Seats: <strong data-edit="vehicle:{{ vehicle.id }}:seats">{{ vehicle.seats }}</strong></span></li>
+          <li>{{ luggage(20) }} <span>Luggage: <strong data-edit="vehicle:{{ vehicle.id }}:luggage">{{ vehicle.luggage }}</strong> bag{{ 's' if vehicle.luggage != 1 }}</span></li>
+          <li>{{ gearbox(20) }} <span>Transmission: <strong data-edit-choice="vehicle:{{ vehicle.id }}:transmission">{{ vehicle.transmission }}</strong></span></li>
+          <li>{{ fuel(20) }} <span>Fuel: <strong data-edit-choice="vehicle:{{ vehicle.id }}:fuel">{{ vehicle.fuel }}</strong></span></li>
         </ul>
 
         <form method="post" action="{{ url_for('public.book', vehicle_id=vehicle.id) }}">
@@ -124,6 +133,11 @@
                 <span style="color:var(--ink);font-weight:600">Total</span>
                 <strong>{{ quote | money }}</strong>
               </div>
+              {% if approx_prices %}
+                <p class="small muted approx" style="text-align:right;margin:6px 0 0">
+                  {{ quote | approx }} — {{ site.fx_disclaimer }}
+                </p>
+              {% endif %}
             </div>
           {% else %}
             <p class="hint" style="margin-top:18px">Choose your dates to see the total for the hire.</p>
@@ -161,6 +175,23 @@
       <p class="center" style="margin-top:24px">
         Prefer to talk? <a href="tel:{{ company_phone | replace(' ', '') }}"><strong>{{ company_phone }}</strong></a>
       </p>
+
+      <div class="edit-tools" data-edit-only hidden>
+        <p class="small"><strong>This car</strong></p>
+        <div class="actions">
+          <button type="button" class="btn btn--ghost btn--sm"
+                  data-edit-listed-vehicle="{{ vehicle.id }}">
+            {{ 'Hide from the site' if vehicle.is_active else 'Show on the site' }}
+          </button>
+          <button type="button" class="btn btn--danger btn--sm"
+                  data-edit-remove-vehicle="{{ vehicle.id }}"
+                  data-vehicle-name="{{ vehicle.name }}">Remove this car</button>
+        </div>
+        <p class="hint">
+          Year: <strong data-edit="vehicle:{{ vehicle.id }}:year">{{ vehicle.year }}</strong>
+          &middot; deposit: {{ site.currency }}<strong data-edit="vehicle:{{ vehicle.id }}:deposit">{{ '%.2f' | format(vehicle.deposit | float) }}</strong>
+        </p>
+      </div>
     </div>
   </div>
 </section>

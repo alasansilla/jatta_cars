@@ -69,6 +69,23 @@ def register_template_helpers(app):
         head, _, tail = str(text).partition(phrase)
         return Markup(f"{escape(head)}<em>{escape(phrase)}</em>{escape(tail)}")
 
+    @app.template_filter("approx")
+    def approx(value):
+        """Rough foreign-currency equivalent, when a rate has been entered.
+
+        Nothing fetches a live rate: staff type one in and it is shown as an
+        approximation, never as the price being charged.
+        """
+        settings = current_settings()
+        if value is None:
+            return ""
+        parts = []
+        for symbol, key in (("\u20ac", "fx_eur_rate"), ("\u00a3", "fx_gbp_rate")):
+            rate = settings.get(key) or 0
+            if rate > 0:
+                parts.append(f"{symbol}{float(value) / float(rate):,.0f}")
+        return "\u2248 " + " / ".join(parts) if parts else ""
+
     @app.template_filter("initial")
     def initial(text):
         """First letter of a name, ignoring the placeholder marker."""
@@ -102,6 +119,11 @@ def register_template_helpers(app):
             "company_address": settings["company_address"],
             "locations": settings["locations"],
             "promo_message": settings["promo_message"],
+            # True when at least one exchange rate has been entered.
+            "approx_prices": bool(
+                (settings.get("fx_eur_rate") or 0) > 0
+                or (settings.get("fx_gbp_rate") or 0) > 0
+            ),
             "today": date.today().isoformat(),
             "current_year": date.today().year,
         }

@@ -24,6 +24,7 @@
   var changes = {};
   var pendingImageTarget = null;
   var iconCache = null;
+  var choiceCache = null;
   var popover = null;
 
   function setStatus(text, state) {
@@ -257,12 +258,105 @@
       .catch(function () { setStatus("Could not load the icons.", "error"); });
   }
 
+  /* ---- one-of-a-set fields (category, transmission, fuel) ---- */
+
+  function openChoicePicker(el) {
+    closePopover();
+    var field = el.dataset.editChoice.split(":").pop();
+    var current = el.innerText.trim();
+
+    function build(sets) {
+      var options = sets[field] || [];
+      popover = document.createElement("div");
+      popover.className = "edit-popover edit-popover--list";
+      options.forEach(function (value) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.textContent = value;
+        button.setAttribute("aria-pressed", String(value === current));
+        button.addEventListener("click", function () {
+          el.textContent = value;
+          markChanged(el.dataset.editChoice, value, el);
+          closePopover();
+        });
+        popover.appendChild(button);
+      });
+      document.body.appendChild(popover);
+      var box = el.getBoundingClientRect();
+      popover.style.top = (window.scrollY + box.bottom + 8) + "px";
+      popover.style.left = (window.scrollX + box.left) + "px";
+    }
+
+    if (choiceCache) { build(choiceCache); return; }
+    fetch("/admin/api/choices")
+      .then(function (r) { return r.json(); })
+      .then(function (data) { choiceCache = data; build(data); })
+      .catch(function () { setStatus("Could not load the options.", "error"); });
+  }
+
+  /* ---- adding and removing cars ---- */
+
+  function addVehicle(button) {
+    if (isDirty() && !window.confirm(
+      "Save or discard your other changes first? Adding a car reloads the page.")) return;
+    button.disabled = true;
+    setStatus("Adding a car…");
+    fetch("/admin/api/vehicle/new", {
+      method: "POST", headers: { "X-CSRF-Token": csrf }
+    })
+      .then(function (r) { return r.json().then(function (d) {
+        if (!r.ok) throw new Error(d.error || "Could not add a car."); return d; }); })
+      .then(function (data) {
+        changes = {};
+        window.location = data.url + "?added=1";
+      })
+      .catch(function (error) { button.disabled = false; setStatus(error.message, "error"); });
+  }
+
+  function removeVehicle(button) {
+    var id = button.dataset.editRemoveVehicle;
+    var label = button.dataset.vehicleName || "this car";
+    if (!window.confirm("Remove " + label + " from the fleet? This cannot be undone.")) return;
+    button.disabled = true;
+    fetch("/admin/api/vehicle/" + id + "/delete", {
+      method: "POST", headers: { "X-CSRF-Token": csrf }
+    })
+      .then(function (r) { return r.json().then(function (d) {
+        if (!r.ok) throw new Error(d.error || "Could not remove it."); return d; }); })
+      .then(function (data) { changes = {}; window.location = data.url; })
+      .catch(function (error) { button.disabled = false; setStatus(error.message, "error"); });
+  }
+
+  function toggleListed(button) {
+    var id = button.dataset.editListedVehicle;
+    button.disabled = true;
+    fetch("/admin/api/vehicle/" + id + "/listed", {
+      method: "POST", headers: { "X-CSRF-Token": csrf }
+    })
+      .then(function (r) { return r.json().then(function (d) {
+        if (!r.ok) throw new Error(d.error || "Could not change it."); return d; }); })
+      .then(function (data) {
+        button.disabled = false;
+        button.textContent = data.listed ? "Hide from the site" : "Show on the site";
+        setStatus(data.listed ? "This car is now on the site." : "This car is now hidden.", "saved");
+      })
+      .catch(function (error) { button.disabled = false; setStatus(error.message, "error"); });
+  }
+
   document.addEventListener("click", function (event) {
     if (!editing) return;
     var image = event.target.closest("[data-edit-image]");
     if (image) { event.preventDefault(); pickImage(image); return; }
     var icon = event.target.closest("[data-edit-icon]");
     if (icon) { event.preventDefault(); openIconPicker(icon); return; }
+    var choice = event.target.closest("[data-edit-choice]");
+    if (choice) { event.preventDefault(); openChoicePicker(choice); return; }
+    var add = event.target.closest("[data-edit-add-vehicle]");
+    if (add) { event.preventDefault(); addVehicle(add); return; }
+    var remove = event.target.closest("[data-edit-remove-vehicle]");
+    if (remove) { event.preventDefault(); removeVehicle(remove); return; }
+    var listed = event.target.closest("[data-edit-listed-vehicle]");
+    if (listed) { event.preventDefault(); toggleListed(listed); return; }
     if (popover && !event.target.closest(".edit-popover")) closePopover();
   });
 
@@ -273,6 +367,7 @@
     document.body.classList.add("is-editing");
     document.querySelectorAll("[data-edit]").forEach(enableText);
     document.querySelectorAll("[data-edit-list]").forEach(enableList);
+    document.querySelectorAll("[data-edit-only]").forEach(function (el) { el.hidden = false; });
     toggleBtn.hidden = true;
     saveBtn.hidden = false;
     cancelBtn.hidden = false;
@@ -287,6 +382,7 @@
       span.removeAttribute("contenteditable");
     });
     document.querySelectorAll(".js-edit-add, .edit-item-tools").forEach(function (el) { el.remove(); });
+    document.querySelectorAll("[data-edit-only]").forEach(function (el) { el.hidden = true; });
     closePopover();
     changes = {};
     toggleBtn.hidden = false;

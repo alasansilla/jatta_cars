@@ -94,11 +94,11 @@ SCHEMA = [
                   help="Shown in front of every price. D is the usual short form for "
                        "the Gambian dalasi; change it if you quote in something else."),
             Field("locations", "Pick-up points", type="lines", rows=6,
-                  default=f"{TBC} pick-up point 1 — for example your office\n"
-                          f"{TBC} pick-up point 2 — for example the airport\n"
-                          f"{TBC} pick-up point 3 — for example hotel delivery",
-                  help="One per line. Customers choose from these when booking, so put "
-                       "real places here before the site goes live."),
+                  default="Kololi\n"
+                          "Somewhere else — we agree it when we confirm",
+                  help="One per line. Customers choose from these when booking. Add the "
+                       "other places you regularly hand cars over, such as the airport or "
+                       "a hotel, so people can pick one rather than explaining it."),
             Field("opening_hours", "Opening hours",
                   default=f"{TBC} add the days and hours you are open"),
             Field("seo_description", "Search-engine description", type="textarea", rows=2,
@@ -122,10 +122,32 @@ SCHEMA = [
             Field("default_excess", "Insurance excess", type="number", default=0,
                   help="Set this once you know your insurance terms. Left at 0 it is "
                        "treated as not yet decided and is not quoted anywhere."),
+            Field("fx_eur_rate", "Dalasi per €1", type="number", default=0,
+                  help="Set this to show an approximate euro price beside each dalasi "
+                       "price. 0 hides it. Update it when the rate moves — nothing "
+                       "fetches a live rate."),
+            Field("fx_gbp_rate", "Dalasi per £1", type="number", default=0,
+                  help="The same for pounds. 0 hides it."),
+            Field("fx_disclaimer", "Note under converted prices",
+                  default="Approximate, for guidance only. You pay in dalasi.",
+                  help="Shown wherever a converted price appears."),
+            Field("deposit_policy", "Deposit and what it depends on", type="textarea", rows=4,
+                  default=f"A refundable deposit is held on each hire. It comes back to you "
+                          f"when the car is returned undamaged and with at least half a tank "
+                          f"of fuel.\n\n{TBC} confirm the amount, whether it is per hire or "
+                          f"per day, and what is deducted if the car comes back below half a "
+                          f"tank.",
+                  help="Set the amount per car under Fleet. This describes the terms."),
+            Field("insurance_note", "Insurance", type="textarea", rows=3,
+                  default=f"{TBC} say whether the car carries an insurance policy, what it "
+                          f"covers and what the driver is liable for. A refundable deposit "
+                          f"is not insurance, so do not describe it as cover.",
+                  help="Customers rely on this. Leave it as a placeholder until you can "
+                       "state the real position."),
             Field("payment_note", "How customers pay", type="textarea", rows=3,
                   default=f"Nothing is charged on this website. You settle up with us "
                           f"directly when you collect the car. {TBC} confirm which payment "
-                          f"methods you accept.",
+                          f"methods you accept — cash, mobile money or card.",
                   help="This site cannot take payments. Say how payment actually happens."),
             Field("booking_collect_note", "What to bring at collection", type="textarea", rows=3,
                   default=f"{TBC} list what a driver must bring — driving licence, ID or "
@@ -184,10 +206,11 @@ SCHEMA = [
                   default=f"Nothing is charged on this website. You settle up with us when "
                           f"you pick the car up. {TBC} confirm which payment methods you take."),
             Field("reason_2_icon", "Reason 2 — icon", type="choice", default="shield", choices=ICON_CHOICES),
-            Field("reason_2_title", "Reason 2 — heading", default=f"{TBC} what the price covers"),
+            Field("reason_2_title", "Reason 2 — heading", default="A deposit you get back"),
             Field("reason_2_body", "Reason 2 — text", type="textarea", rows=3,
-                  default=f"{TBC} set out what a day's hire includes — insurance and its "
-                          f"excess, mileage, fuel and extra drivers — and what it does not."),
+                  default=f"We hold a refundable deposit for the hire and return it when the "
+                          f"car comes back undamaged with at least half a tank. {TBC} confirm "
+                          f"the amount and what else the daily rate covers."),
             Field("reason_3_icon", "Reason 3 — icon", type="choice", default="pin", choices=ICON_CHOICES),
             Field("reason_3_title", "Reason 3 — heading", default=f"{TBC} where we can meet you"),
             Field("reason_3_body", "Reason 3 — text", type="textarea", rows=3,

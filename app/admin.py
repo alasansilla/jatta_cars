@@ -455,7 +455,8 @@ def media_delete(asset_id):
 
 # --- Inline editor API ------------------------------------------------------
 
-# Vehicle columns the inline editor is allowed to write, with their coercions.
+# Vehicle columns the inline editor may write, with how each is coerced.
+# Anything not listed here cannot be reached from the editor API.
 EDITABLE_VEHICLE_FIELDS = {
     "make": str,
     "model": str,
@@ -465,6 +466,37 @@ EDITABLE_VEHICLE_FIELDS = {
     "daily_rate": float,
     "weekly_rate": float,
     "deposit": float,
+    "year": int,
+    "seats": int,
+    "doors": int,
+    "luggage": int,
+    "category": "choice",
+    "transmission": "choice",
+    "fuel": "choice",
+}
+
+# Valid values for the fields edited through the inline picker.
+VEHICLE_CHOICES = {
+    "category": CATEGORIES,
+    "transmission": TRANSMISSIONS,
+    "fuel": FUELS,
+}
+
+# Sensible starting points for a car added from the front end. Everything here
+# is obviously provisional, so a half-finished row cannot read as a real offer.
+NEW_VEHICLE_DEFAULTS = {
+    "make": "New",
+    "model": "car",
+    "year": date.today().year,
+    "category": "Economy",
+    "transmission": "Manual",
+    "fuel": "Petrol",
+    "seats": 5,
+    "doors": 5,
+    "luggage": 2,
+    "daily_rate": 0,
+    "deposit": 0,
+    "is_active": False,
 }
 
 
@@ -507,13 +539,34 @@ def api_save():
         if not isinstance(raw, str):
             return jsonify({"error": "Field values must be text."}), 400
         value = raw.strip()
+
         if caster is float:
             try:
-                value = float(value.replace(",", ""))
+                value = float(value.replace(",", "").replace("\u2009", ""))
             except ValueError:
                 return jsonify({"error": f"\u201c{raw}\u201d is not a number."}), 400
             if not math.isfinite(value) or value < 0:
                 return jsonify({"error": "Enter a finite, non-negative price."}), 400
+        elif caster is int:
+            try:
+                value = int(float(value.replace(",", "")))
+            except ValueError:
+                return jsonify({"error": f"\u201c{raw}\u201d is not a whole number."}), 400
+            limits = {"year": (1950, 2100), "seats": (1, 25), "doors": (1, 8),
+                      "luggage": (0, 30)}
+            low, high = limits[column]
+            if not low <= value <= high:
+                return jsonify(
+                    {"error": f"{column.title()} must be between {low} and {high}."}
+                ), 400
+        elif caster == "choice":
+            allowed = VEHICLE_CHOICES[column]
+            match = next((o for o in allowed if o.lower() == value.lower()), None)
+            if match is None:
+                return jsonify({
+                    "error": f"{column.title()} must be one of: {', '.join(allowed)}."
+                }), 400
+            value = match
         elif column in ("make", "model") and not value:
             return jsonify({"error": "Make and model cannot be empty."}), 400
         else:
@@ -599,3 +652,59 @@ def account():
             return redirect(url_for("admin.dashboard"))
 
     return render_template("admin/account.html", user=user)
+
+
+@bp.route("/api/vehicle/new", methods=["POST"])
+@login_required
+def api_vehicle_new():
+    """Add a car from the front end, so the whole fleet can be built in place.
+
+    It starts hidden from the public site: a car with no rate and no
+    description should not be on the fleet page while it is being filled in.
+    """
+    vehicle = Vehicle(**NEW_VEHICLE_DEFAULTS)
+    db.session.add(vehicle)
+    db.session.commit()
+    return jsonify({
+        "id": vehicle.id,
+        "url": url_for("public.vehicle_detail", vehicle_id=vehicle.id),
+    })
+
+
+@bp.route("/api/vehicle/<int:vehicle_id>/delete", methods=["POST"])
+@login_required
+def api_vehicle_delete(vehicle_id):
+    vehicle = db.session.get(Vehicle, vehicle_id)
+    if vehicle is None:
+        return jsonify({"error": "That vehicle no longer exists."}), 404
+
+    live = [b for b in vehicle.bookings if b.status in ("pending", "confirmed")]
+    if live:
+        return jsonify({
+            "error": f"{vehicle.name} has {len(live)} open booking(s). "
+                     "Cancel or complete those first, or just hide the car."
+        }), 400
+
+    name = vehicle.name
+    db.session.delete(vehicle)
+    db.session.commit()
+    return jsonify({"deleted": name, "url": url_for("public.fleet")})
+
+
+@bp.route("/api/vehicle/<int:vehicle_id>/listed", methods=["POST"])
+@login_required
+def api_vehicle_listed(vehicle_id):
+    """Show or hide a car without leaving the page."""
+    vehicle = db.session.get(Vehicle, vehicle_id)
+    if vehicle is None:
+        return jsonify({"error": "That vehicle no longer exists."}), 404
+    vehicle.is_active = not vehicle.is_active
+    db.session.commit()
+    return jsonify({"listed": vehicle.is_active})
+
+
+@bp.route("/api/choices")
+@login_required
+def api_choices():
+    """Valid values for the fields the inline editor offers as a picker."""
+    return jsonify(VEHICLE_CHOICES)

@@ -3,6 +3,7 @@
 <article class="card">
   <a class="card__media" href="{{ url_for('public.vehicle_detail', vehicle_id=vehicle.id, **card_query|default({})) }}">
     <span class="card__badge">{{ vehicle.category }}</span>
+    {% if not vehicle.is_active %}<span class="card__badge card__badge--muted" style="left:auto;right:12px">Hidden</span>{% endif %}
     <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="{{ vehicle.name }}" loading="lazy"
          data-edit-image="vehicle:{{ vehicle.id }}:image">
   </a>
@@ -22,8 +23,10 @@
         {% if quotes is defined and quotes.get(vehicle.id) %}
           <div class="price">{{ quotes[vehicle.id] | money }}</div>
           <span class="small muted">total for {{ days }} day{{ 's' if days != 1 }}</span>
+          {% if approx_prices %}<div class="small muted approx">{{ quotes[vehicle.id] | approx }}</div>{% endif %}
         {% else %}
           <div class="price">{{ vehicle.daily_rate | money }} <span>/ day</span></div>
+          {% if approx_prices %}<div class="small muted approx">{{ vehicle.daily_rate | approx }}</div>{% endif %}
         {% endif %}
       </div>
       <a class="btn btn--primary btn--sm" href="{{ url_for('public.vehicle_detail', vehicle_id=vehicle.id, **card_query|default({})) }}">Book</a>

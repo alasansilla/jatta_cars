@@ -63,8 +63,40 @@ class GambiaContentTests(unittest.TestCase):
         for key in ("company_phone", "company_email", "company_address",
                     "opening_hours"):
             self.assertIn(PLACEHOLDER_MARKER, settings[key], key)
-        for location in settings["locations"]:
-            self.assertIn(PLACEHOLDER_MARKER, location)
+
+    def test_pickup_points_start_from_what_the_business_told_us(self):
+        """Kololi is a confirmed fact; the rest is left open rather than guessed."""
+        locations = current_settings()["locations"]
+        self.assertIn("Kololi", locations)
+        self.assertTrue(
+            any("agree it when we confirm" in item for item in locations),
+            "there should be an option for the other places they hand cars over",
+        )
+
+    def test_a_deposit_is_never_described_as_insurance(self):
+        """A refundable deposit is not cover, and must not be sold as it."""
+        settings = current_settings()
+        deposit_copy = (settings["deposit_policy"] + settings["reason_2_body"]).lower()
+        self.assertNotIn("insurance", deposit_copy)
+        # Insurance itself stays an open question until the business answers it.
+        self.assertIn(PLACEHOLDER_MARKER, settings["insurance_note"])
+
+    def test_foreign_prices_appear_only_once_a_rate_is_entered(self):
+        from app.settings import save_settings as save
+
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertNotIn("\u2248", page, "no conversion before a rate is set")
+
+        save({"fx_eur_rate": "70"})
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertIn("\u2248", page)
+        self.assertIn("\u20ac36", page)  # D2,500 at 70 to the euro
+
+    def test_conversion_rate_of_zero_is_treated_as_unset(self):
+        from app.settings import save_settings as save
+
+        save({"fx_eur_rate": "0", "fx_gbp_rate": "0"})
+        self.assertNotIn("\u2248", self.client.get("/").get_data(as_text=True))
 
     def test_excess_is_not_quoted_until_it_is_set(self):
         """A zero excess must never render as a real figure such as D0.00."""
@@ -212,3 +244,141 @@ class DemoFleetRemovalTests(unittest.TestCase):
         db.session.add(mine)
         db.session.commit()
         self.assertEqual(classify(mine), "not part of the demo fleet")
+
+
+class InlineFleetEditingTests(unittest.TestCase):
+    """A car must be addable, editable and removable without leaving the page."""
+
+    def setUp(self):
+        self.app = create_app(TestConfig)
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        db.create_all()
+        from app.models import AdminUser
+
+        admin = AdminUser(username="admin")
+        admin.set_password("test-password")
+        db.session.add(admin)
+        db.session.commit()
+        self.client = self.app.test_client()
+        self.client.post("/admin/login",
+                         data={"username": "admin", "password": "test-password"})
+        # The token is minted when a page renders, so fetch one first.
+        self.client.get("/")
+        with self.client.session_transaction() as session:
+            self.csrf = session["_csrf_token"]
+        self.headers = {"X-CSRF-Token": self.csrf}
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.ctx.pop()
+
+    def _add(self):
+        response = self.client.post("/admin/api/vehicle/new", headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        return response.get_json()["id"]
+
+    def test_a_new_car_starts_hidden_from_the_public_site(self):
+        vehicle_id = self._add()
+        car = db.session.get(Vehicle, vehicle_id)
+        self.assertFalse(car.is_active, "a half-filled car must not be public")
+        self.assertNotIn("New car", self.client.get("/fleet").get_data(as_text=True))
+
+    def test_every_offered_field_can_be_edited_inline(self):
+        vehicle_id = self._add()
+        response = self.client.post("/admin/api/save", headers=self.headers, json={
+            "records": {
+                f"vehicle:{vehicle_id}:make": "Toyota",
+                f"vehicle:{vehicle_id}:model": "RAV4",
+                f"vehicle:{vehicle_id}:year": "2019",
+                f"vehicle:{vehicle_id}:seats": "5",
+                f"vehicle:{vehicle_id}:doors": "5",
+                f"vehicle:{vehicle_id}:luggage": "3",
+                f"vehicle:{vehicle_id}:category": "SUV",
+                f"vehicle:{vehicle_id}:transmission": "Automatic",
+                f"vehicle:{vehicle_id}:fuel": "Petrol",
+                f"vehicle:{vehicle_id}:daily_rate": "10,000",
+                f"vehicle:{vehicle_id}:deposit": "5000",
+            },
+        })
+        self.assertEqual(response.status_code, 200, response.get_json())
+        car = db.session.get(Vehicle, vehicle_id)
+        self.assertEqual(car.name, "Toyota RAV4")
+        self.assertEqual(car.category, "SUV")
+        self.assertEqual(float(car.daily_rate), 10000.0)  # comma tolerated
+        self.assertEqual(float(car.deposit), 5000.0)
+        self.assertEqual(car.year, 2019)
+
+    def test_a_choice_field_rejects_anything_off_the_list(self):
+        vehicle_id = self._add()
+        response = self.client.post("/admin/api/save", headers=self.headers, json={
+            "records": {f"vehicle:{vehicle_id}:category": "Spaceship"}})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("must be one of", response.get_json()["error"])
+
+    def test_a_choice_field_accepts_a_differently_cased_value(self):
+        vehicle_id = self._add()
+        self.client.post("/admin/api/save", headers=self.headers, json={
+            "records": {f"vehicle:{vehicle_id}:transmission": "automatic"}})
+        self.assertEqual(db.session.get(Vehicle, vehicle_id).transmission, "Automatic")
+
+    def test_nonsense_numbers_are_refused(self):
+        vehicle_id = self._add()
+        for field, value in (("year", "1066"), ("seats", "900"), ("doors", "0")):
+            response = self.client.post("/admin/api/save", headers=self.headers, json={
+                "records": {f"vehicle:{vehicle_id}:{field}": value}})
+            self.assertEqual(response.status_code, 400, f"{field}={value} was accepted")
+
+    def test_listing_can_be_toggled_without_leaving_the_page(self):
+        vehicle_id = self._add()
+        response = self.client.post(
+            f"/admin/api/vehicle/{vehicle_id}/listed", headers=self.headers)
+        self.assertTrue(response.get_json()["listed"])
+        self.assertTrue(db.session.get(Vehicle, vehicle_id).is_active)
+
+    def test_a_car_can_be_removed_inline(self):
+        vehicle_id = self._add()
+        response = self.client.post(
+            f"/admin/api/vehicle/{vehicle_id}/delete", headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(db.session.get(Vehicle, vehicle_id))
+
+    def test_a_car_with_a_live_booking_cannot_be_removed_inline(self):
+        from datetime import date as _date
+
+        from app.models import Booking
+
+        vehicle_id = self._add()
+        start = _date.today() + timedelta(days=2)
+        db.session.add(Booking(
+            reference="JC-LIVE01", vehicle_id=vehicle_id, customer_name="Someone",
+            email="someone@example.com", pickup_location="Kololi",
+            dropoff_location="Kololi", start_date=start,
+            end_date=start + timedelta(days=1), total_price=1, status="confirmed",
+        ))
+        db.session.commit()
+        response = self.client.post(
+            f"/admin/api/vehicle/{vehicle_id}/delete", headers=self.headers)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("open booking", response.get_json()["error"])
+        self.assertIsNotNone(db.session.get(Vehicle, vehicle_id))
+
+    def test_the_fleet_endpoints_are_closed_to_the_public(self):
+        """A signed-out visitor gets nowhere, and changes nothing.
+
+        Writes are refused by the CSRF guard before the login check even runs,
+        so the status is 400 rather than a redirect; what matters is that the
+        request is rejected and the fleet is untouched.
+        """
+        anonymous = self.app.test_client()
+        before = Vehicle.query.count()
+        for path in ("/admin/api/vehicle/new", "/admin/api/vehicle/1/delete",
+                     "/admin/api/vehicle/1/listed"):
+            self.assertNotEqual(anonymous.post(path).status_code, 200, path)
+        self.assertEqual(Vehicle.query.count(), before)
+        # Reads are behind the login redirect.
+        self.assertEqual(anonymous.get("/admin/api/choices").status_code, 302)
+
+    def test_adding_a_car_requires_the_csrf_token(self):
+        self.assertEqual(self.client.post("/admin/api/vehicle/new").status_code, 400)
