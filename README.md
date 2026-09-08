@@ -4,13 +4,13 @@ Self-drive car hire website for The Gambia, with a public booking flow and a
 staff area for managing the fleet, bookings and enquiries. Flask + SQLite, no
 build step.
 
-## The site starts private
+## Taking the site private
 
-A new install is **not visible to the public**. Visitors get a short holding page
-with your contact details; signed in, you see the real site and can build it in
-place. Publish it from **Settings → Setup** when you are ready — the button warns
-you if any `[TBC]` wording is still showing, and you can take it back to draft at
-any time.
+The site is visible by default, which is what you want while building it locally.
+Before it goes on a real domain with `[TBC]` wording still in it, switch it to a
+draft from **Settings → Setup**: visitors then get a short holding page with your
+contact details, while you carry on seeing the real site. The button tells you how
+much placeholder wording is currently public.
 
 ## This is still a draft
 

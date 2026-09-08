@@ -34,8 +34,6 @@ class GambiaContentTests(unittest.TestCase):
         self.ctx = self.app.app_context()
         self.ctx.push()
         db.create_all()
-        # A fresh install is a draft; these assertions are about the live site.
-        save_settings({"site_live": True})
         self.car = Vehicle(
             make="Sample", model="Car", year=2022, category="Economy",
             daily_rate=2500, deposit=10000, is_active=True,
@@ -266,7 +264,6 @@ class InlineFleetEditingTests(unittest.TestCase):
         self.client.post("/admin/login",
                          data={"username": "admin", "password": "test-password"})
         # The token is minted when a page renders, so fetch one first.
-        save_settings({"site_live": True})
         self.client.get("/")
         with self.client.session_transaction() as session:
             self.csrf = session["_csrf_token"]
@@ -414,42 +411,53 @@ class DraftModeTests(unittest.TestCase):
         self.client.post("/admin/login",
                          data={"username": "admin", "password": "test-password"})
 
-    def test_a_new_site_starts_as_a_draft(self):
-        self.assertFalse(current_settings()["site_live"])
+    def _go_private(self):
+        # Partial form: an explicit False means False. Passing group_key here
+        # would mean "the checkbox was submitted", i.e. True.
+        save_settings({"site_live": False})
+
+    def test_a_new_site_is_visible_by_default(self):
+        self.assertTrue(current_settings()["site_live"])
 
     def test_the_public_sees_only_the_holding_page(self):
+        self._go_private()
         for path in PUBLIC_PAGES:
             body = self.client.get(path).get_data(as_text=True)
-            self.assertIn("nearly ready", body, f"{path} did not hold")
+            self.assertTrue("nearly ready" in body, f"{path} did not show the holding page")
             # The booking panel and the fleet are the real site.
-            self.assertNotIn('id="pickup"', body, f"{path} leaked the booking form")
-            self.assertNotIn("Sample Car", body, f"{path} leaked the fleet")
+            self.assertFalse('id="pickup"' in body, f"{path} leaked the booking form")
+            self.assertFalse("Sample Car" in body, f"{path} leaked the fleet")
 
     def test_the_holding_page_offers_nothing_to_navigate_to(self):
         """Every nav link would only loop back here, so there is no nav."""
+        self._go_private()
         body = self.client.get("/").get_data(as_text=True)
-        self.assertNotIn('href="/fleet"', body)
-        self.assertNotIn('href="/about"', body)
+        self.assertFalse('href="/fleet"' in body, "holding page linked to the fleet")
+        self.assertFalse('href="/about"' in body, "holding page linked to About")
 
     def test_draft_pages_are_never_cached(self):
+        self._go_private()
         self.assertEqual(
             self.client.get("/").headers.get("Cache-Control"), "no-store")
 
     def test_placeholder_wording_cannot_reach_a_visitor_while_drafting(self):
+        self._go_private()
         body = self.client.get("/").get_data(as_text=True)
-        self.assertNotIn("[TBC] add a sentence", body)
+        self.assertFalse("[TBC] add a sentence" in body, "placeholder reached a visitor")
 
     def test_staff_still_see_the_real_site(self):
+        self._go_private()
         self._sign_in()
         body = self.client.get("/").get_data(as_text=True)
-        self.assertIn('id="pickup"', body)
-        self.assertIn("Draft — not public", body)
+        self.assertTrue('id="pickup"' in body, "staff did not get the real site")
+        self.assertTrue("Draft — not public" in body, "no draft badge for staff")
 
     def test_publishing_opens_the_site_to_everyone(self):
+        self._go_private()
         save_settings({"site_live": True}, group_key="publishing")
         body = self.client.get("/").get_data(as_text=True)
-        self.assertIn('id="pickup"', body)
-        self.assertIn("Sample Car", body)
+        self.assertTrue('id="pickup"' in body, "booking panel missing once live")
+        self.assertTrue("Sample Car" in body, "fleet missing once live")
 
     def test_editing_a_sentence_does_not_take_the_site_offline(self):
         """A partial save must not reset booleans it never mentioned.
@@ -457,7 +465,6 @@ class DraftModeTests(unittest.TestCase):
         The inline editor sends only what changed. If absence were read as
         False, saving one edited heading would un-publish the whole site.
         """
-        save_settings({"site_live": True}, group_key="publishing")
         self.assertTrue(current_settings()["site_live"])
 
         save_settings({"home_heading": "A new heading"})  # partial, as the editor does
@@ -467,7 +474,6 @@ class DraftModeTests(unittest.TestCase):
         self.assertEqual(current_settings()["home_heading"], "A new heading")
 
     def test_a_full_group_form_still_honours_an_unticked_box(self):
-        save_settings({"site_live": True}, group_key="publishing")
         # A real form submission omits the checkbox entirely when unticked.
         save_settings({"holding_heading": "Back soon"}, group_key="publishing")
         self.assertFalse(current_settings()["site_live"])

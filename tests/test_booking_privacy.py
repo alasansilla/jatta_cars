@@ -16,9 +16,6 @@ class BookingPrivacyTests(unittest.TestCase):
         self.ctx = self.app.app_context()
         self.ctx.push()
         db.create_all()
-        # A fresh install is a draft; these tests are about the live public site.
-        from app.settings import save_settings
-        save_settings({'site_live': True})
         car = Vehicle(make='Test', model='Car', year=2024, daily_rate=50)
         db.session.add(car)
         db.session.flush()

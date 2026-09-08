@@ -109,14 +109,15 @@ SCHEMA = [
     ),
     Group(
         "publishing", "Publishing",
-        "Whether the public can see the site yet. A new install starts as a draft, "
-        "so nothing half-written is ever reachable by a customer.",
+        "Whether the public can see the site. Switch it off while you are still "
+        "filling things in, or before it goes on a real domain.",
         [
             Field("site_live", "Show the site to the public", type="boolean",
-                  default=False,
-                  help="While this is off, visitors get a short holding page and only "
-                       "signed-in staff see the real site. Turn it on when the setup "
-                       "checklist is clear."),
+                  default=True,
+                  help="Switch this off and visitors get a short holding page with your "
+                       "contact details, while you carry on seeing the real site. Worth "
+                       "doing before the site goes on a public address with [TBC] "
+                       "wording still in it."),
             Field("holding_heading", "Holding page — heading",
                   default="Our website is nearly ready"),
             Field("holding_body", "Holding page — text", type="textarea", rows=4,
