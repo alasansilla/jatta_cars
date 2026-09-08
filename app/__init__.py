@@ -51,9 +51,49 @@ def create_app(config_object=Config):
 
     register_template_helpers(app)
     register_error_handlers(app)
+    register_health(app)
     register_cli(app)
 
     return app
+
+
+def register_health(app):
+    """A health check the host can gate a deployment on.
+
+    Registered on the application rather than the public blueprint so it is not
+    caught by the draft-mode holding page: the host has to be able to tell a
+    working deployment from a broken one whether or not the site is published.
+
+    It touches the database on purpose. A deployment with the wrong
+    JATTA_DATABASE_URL should fail its health check and be rolled back, not go
+    live and start losing bookings.
+    """
+    from sqlalchemy import text
+
+    @app.get("/healthz")
+    def healthz():
+        from flask import jsonify
+
+        try:
+            db.session.execute(text("SELECT 1"))
+            db.session.commit()
+        except Exception as error:  # noqa: BLE001 — report whatever went wrong
+            db.session.rollback()
+            app.logger.error("Health check failed: %s", error)
+            return jsonify({
+                "status": "unhealthy",
+                "database": "unreachable",
+                # The class name says enough to diagnose; the message could
+                # carry the connection string, so it is not returned.
+                "error": type(error).__name__,
+            }), 503
+
+        return jsonify({
+            "status": "ok",
+            "database": "ok",
+            "storage": (app.config.get("STORAGE_BACKEND")
+                        or ("supabase" if app.config.get("SUPABASE_URL") else "local")),
+        }), 200
 
 
 def _ensure_dir(path):

@@ -9,13 +9,21 @@ whatever JATTA_DATABASE_URL and the SUPABASE_* variables point at.
 Rules it keeps to:
 
   * The source is only ever read. Nothing is deleted or changed locally.
-  * A row that already exists at the destination is left alone, matched on the
-    column that identifies it (a booking reference, a setting key, a filename).
-    So the transfer can be run twice, or resumed after a failure.
-  * Staff accounts are not copied. Password hashes are for one site; create the
-    production account with tools/create_admin.py instead.
+  * Destination ids are assigned by the destination, never carried over, so a
+    non-empty destination is fine. A map of source id -> destination id is kept
+    in a file beside the source database, and bookings are rewritten through it.
+    Copying `vehicle_id` verbatim would silently attach bookings to the wrong
+    car the moment the destination already had rows in it.
+  * Two identical cars stay two cars. They are told apart by source id, not by
+    make and model, so a fleet with two of the same Corolla does not collapse
+    into one.
+  * Re-runnable. Anything already transferred is skipped, and pictures are
+    uploaded with overwrite so a half-finished run can simply be run again.
+  * Staff accounts are not copied. Password hashes belong to one site; create
+    the production account with tools/create_admin.py.
 """
 import argparse
+import json
 import os
 import sys
 
@@ -33,72 +41,155 @@ from app.storage import UPLOAD_PREFIX, StorageError, get_storage  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_SQLITE = "sqlite:///" + os.path.join(ROOT, "instance", "jatta.db")
 UPLOADS = os.path.join(ROOT, "app", "static", "uploads")
+MAP_FILE = os.path.join(ROOT, "instance", "transfer-map.json")
 
-# Each table, and the column that says "this is the same record".
-TABLES = [
-    (Setting, "key"),
-    (Vehicle, None),          # no natural key; matched on make+model+year below
-    (MediaAsset, "filename"),
-    (Booking, "reference"),
-    (Enquiry, None),
-]
+
+# --- the source-to-destination id map ---------------------------------------
+
+def load_map(path=None):
+    path = path or MAP_FILE
+    if not os.path.exists(path):
+        return {"vehicles": {}, "media": []}
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    data.setdefault("vehicles", {})
+    data.setdefault("media", [])
+    return data
+
+
+def save_map(mapping, path=None):
+    path = path or MAP_FILE
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(mapping, handle, indent=2, sort_keys=True)
 
 
 def columns(model):
-    return [c.name for c in model.__table__.columns]
+    return [column.name for column in model.__table__.columns]
 
 
-def row_to_dict(instance, model):
-    return {name: getattr(instance, name) for name in columns(model)}
+def row_values(instance, model):
+    values = {name: getattr(instance, name) for name in columns(model)}
+    values.pop("id", None)  # the destination assigns its own
+    return values
 
 
-def identity(instance, model, key):
-    if key:
-        return (getattr(instance, key),)
-    if model is Vehicle:
-        return (instance.make, instance.model, instance.year)
-    return (instance.created_at, getattr(instance, "email", None),
-            getattr(instance, "message", None))
+# --- the transfer -----------------------------------------------------------
 
+def transfer_vehicles(source_session, mapping, commit):
+    """Copy cars, recording source id -> destination id.
 
-def transfer_rows(source_session, commit):
-    """Copy table contents. Returns a list of (table, copied, skipped)."""
-    report = []
-    for model, key in TABLES:
-        existing = {identity(row, model, key) for row in model.query.all()}
-        copied = skipped = 0
-        for row in source_session.query(model).all():
-            if identity(row, model, key) in existing:
-                skipped += 1
-                continue
-            if commit:
-                values = row_to_dict(row, model)
-                values.pop("id", None)  # let the destination assign its own
-                db.session.add(model(**values))
-            copied += 1
+    Identity is the source id, not the make and model, so two identical cars
+    remain two cars and a re-run does not create a third.
+    """
+    known = mapping["vehicles"]
+    live_ids = {vehicle.id for vehicle in Vehicle.query.all()}
+    copied = skipped = 0
+
+    for vehicle in source_session.query(Vehicle).order_by(Vehicle.id).all():
+        source_id = str(vehicle.id)
+        if source_id in known and known[source_id] in live_ids:
+            skipped += 1
+            continue
         if commit:
-            db.session.commit()
-        report.append((model.__tablename__, copied, skipped))
-    return report
+            created = Vehicle(**row_values(vehicle, Vehicle))
+            db.session.add(created)
+            db.session.flush()          # assigns the id without ending the transaction
+            known[source_id] = created.id
+        copied += 1
+
+    if commit:
+        db.session.commit()
+    return copied, skipped
 
 
-def transfer_files(commit):
-    """Upload local files to the configured storage. Returns (sent, missing)."""
-    if not os.path.isdir(UPLOADS):
-        return [], []
+def transfer_bookings(source_session, mapping, commit):
+    """Copy bookings, rewriting vehicle_id through the map.
+
+    A booking whose car did not make it across is skipped and reported rather
+    than pointed at whatever vehicle happens to hold that id at the destination.
+    """
+    known = mapping["vehicles"]
+    existing = {booking.reference for booking in Booking.query.all()}
+    copied = skipped = 0
+    orphaned = []
+
+    for booking in source_session.query(Booking).order_by(Booking.id).all():
+        if booking.reference in existing:
+            skipped += 1
+            continue
+        destination_vehicle = known.get(str(booking.vehicle_id))
+        if destination_vehicle is None:
+            orphaned.append(booking.reference)
+            continue
+        if commit:
+            values = row_values(booking, Booking)
+            values["vehicle_id"] = destination_vehicle
+            db.session.add(Booking(**values))
+        copied += 1
+
+    if commit:
+        db.session.commit()
+    return copied, skipped, orphaned
+
+
+def transfer_simple(model, key, source_session, commit):
+    """Tables with no foreign keys, matched on a column that identifies a row."""
+    existing = {getattr(row, key) for row in model.query.all()} if key else None
+    seen_count = model.query.count()
+    copied = skipped = 0
+
+    for row in source_session.query(model).all():
+        if key is not None and getattr(row, key) in existing:
+            skipped += 1
+            continue
+        if key is None and seen_count:
+            # Enquiries have nothing unique about them. Once the destination has
+            # any, assume a previous run brought them and leave it alone rather
+            # than duplicating the lot.
+            skipped += 1
+            continue
+        if commit:
+            db.session.add(model(**row_values(row, model)))
+        copied += 1
+
+    if commit:
+        db.session.commit()
+    return copied, skipped
+
+
+def transfer_files(mapping, commit, uploads=None):
+    """Upload local files. Returns (sent, skipped, missing).
+
+    Uploads overwrite, so re-running after a failure is safe and does not
+    collide with a half-written object from the previous attempt.
+    """
+    uploads = uploads or UPLOADS
+    if not os.path.isdir(uploads):
+        return [], [], []
 
     storage = get_storage()
-    sent, missing = [], []
+    done = set(mapping.get("media", []))
+    sent, skipped, missing = [], [], []
+
     for asset in MediaAsset.query.all():
-        source = os.path.join(UPLOADS, asset.filename)
+        source = os.path.join(uploads, asset.filename)
         if not os.path.exists(source):
             missing.append(asset.filename)
             continue
+        if asset.filename in done:
+            skipped.append(asset.filename)
+            continue
         if commit:
             with open(source, "rb") as handle:
-                storage.save(UPLOAD_PREFIX + asset.filename, handle.read())
+                storage.save(UPLOAD_PREFIX + asset.filename, handle.read(), overwrite=True)
+            done.add(asset.filename)
         sent.append(asset.filename)
-    return sent, missing
+
+    mapping["media"] = sorted(done)
+    return sent, skipped, missing
 
 
 def main():
@@ -107,6 +198,8 @@ def main():
                         help="write; without it nothing is changed")
     parser.add_argument("--source", default=os.environ.get("JATTA_SOURCE_URL", DEFAULT_SQLITE),
                         help="database to read from (default: the local SQLite file)")
+    parser.add_argument("--map", default=MAP_FILE,
+                        help="where the source-to-destination id map is kept")
     args = parser.parse_args()
 
     app = create_app()
@@ -121,25 +214,46 @@ def main():
     print(f"To:   {destination.split('://')[0]}")
     print("Mode: WRITING\n" if args.commit else "Mode: dry run — nothing will change\n")
 
+    mapping = load_map(args.map)
     source_engine = create_engine(args.source)
+
     with app.app_context(), Session(source_engine) as source_session:
-        for table, copied, skipped in transfer_rows(source_session, args.commit):
-            print(f"  {table:16s} {copied:4d} to copy   {skipped:4d} already there")
+        copied, skipped = transfer_simple(Setting, "key", source_session, args.commit)
+        print(f"  {'settings':16s} {copied:4d} to copy   {skipped:4d} already there")
+
+        copied, skipped = transfer_vehicles(source_session, mapping, args.commit)
+        print(f"  {'vehicles':16s} {copied:4d} to copy   {skipped:4d} already there")
+
+        copied, skipped = transfer_simple(MediaAsset, "filename", source_session, args.commit)
+        print(f"  {'media_assets':16s} {copied:4d} to copy   {skipped:4d} already there")
+
+        copied, skipped, orphaned = transfer_bookings(source_session, mapping, args.commit)
+        print(f"  {'bookings':16s} {copied:4d} to copy   {skipped:4d} already there")
+        for reference in orphaned:
+            print(f"      SKIPPED {reference}: its car is not in the map")
+
+        copied, skipped = transfer_simple(Enquiry, None, source_session, args.commit)
+        print(f"  {'enquiries':16s} {copied:4d} to copy   {skipped:4d} already there")
 
         try:
-            sent, missing = transfer_files(args.commit)
+            sent, already, missing = transfer_files(mapping, args.commit)
         except StorageError as error:
-            print(f"\nStorage error: {error}", file=sys.stderr)
+            if args.commit:
+                save_map(mapping, args.map)
+            print(f"\nStorage error: {error}\nRe-run to continue where it stopped.",
+                  file=sys.stderr)
             return 1
-        print(f"  {'pictures':16s} {len(sent):4d} to upload {len(missing):4d} missing locally")
+        print(f"  {'pictures':16s} {len(sent):4d} to upload {len(already):4d} already there")
         for name in missing:
             print(f"      no local file for {name}")
 
-    if not args.commit:
-        print("\nDry run. Re-run with --commit to apply.")
+    if args.commit:
+        save_map(mapping, args.map)
+        print(f"\nDone. Id map saved to {os.path.relpath(args.map, ROOT)} — keep it if "
+              f"you intend to run this again.")
+        print("Staff accounts were not copied; create one with tools/create_admin.py.")
     else:
-        print("\nDone. Staff accounts were not copied — "
-              "create one with tools/create_admin.py.")
+        print("\nDry run. Re-run with --commit to apply.")
     return 0
 
 

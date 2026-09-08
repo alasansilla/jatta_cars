@@ -530,8 +530,10 @@ NEW_VEHICLE_DEFAULTS = {
     "seats": 5,
     "doors": 5,
     "luggage": 2,
-    "daily_rate": 0,
-    "deposit": 0,
+    # The confirmed standard terms, so a new car is right by default and only
+    # needs changing when it is not.
+    "daily_rate": 10000,
+    "deposit": 5000,
     "is_active": False,
 }
 

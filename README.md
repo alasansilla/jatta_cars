@@ -177,6 +177,8 @@ supabase/          bootstrap.sql for the Supabase SQL Editor
 tools/             collect_static, create_admin, transfer_to_postgres,
                    clear_demo_fleet
 tests/             unittest suite (no pytest needed)
+render.yaml        Render blueprint (the documented hosting path)
+vercel.json        Vercel config, kept as an alternative
 DEPLOYMENT.md      hosting, environment variables, going live
 ```
 

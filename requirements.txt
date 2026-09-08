@@ -1,8 +1,14 @@
 Flask==3.1.3
 Flask-SQLAlchemy==3.1.1
 SQLAlchemy==2.0.52
+
 # Postgres driver. Unused on local SQLite, required wherever
 # JATTA_DATABASE_URL points at Supabase. psycopg 3 rather than psycopg2: it
-# ships wheels for every Python version this runs on, including the 3.12
-# default on Vercel, so no deployment needs a compiler.
+# ships wheels for every Python version this runs on, so no host needs a
+# compiler.
 psycopg[binary]==3.2.13
+
+# WSGI server for hosts that run a long-lived process (Render, Fly, a VM).
+# Vercel does not use it — it runs the app as a function — but having it
+# installed there costs nothing.
+gunicorn==23.0.0

@@ -109,7 +109,42 @@ class GambiaContentTests(unittest.TestCase):
         self.assertNotIn("D0", rendered)
 
     def test_checklist_lists_every_placeholder(self):
-        self.assertEqual(len(outstanding_items(DEFAULTS)), 40)
+        """Whatever the count, it is exactly the fields still carrying the marker."""
+        listed = {item["field"].key for item in outstanding_items(DEFAULTS)}
+        expected = {key for key, value in DEFAULTS.items()
+                    if PLACEHOLDER_MARKER in ("\n".join(value)
+                                              if isinstance(value, list) else str(value))}
+        self.assertEqual(listed, expected)
+        self.assertTrue(listed, "nothing left to confirm would be surprising")
+
+    def test_the_confirmed_terms_are_stated_not_left_open(self):
+        """D10,000 a day and a D5,000 deposit are settled, so they must read as facts."""
+        settings = current_settings()
+        deposit = settings["deposit_policy"]
+        self.assertIn("5,000", deposit)
+        self.assertIn("half a tank", deposit)
+        self.assertNotIn(PLACEHOLDER_MARKER, deposit)
+        self.assertNotIn(PLACEHOLDER_MARKER, settings["rate_summary"])
+        self.assertIn("10,000", settings["rate_summary"])
+
+    def test_kololi_is_stated_as_the_usual_pick_up(self):
+        settings = current_settings()
+        self.assertIn("Kololi", settings["reason_3_title"] + settings["reason_3_body"])
+        self.assertIn("Kololi", settings["locations"])
+
+    def test_insurance_and_exchange_rates_are_still_unanswered(self):
+        """Confirming the deposit did not license inventing anything else."""
+        settings = current_settings()
+        self.assertIn(PLACEHOLDER_MARKER, settings["insurance_note"])
+        self.assertEqual(settings["default_excess"], 0)
+        self.assertEqual(settings["fx_eur_rate"], 0)
+        self.assertEqual(settings["fx_gbp_rate"], 0)
+
+    def test_a_new_car_starts_on_the_confirmed_terms(self):
+        from app.admin import NEW_VEHICLE_DEFAULTS
+
+        self.assertEqual(NEW_VEHICLE_DEFAULTS["daily_rate"], 10000)
+        self.assertEqual(NEW_VEHICLE_DEFAULTS["deposit"], 5000)
 
     def test_checklist_shrinks_as_settings_are_filled_in(self):
         before = len(outstanding_items())

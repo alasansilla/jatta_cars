@@ -9,21 +9,26 @@ environment variable on the host, or pasted into the Supabase dashboard by hand.
 
 ---
 
-## Before anything: hosting is not settled
+## The host
 
-**Vercel's Hobby plan is for non-commercial use.** A car hire business taking
-bookings is commercial, so Hobby is not a licence this site can run under. The
-options:
+**Render** is the documented path. Vercel's config is still in the repository
+and still works, but Vercel's Hobby plan is licensed for non-commercial use and
+a car hire business taking bookings is commercial, so it would need Pro at about
+$20/user/month.
 
-| Option | Cost | Notes |
+| Host | Cost | Notes |
 | --- | --- | --- |
-| **Vercel Pro** | ~$20/user/month | What the setup below is written for. Zero-config Flask, deploys from GitHub. |
-| **Render / Railway / Fly.io** | ~$5–7/month | Runs Flask as a normal long-lived process. Use the *session* pooler (port 5432) instead of the transaction pooler. |
-| **Cloudflare** | — | Workers does not run a WSGI app like this comfortably. Sensible as DNS and CDN **in front of** one of the above, not as the host. |
+| **Render Free** | £0 | For testing. Sleeps after 15 minutes idle and takes ~1 minute to wake, so a customer hitting a cold site waits. Ephemeral disk. 750 instance hours a month per workspace. |
+| **Render Starter** | ~$7/month | No sleeping. What a live site needs. |
+| **Vercel Pro** | ~$20/user/month | `vercel.json` and `wsgi.py` are still here if you prefer it. |
+| **Cloudflare** | — | Workers will not run this WSGI app comfortably. Right choice as DNS and CDN **in front of** Render, not as the host. |
 
-The application code is the same either way; only two environment variables
-differ. **Nothing is deployed and no plan has been bought.** Decide the host
-first — the rest of this takes about fifteen minutes.
+The application code is identical on all of them. The only difference that
+matters is which Supabase pooler to use: a long-lived process like Render wants
+the **session** pooler on port 5432, a serverless host like Vercel wants the
+**transaction** pooler on 6543. The app works this out from the port.
+
+**Nothing is deployed and nothing has been bought.**
 
 ---
 
@@ -88,23 +93,42 @@ if storage is not configured — and says which. A deployment that will not boot
 is better than one that quietly takes bookings into a database that gets thrown
 away.
 
-## 4. Deploy
+## 4. Deploy to Render
 
-The repository already contains what Vercel needs:
+`render.yaml` describes the service, so Render can create it from the
+repository: **New → Blueprint**, pick the repo, and it reads the file. It
+declares nothing secret — the four secrets are marked `sync: false`, which makes
+Render prompt for them in the dashboard instead.
 
-- `wsgi.py` — exposes `app`, one of Vercel's recognised entrypoints
-- `vercel.json` — 30 s function timeout, excludes tests and the local database
-  from the bundle, and runs `tools/collect_static.py`
-- `.python-version` — 3.12
-- `requirements.txt` — Flask, SQLAlchemy, `psycopg[binary]`
+What it sets up:
 
-`tools/collect_static.py` copies `app/static` into `public/static` at build
-time, so CSS, JavaScript and the car illustrations are served from the CDN
-rather than by waking a function — Vercel's Flask guide is explicit that Flask's
-own static folder should not be used for this. Existing `url_for('static', …)`
-URLs are unchanged.
+- `gunicorn wsgi:app --bind 0.0.0.0:$PORT` — Render supplies `PORT` (10000 by
+  default) and requires binding `0.0.0.0`; a hard-coded port never serves.
+- `gthread` workers, 2 × 4. These requests spend their time waiting on Postgres,
+  so threads buy more than processes on a small instance.
+- `healthCheckPath: /healthz`, which runs `SELECT 1`. A deployment with the
+  wrong `JATTA_DATABASE_URL` fails the check and is rolled back instead of going
+  live and losing bookings. It answers even while the site is in draft, and
+  never returns the connection string in an error.
+- `autoDeploy: false` — deploy when you mean to, not on every push.
+- Python 3.12, from `PYTHON_VERSION` and `.python-version`.
 
-Connect the GitHub repository in Vercel, or `vercel deploy` from the CLI.
+Then paste the four secrets from step 3 into the dashboard and deploy.
+
+**On the free plan the disk is wiped on every restart and the instance sleeps
+after 15 minutes.** That is survivable only because the database is Supabase and
+the pictures are in Supabase Storage — nothing the site needs is kept on the
+instance. Do not put it in front of customers on the free plan; the first
+visitor after a quiet hour waits a minute for a loading page.
+
+### If you use Vercel instead
+
+`vercel.json` and `wsgi.py` are still here. Connect the repository in Vercel or
+run `vercel deploy`. Its build runs `tools/collect_static.py`, which copies
+`app/static` into `public/static` so the CDN serves it rather than a function —
+Vercel's Flask guide is explicit that Flask's static folder should not be used
+for this. Existing `url_for('static', …)` URLs are unchanged. Use the
+transaction pooler (port 6543) there.
 
 ## 5. Create the staff account
 
@@ -122,6 +146,9 @@ stores only a hash. Run it from your own machine — it needs no deployment.
 
 Afterwards, sign in at `https://hajo.uk/admin/login` and change the password
 under **Account** if you want to rotate it.
+
+Until the domain is attached, the same page is at
+`https://<service>.onrender.com/admin/login`.
 
 ## 6. Move the existing content across
 
@@ -146,6 +173,9 @@ step 5.
 
 1. Add `hajo.uk` and `www.hajo.uk` in the host's domain settings.
 2. In Cloudflare DNS for `hajo.uk`, add the records it gives you.
+   - On Render: `CNAME www → <service>.onrender.com`, and for the apex either an
+     `ALIAS`/`CNAME` flattened at the root (Cloudflare does this) or the `A`
+     record Render shows.
    - On Vercel: `CNAME www → cname.vercel-dns.com`, and an `A` record for the
      apex to the address Vercel shows.
    - Set those records to **DNS only** (grey cloud) until the certificate is
@@ -165,6 +195,8 @@ step 5.
   must be refused.
 - Delete the test booking from the staff area.
 - `python -m migrations --status` against the production URL: all applied.
+- `curl https://hajo.uk/healthz` returns `{"status":"ok","database":"ok","storage":"supabase"}`.
+  If `storage` says `local`, the `SUPABASE_*` variables did not reach the app.
 
 ---
 
@@ -174,8 +206,21 @@ step 5.
 it. `--status` lists them. Step 1's SQL and the migration runner produce the
 same schema and agree on what has been applied, so either route works.
 
-**Backups.** Supabase's free tier keeps daily backups for 7 days. The pictures
-in Storage are not covered by a database backup — they are separate objects.
+**Backups. The free Supabase plan has no automated backups at all.** Supabase's
+documentation says free projects should "regularly export their data using the
+Supabase CLI `db dump` command and maintain off-site backups". Daily backups
+start on Pro (7 days retained), Team is 14 and Enterprise up to 30;
+point-in-time recovery is a paid add-on on Pro and above.
+
+So on the free plan, taking a backup is a thing someone has to do:
+
+```bash
+supabase db dump --db-url "$JATTA_DATABASE_URL" -f jatta-$(date +%F).sql
+```
+
+Keep it somewhere that is not Supabase. Pictures in Storage are separate objects
+and are not in a database dump either — copy the bucket as well if it matters.
+Once there are real bookings in here, this is the first thing to sort out.
 
 **Rotating the service role key.** Supabase Dashboard → Project Settings → API →
 roll the key, then update `SUPABASE_SERVICE_ROLE_KEY` on the host and redeploy.

@@ -150,12 +150,11 @@ SCHEMA = [
                   default="Approximate, for guidance only. You pay in dalasi.",
                   help="Shown wherever a converted price appears."),
             Field("deposit_policy", "Deposit and what it depends on", type="textarea", rows=4,
-                  default=f"A refundable deposit is held on each hire. It comes back to you "
-                          f"when the car is returned undamaged and with at least half a tank "
-                          f"of fuel.\n\n{TBC} confirm the amount, whether it is per hire or "
-                          f"per day, and what is deducted if the car comes back below half a "
-                          f"tank.",
-                  help="Set the amount per car under Fleet. This describes the terms."),
+                  default="We hold a refundable deposit of D5,000 on each hire. You get it "
+                          "back when the car comes back undamaged and with at least half a "
+                          "tank of fuel.",
+                  help="The amount charged is set per car under Fleet; this is the wording "
+                       "customers read."),
             Field("insurance_note", "Insurance", type="textarea", rows=3,
                   default=f"{TBC} say whether the car carries an insurance policy, what it "
                           f"covers and what the driver is liable for. A refundable deposit "
@@ -226,14 +225,15 @@ SCHEMA = [
             Field("reason_2_icon", "Reason 2 — icon", type="choice", default="shield", choices=ICON_CHOICES),
             Field("reason_2_title", "Reason 2 — heading", default="A deposit you get back"),
             Field("reason_2_body", "Reason 2 — text", type="textarea", rows=3,
-                  default=f"We hold a refundable deposit for the hire and return it when the "
-                          f"car comes back undamaged with at least half a tank. {TBC} confirm "
-                          f"the amount and what else the daily rate covers."),
+                  default="A refundable D5,000 deposit, returned when the car comes back "
+                          "undamaged with at least half a tank of fuel. Hire is D10,000 a "
+                          "day."),
             Field("reason_3_icon", "Reason 3 — icon", type="choice", default="pin", choices=ICON_CHOICES),
-            Field("reason_3_title", "Reason 3 — heading", default=f"{TBC} where we can meet you"),
+            Field("reason_3_title", "Reason 3 — heading", default="Collect in Kololi"),
             Field("reason_3_body", "Reason 3 — text", type="textarea", rows=3,
-                  default=f"{TBC} describe your pick-up points, whether you deliver to hotels "
-                          f"or the airport, and what happens outside opening hours."),
+                  default=f"Most hires start and end in Kololi. We can arrange somewhere else "
+                          f"when we confirm your booking. {TBC} say whether you deliver to "
+                          f"hotels or the airport, and what happens outside opening hours."),
 
             Field("home_steps_eyebrow", "Steps section label", default="How it works"),
             Field("home_steps_heading", "Steps section heading",
@@ -263,15 +263,21 @@ SCHEMA = [
             Field("home_stat3_label", "Third statistic — label",
                   default=f"{TBC} e.g. years hiring cars"),
 
+            Field("rate_summary", "Standard rate", type="textarea", rows=2,
+                  default="Hire is D10,000 a day, plus a refundable D5,000 deposit. Each "
+                          "car's own rate is shown on its page.",
+                  help="Shown above the good-to-know list. Change it here if your rates change."),
             Field("home_included_eyebrow", "Included section label", default="Good to know"),
             Field("home_included_heading", "Included section heading",
                   default="What to check before you book"),
             Field("home_included_items", "Included items", type="lines", rows=9,
-                  default=f"{TBC} what the insurance covers, and the excess\n"
+                  default=f"D10,000 a day\n"
+                          f"A refundable D5,000 deposit\n"
+                          f"Bring the car back with at least half a tank\n"
+                          f"Pick-up in Kololi, or somewhere else by arrangement\n"
+                          f"{TBC} what the insurance covers, and the excess\n"
                           f"{TBC} mileage — a daily limit, or unlimited\n"
-                          f"{TBC} the fuel policy\n"
                           f"{TBC} whether extra drivers are allowed, and any charge\n"
-                          f"{TBC} the deposit, and when it comes back\n"
                           f"{TBC} minimum age and how long a licence must be held\n"
                           f"{TBC} what happens if the car breaks down\n"
                           f"{TBC} your cancellation terms",
@@ -328,9 +334,11 @@ SCHEMA = [
             Field("about_included_heading", "Included box — heading",
                   default="What a day's hire includes"),
             Field("about_included_items", "Included box — items", type="lines", rows=7,
-                  default=f"{TBC} insurance — what type, and the excess\n"
+                  default=f"D10,000 a day\n"
+                          f"A refundable D5,000 deposit, back when the car returns "
+                          f"undamaged with at least half a tank\n"
+                          f"{TBC} insurance — what type, and the excess\n"
                           f"{TBC} mileage limit, or unlimited\n"
-                          f"{TBC} fuel policy\n"
                           f"{TBC} extra drivers\n"
                           f"{TBC} breakdown help\n"
                           f"{TBC} cancellation terms"),
@@ -383,15 +391,17 @@ SCHEMA = [
             Field("vehicle_included_heading", "Included list — heading",
                   default="Good to know"),
             Field("vehicle_included_items", "Included list — items", type="lines", rows=6,
-                  default=f"{TBC} what the insurance covers\n"
+                  default=f"Back with at least half a tank\n"
+                          f"Refundable D5,000 deposit\n"
+                          f"{TBC} what the insurance covers\n"
                           f"{TBC} mileage limit, or unlimited\n"
-                          f"{TBC} fuel policy\n"
                           f"{TBC} extra drivers",
                   help="Shown on every car page. Replace each line with the real answer."),
             Field("vehicle_terms_note", "Deposit and licence note", type="textarea", rows=4,
-                  default=f"A refundable deposit of {{deposit}} is taken when you collect the "
-                          f"car. {TBC} confirm the minimum age, how long a licence must have "
-                          f"been held, and which licences you accept.",
+                  default=f"A refundable deposit of {{deposit}} is taken when you collect "
+                          f"the car, and returned when it comes back undamaged with at least "
+                          f"half a tank of fuel. {TBC} confirm the minimum age, how long a "
+                          f"licence must have been held, and which licences you accept.",
                   help="{deposit} is replaced with that car's deposit."),
             Field("vehicle_booking_note", "Note under the booking button", type="textarea", rows=2,
                   default="Nothing to pay now — this is a request. We come back to you to "

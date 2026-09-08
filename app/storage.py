@@ -44,7 +44,7 @@ class LocalStorage:
             raise StorageError(f"Refusing to touch {key!r}.")
         return os.path.join(self.root, filename)
 
-    def save(self, key, data, content_type=None):
+    def save(self, key, data, content_type=None, overwrite=False):
         with open(self._path(key), "wb") as handle:
             handle.write(data)
 
@@ -79,7 +79,7 @@ class SupabaseStorage:
     def _object_url(self, key):
         return f"{self.base_url}/storage/v1/object/{self.bucket}/{key}"
 
-    def _request(self, method, url, data=None, content_type=None):
+    def _request(self, method, url, data=None, content_type=None, overwrite=False):
         headers = {
             "Authorization": f"Bearer {self.service_key}",
             "apikey": self.service_key,
@@ -87,6 +87,10 @@ class SupabaseStorage:
         if content_type:
             headers["Content-Type"] = content_type
             headers["Cache-Control"] = f"max-age={self.cache_seconds}"
+        if overwrite:
+            # Without this a re-uploaded key is a 409, which would make a
+            # resumed transfer fail on everything it had already sent.
+            headers["x-upsert"] = "true"
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
             with urllib.request.urlopen(request, timeout=20) as response:
@@ -102,9 +106,10 @@ class SupabaseStorage:
         except urllib.error.URLError as error:
             raise StorageError(f"Could not reach Supabase storage: {error.reason}") from error
 
-    def save(self, key, data, content_type=None):
+    def save(self, key, data, content_type=None, overwrite=False):
         content_type = content_type or mimetypes.guess_type(key)[0] or "application/octet-stream"
-        self._request("POST", self._object_url(key), data=data, content_type=content_type)
+        self._request("POST", self._object_url(key), data=data,
+                      content_type=content_type, overwrite=overwrite)
 
     def delete(self, key):
         try:

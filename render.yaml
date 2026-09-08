@@ -1,0 +1,88 @@
+# Render blueprint — https://render.com/docs/blueprint-spec
+#
+# Creates the web service. It does NOT create a database: Postgres and the
+# image storage are Supabase, so Render only runs the Flask process.
+#
+# The secrets below are declared with `sync: false`, which means Render asks for
+# them in the dashboard and never reads them from this file. Nothing here is a
+# credential, and nothing here needs to be.
+#
+# Free plan, for a test deployment: the instance sleeps after 15 minutes without
+# traffic and takes about a minute to wake, and the filesystem is wiped on every
+# restart — which is exactly why pictures go to Supabase Storage rather than to
+# disk. 750 instance hours a month across the workspace.
+
+services:
+  - type: web
+    name: jatta-cars
+    runtime: python
+    plan: free
+    region: frankfurt          # nearest Render region to the Irish Supabase project
+    branch: main
+
+    buildCommand: pip install -r requirements.txt
+
+    # Render sets PORT (10000 by default) and requires binding 0.0.0.0.
+    # gthread rather than the default sync worker: these requests spend their
+    # time waiting on Postgres, so threads are worth more than processes on a
+    # small instance.
+    startCommand: >-
+      gunicorn wsgi:app
+      --bind 0.0.0.0:$PORT
+      --workers 2
+      --threads 4
+      --worker-class gthread
+      --timeout 60
+      --graceful-timeout 30
+      --access-logfile -
+      --error-logfile -
+
+    # Touches the database, so a deployment with the wrong connection string
+    # fails here instead of going live.
+    healthCheckPath: /healthz
+
+    autoDeploy: false          # deploy deliberately, not on every push
+
+    envVars:
+      # Python version also comes from .python-version; this pins it explicitly.
+      - key: PYTHON_VERSION
+        value: "3.12"
+
+      - key: JATTA_ENV
+        value: production
+
+      # Long-lived process, so the *session* pooler (port 5432), not the
+      # transaction pooler. The app keeps a small connection pool of its own.
+      - key: JATTA_DB_POOL_SIZE
+        value: "3"
+      - key: JATTA_DB_MAX_OVERFLOW
+        value: "2"
+
+      # Insist on TLS between Render and Supabase.
+      - key: JATTA_DB_SSLMODE
+        value: require
+
+      - key: JATTA_STORAGE
+        value: supabase
+      - key: SUPABASE_STORAGE_BUCKET
+        value: media
+
+      # --- set these in the Render dashboard; they are never stored here -----
+
+      # python -c "import secrets; print(secrets.token_urlsafe(48))"
+      - key: JATTA_SECRET_KEY
+        sync: false
+
+      # Supabase -> Project Settings -> Database -> Connection string,
+      # session pooler (port 5432):
+      #   postgresql://postgres.<ref>:<password>@aws-<n>-<region>.pooler.supabase.com:5432/postgres
+      - key: JATTA_DATABASE_URL
+        sync: false
+
+      # Supabase -> Project Settings -> API
+      - key: SUPABASE_URL
+        sync: false
+
+      # SERVICE ROLE key. Server-only: it bypasses row-level security.
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

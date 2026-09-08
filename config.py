@@ -36,6 +36,9 @@ _load_dotenv()
 
 DEV_SECRET = "dev-only-not-for-production"
 
+# Shorter than this is worth attacking offline.
+MINIMUM_SECRET_LENGTH = 32
+
 
 def _postgres_driver():
     """Whichever psycopg is installed. psycopg 3 first — it has wheels for
@@ -151,10 +154,24 @@ def check_production_config(app):
     if app.config.get("ENV_NAME", "").lower() not in ("production", "prod"):
         return problems
 
-    if app.config["SECRET_KEY"] == DEV_SECRET:
+    secret = app.config.get("SECRET_KEY")
+    if not isinstance(secret, (str, bytes)) or not str(secret).strip():
+        # An unset variable arrives as "" and whitespace is no better: Flask
+        # would happily sign sessions with it and every deployment would share
+        # the same empty key.
+        problems.append(
+            "JATTA_SECRET_KEY is empty. Set it to a long random value: "
+            'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+        )
+    elif str(secret).strip() == DEV_SECRET:
         problems.append(
             "JATTA_SECRET_KEY is still the development default. Set it to a long "
             "random value; anyone who knows the default can forge a staff session."
+        )
+    elif len(str(secret).strip()) < MINIMUM_SECRET_LENGTH:
+        problems.append(
+            f"JATTA_SECRET_KEY is only {len(str(secret).strip())} characters. Use at "
+            f"least {MINIMUM_SECRET_LENGTH}; a short key can be brute-forced offline."
         )
     if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
         problems.append(

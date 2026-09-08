@@ -101,12 +101,39 @@ class DatabaseUrlTests(unittest.TestCase):
 
 
 class ProductionGuardTests(unittest.TestCase):
+    """Production must fail closed, loudly, on anything half-configured."""
+
     def setUp(self):
         # These tests deliberately trip the production warnings; do not print them.
         logging.disable(logging.CRITICAL)
 
     def tearDown(self):
         logging.disable(logging.NOTSET)
+
+    def _production(self, **overrides):
+        attrs = {
+            "ENV_NAME": "production",
+            "SECRET_KEY": "a" * 48,
+            "SQLALCHEMY_DATABASE_URI": PG + "://u:p@h:6543/postgres",
+            "SQLALCHEMY_ENGINE_OPTIONS": {},
+            "STORAGE_BACKEND": "supabase",
+            "SUPABASE_URL": "https://x.supabase.co",
+            "SUPABASE_SERVICE_ROLE_KEY": "service-key",
+        }
+        attrs.update(overrides)
+        return type("Cfg", (TestConfig,), attrs)
+
+    def test_production_refuses_a_blank_secret_key(self):
+        """An unset variable arrives as an empty string, not as a missing one."""
+        for blank in ("", "   ", "\t\n "):
+            with self.assertRaises(RuntimeError, msg=repr(blank)) as caught:
+                create_app(self._production(SECRET_KEY=blank))
+            self.assertIn("empty", str(caught.exception))
+
+    def test_production_refuses_a_short_secret_key(self):
+        with self.assertRaises(RuntimeError) as caught:
+            create_app(self._production(SECRET_KEY="hunter2hunter2"))
+        self.assertIn("at least", str(caught.exception))
 
     def test_production_refuses_the_development_secret_key(self):
         """Signing sessions with a public constant lets anyone forge a login."""
@@ -124,7 +151,7 @@ class ProductionGuardTests(unittest.TestCase):
         """A serverless host discards the file, so every booking would vanish."""
         class OnSqlite(TestConfig):
             ENV_NAME = "production"
-            SECRET_KEY = "a-real-secret"
+            SECRET_KEY = "a" * 48
 
         with self.assertRaises(RuntimeError) as caught:
             create_app(OnSqlite)
@@ -133,7 +160,7 @@ class ProductionGuardTests(unittest.TestCase):
     def test_production_refuses_local_file_storage(self):
         class NoStorage(TestConfig):
             ENV_NAME = "production"
-            SECRET_KEY = "a-real-secret"
+            SECRET_KEY = "a" * 48
             SQLALCHEMY_DATABASE_URI = PG + "://u:p@h:6543/postgres"
 
         with self.assertRaises(RuntimeError) as caught:
@@ -143,7 +170,7 @@ class ProductionGuardTests(unittest.TestCase):
     def test_production_refuses_supabase_without_a_key(self):
         class HalfConfigured(TestConfig):
             ENV_NAME = "production"
-            SECRET_KEY = "a-real-secret"
+            SECRET_KEY = "a" * 48
             SQLALCHEMY_DATABASE_URI = PG + "://u:p@h:6543/postgres"
             STORAGE_BACKEND = "supabase"
             SUPABASE_URL = "https://x.supabase.co"
@@ -156,7 +183,7 @@ class ProductionGuardTests(unittest.TestCase):
     def test_a_fully_configured_production_app_starts(self):
         class Good(TestConfig):
             ENV_NAME = "production"
-            SECRET_KEY = "a-real-secret"
+            SECRET_KEY = "a" * 48
             SQLALCHEMY_DATABASE_URI = PG + "://u:p@h:6543/postgres"
             SQLALCHEMY_ENGINE_OPTIONS = {}
             STORAGE_BACKEND = "supabase"
@@ -689,42 +716,59 @@ class EditorStorageTests(unittest.TestCase):
 # --- moving an existing site to Supabase ------------------------------------
 
 class TransferTests(unittest.TestCase):
-    """The transfer must be resumable and must never touch the source."""
+    """The transfer must survive a non-empty destination and a duplicate fleet."""
 
     def setUp(self):
-        sys_path = os.path.join(os.path.dirname(os.path.dirname(
+        tools = os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "tools")
-        if sys_path not in os.sys.path:
-            os.sys.path.insert(0, sys_path)
+        if tools not in os.sys.path:
+            os.sys.path.insert(0, tools)
 
         self.source_file = tempfile.mktemp(suffix=".db")
         self.source_url = f"sqlite:///{self.source_file}"
+        self.map_file = tempfile.mktemp(suffix=".json")
 
-        # Build a source site with some content in it.
         class SourceConfig(TestConfig):
             SQLALCHEMY_DATABASE_URI = self.source_url
 
         source_app = create_app(SourceConfig)
         with source_app.app_context():
             db.create_all()
-            car = Vehicle(make="Toyota", model="RAV4", year=2021,
-                          daily_rate=10000, is_active=True)
+            # Two identical cars: a real fleet has these, and matching on
+            # make/model/year would fold them into one.
+            first = Vehicle(make="Toyota", model="Corolla", year=2021,
+                            daily_rate=10000, is_active=True)
+            second = Vehicle(make="Toyota", model="Corolla", year=2021,
+                             daily_rate=10000, is_active=True)
+            other = Vehicle(make="Suzuki", model="Vitara", year=2020,
+                            daily_rate=12000, is_active=True)
             admin = AdminUser(username="local-admin")
             admin.set_password("local-password")
-            db.session.add_all([car, admin])
+            db.session.add_all([first, second, other, admin])
             db.session.commit()
+            self.source_ids = (first.id, second.id, other.id)
+
             start = date.today() + timedelta(days=5)
-            db.session.add(Booking(
-                reference="JC-MOVE01", vehicle=car, customer_name="Awa",
-                email="awa@example.com", pickup_location="Kololi",
-                dropoff_location="Kololi", start_date=start,
-                end_date=start + timedelta(days=2), total_price=20000))
+            # One booking against each identical car, so a mix-up is visible.
+            db.session.add_all([
+                Booking(reference="JC-CAR1", vehicle_id=first.id, customer_name="Awa",
+                        email="awa@example.com", pickup_location="Kololi",
+                        dropoff_location="Kololi", start_date=start,
+                        end_date=start + timedelta(days=2), total_price=20000),
+                Booking(reference="JC-CAR2", vehicle_id=second.id, customer_name="Binta",
+                        email="binta@example.com", pickup_location="Kololi",
+                        dropoff_location="Kololi", start_date=start,
+                        end_date=start + timedelta(days=2), total_price=20000),
+                Booking(reference="JC-CAR3", vehicle_id=other.id, customer_name="Modou",
+                        email="modou@example.com", pickup_location="Kololi",
+                        dropoff_location="Kololi", start_date=start,
+                        end_date=start + timedelta(days=2), total_price=24000),
+            ])
             db.session.add(MediaAsset(filename="car-abcd.png",
                                       original_name="car.png", size_bytes=5))
             db.session.add(Setting(key="company_phone", value="+220 700 0000"))
             db.session.commit()
 
-        # And an empty destination.
         self.dest_root = tempfile.mkdtemp()
 
         class DestConfig(TestConfig):
@@ -741,80 +785,380 @@ class TransferTests(unittest.TestCase):
         db.drop_all()
         self.ctx.pop()
         shutil.rmtree(self.dest_root, ignore_errors=True)
-        if os.path.exists(self.source_file):
-            os.remove(self.source_file)
+        for path in (self.source_file, self.map_file):
+            if os.path.exists(path):
+                os.remove(path)
 
-    def _run(self, commit):
+    def _fill_destination(self):
+        """Put unrelated rows in first, so destination ids do not line up."""
+        for n in range(4):
+            db.session.add(Vehicle(make="Pre-existing", model=f"Car{n}", year=2019,
+                                   daily_rate=1, is_active=True))
+        db.session.commit()
+
+    def _run(self, commit=True):
+        import transfer_to_postgres as transfer
         from sqlalchemy import create_engine
         from sqlalchemy.orm import Session
 
-        import transfer_to_postgres as transfer
+        mapping = transfer.load_map(self.map_file)
+        engine = create_engine(self.source_url)
+        result = {}
+        with Session(engine) as source:
+            result["settings"] = transfer.transfer_simple(Setting, "key", source, commit)
+            result["vehicles"] = transfer.transfer_vehicles(source, mapping, commit)
+            result["media"] = transfer.transfer_simple(MediaAsset, "filename", source, commit)
+            result["bookings"] = transfer.transfer_bookings(source, mapping, commit)
+        engine.dispose()
+        if commit:
+            transfer.save_map(mapping, self.map_file)
+        result["map"] = mapping
+        return result
 
+    def test_bookings_follow_their_own_car_into_a_nonempty_destination(self):
+        """The bug this replaces: vehicle_id was copied verbatim.
+
+        With rows already at the destination the ids do not line up, so every
+        booking silently attached to somebody else's car.
+        """
+        self._fill_destination()
+        self._run()
+
+        by_reference = {b.reference: b for b in Booking.query.all()}
+        self.assertEqual(len(by_reference), 3)
+
+        source_first, source_second, source_other = self.source_ids
+        mapping = self._run(commit=False)["map"]["vehicles"]
+
+        self.assertEqual(by_reference["JC-CAR1"].vehicle_id, mapping[str(source_first)])
+        self.assertEqual(by_reference["JC-CAR2"].vehicle_id, mapping[str(source_second)])
+        self.assertEqual(by_reference["JC-CAR3"].vehicle_id, mapping[str(source_other)])
+
+        # And none of them landed on a car that was already there.
+        pre_existing = {v.id for v in Vehicle.query.filter_by(make="Pre-existing").all()}
+        for booking in by_reference.values():
+            self.assertNotIn(booking.vehicle_id, pre_existing)
+
+        self.assertEqual(by_reference["JC-CAR3"].vehicle.model, "Vitara")
+
+    def test_two_identical_cars_stay_two_cars(self):
+        self._run()
+        corollas = Vehicle.query.filter_by(make="Toyota", model="Corolla").all()
+        self.assertEqual(len(corollas), 2)
+        # And they are not the same row wearing two bookings.
+        self.assertNotEqual(
+            Booking.query.filter_by(reference="JC-CAR1").one().vehicle_id,
+            Booking.query.filter_by(reference="JC-CAR2").one().vehicle_id,
+        )
+
+    def test_running_it_twice_copies_nothing_the_second_time(self):
+        self._run()
+        second = self._run()
+        self.assertEqual(second["vehicles"], (0, 3))
+        self.assertEqual(second["bookings"][0], 0)
+        self.assertEqual(Vehicle.query.count(), 3)
+        self.assertEqual(Booking.query.count(), 3)
+
+    def test_a_dry_run_writes_nothing(self):
+        result = self._run(commit=False)
+        self.assertEqual(result["vehicles"][0], 3)
+        self.assertEqual(Vehicle.query.count(), 0)
+        self.assertFalse(os.path.exists(self.map_file))
+
+    def test_a_booking_whose_car_did_not_transfer_is_reported_not_misattached(self):
+        import transfer_to_postgres as transfer
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+
+        self._fill_destination()
+        mapping = {"vehicles": {}, "media": []}  # as if vehicles had not run
         engine = create_engine(self.source_url)
         with Session(engine) as source:
-            report = transfer.transfer_rows(source, commit)
+            copied, skipped, orphaned = transfer.transfer_bookings(source, mapping, True)
         engine.dispose()
-        return {table: (copied, skipped) for table, copied, skipped in report}
 
-    def test_a_dry_run_changes_nothing(self):
-        report = self._run(commit=False)
-        self.assertEqual(report["vehicles"][0], 1)
-        self.assertEqual(Vehicle.query.count(), 0, "dry run wrote to the destination")
-
-    def test_content_is_copied(self):
-        self._run(commit=True)
-        self.assertEqual(Vehicle.query.count(), 1)
-        self.assertEqual(Booking.query.count(), 1)
-        self.assertEqual(Setting.query.count(), 1)
-        self.assertEqual(MediaAsset.query.count(), 1)
-        self.assertEqual(Booking.query.one().reference, "JC-MOVE01")
-
-    def test_running_it_twice_does_not_duplicate_anything(self):
-        self._run(commit=True)
-        second = self._run(commit=True)
-        self.assertEqual(second["bookings"], (0, 1))
-        self.assertEqual(second["vehicles"], (0, 1))
-        self.assertEqual(Booking.query.count(), 1)
-        self.assertEqual(Vehicle.query.count(), 1)
+        self.assertEqual(copied, 0)
+        self.assertEqual(sorted(orphaned), ["JC-CAR1", "JC-CAR2", "JC-CAR3"])
+        self.assertEqual(Booking.query.count(), 0)
 
     def test_staff_accounts_are_not_carried_over(self):
-        """A hash from a laptop should not become a production login."""
-        self._run(commit=True)
+        self._run()
         self.assertEqual(AdminUser.query.count(), 0)
 
     def test_the_source_is_left_untouched(self):
         from sqlalchemy import create_engine
         from sqlalchemy.orm import Session
 
-        self._run(commit=True)
+        self._fill_destination()
+        self._run()
         engine = create_engine(self.source_url)
         with Session(engine) as source:
-            self.assertEqual(source.query(Vehicle).count(), 1)
+            self.assertEqual(source.query(Vehicle).count(), 3)
             self.assertEqual(source.query(AdminUser).count(), 1)
-            self.assertEqual(source.query(Booking).count(), 1)
+            self.assertEqual(source.query(Booking).count(), 3)
         engine.dispose()
 
-    def test_pictures_with_no_local_file_are_reported_not_skipped_silently(self):
+    def test_pictures_upload_once_and_are_skipped_on_a_rerun(self):
         import transfer_to_postgres as transfer
 
-        self._run(commit=True)
-        with mock.patch.object(transfer, "UPLOADS", self.dest_root):
-            sent, missing = transfer.transfer_files(commit=False)
-        self.assertEqual(sent, [])
-        self.assertEqual(missing, ["car-abcd.png"])
-
-    def test_a_picture_that_exists_locally_is_uploaded(self):
-        import transfer_to_postgres as transfer
-
-        self._run(commit=True)
+        self._run()
         source_dir = tempfile.mkdtemp()
         try:
             with open(os.path.join(source_dir, "car-abcd.png"), "wb") as handle:
                 handle.write(b"imagebytes")
-            with mock.patch.object(transfer, "UPLOADS", source_dir):
-                sent, missing = transfer.transfer_files(commit=True)
-            self.assertEqual(sent, ["car-abcd.png"])
-            self.assertEqual(missing, [])
+            mapping = transfer.load_map(self.map_file)
+
+            sent, already, missing = transfer.transfer_files(mapping, True, source_dir)
+            self.assertEqual((sent, already, missing), (["car-abcd.png"], [], []))
             self.assertTrue(os.path.exists(os.path.join(self.dest_root, "car-abcd.png")))
+
+            sent, already, missing = transfer.transfer_files(mapping, True, source_dir)
+            self.assertEqual(sent, [], "re-uploaded a picture it had already sent")
+            self.assertEqual(already, ["car-abcd.png"])
         finally:
             shutil.rmtree(source_dir, ignore_errors=True)
+
+    def test_a_resumed_upload_overwrites_rather_than_colliding(self):
+        """A half-written object from a failed run must not 409 the retry."""
+        import transfer_to_postgres as transfer
+
+        self._run()
+        source_dir = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(source_dir, "car-abcd.png"), "wb") as handle:
+                handle.write(b"imagebytes")
+            with mock.patch("app.storage.LocalStorage.save") as save:
+                transfer.transfer_files({"vehicles": {}, "media": []}, True, source_dir)
+            self.assertTrue(save.call_args.kwargs.get("overwrite"),
+                            "transfer must upload with overwrite")
+        finally:
+            shutil.rmtree(source_dir, ignore_errors=True)
+
+    def test_pictures_with_no_local_file_are_reported(self):
+        import transfer_to_postgres as transfer
+
+        self._run()
+        sent, already, missing = transfer.transfer_files(
+            {"vehicles": {}, "media": []}, False, self.dest_root)
+        self.assertEqual(missing, ["car-abcd.png"])
+
+
+# --- bootstrap SQL and the models must describe the same database -----------
+
+class BootstrapParityTests(unittest.TestCase):
+    """The SQL Editor script and the migrations have to agree.
+
+    The first version of bootstrap.sql was written from CreateTable alone,
+    which does not emit indexes declared with `index=True`. That quietly cost
+    `bookings.reference` its uniqueness: nothing in the database stopped two
+    bookings sharing a reference, and a reference is what a customer uses to
+    reach their own booking.
+    """
+
+    def setUp(self):
+        tools = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "tools")
+        if tools not in os.sys.path:
+            os.sys.path.insert(0, tools)
+        self.app = create_app(TestConfig)
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        import generate_bootstrap
+        self.generator = generate_bootstrap
+        self.sql = open(generate_bootstrap.TARGET, encoding="utf-8").read()
+
+    def tearDown(self):
+        db.session.remove()
+        self.ctx.pop()
+
+    def test_the_committed_file_is_not_stale(self):
+        """Change a model without regenerating and this fails."""
+        self.assertEqual(
+            self.sql, self.generator.render(),
+            "supabase/bootstrap.sql is out of date — run "
+            "python tools/generate_bootstrap.py")
+
+    def test_every_table_is_created(self):
+        for table in db.metadata.sorted_tables:
+            self.assertIn(f"CREATE TABLE IF NOT EXISTS {table.name} (", self.sql,
+                          f"{table.name} is missing from bootstrap.sql")
+
+    def test_every_index_the_models_declare_is_created(self):
+        missing = []
+        for table in db.metadata.sorted_tables:
+            for index in table.indexes:
+                if index.name not in self.sql:
+                    missing.append(index.name)
+        self.assertEqual(missing, [], f"indexes missing from bootstrap.sql: {missing}")
+
+    def test_unique_indexes_are_created_unique(self):
+        """A unique index emitted without UNIQUE enforces nothing."""
+        for table in db.metadata.sorted_tables:
+            for index in table.indexes:
+                if not index.unique:
+                    continue
+                self.assertIn(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {index.name} ", self.sql,
+                    f"{index.name} must be created UNIQUE")
+
+    def test_booking_reference_is_unique_in_the_database(self):
+        """Named directly: this is the one that protects a customer's booking."""
+        self.assertIn("CREATE UNIQUE INDEX IF NOT EXISTS ix_bookings_reference "
+                      "ON bookings (reference)", self.sql)
+
+    def test_it_carries_the_same_migrations_the_runner_knows_about(self):
+        from migrations.runner import discover
+
+        for step in discover():
+            self.assertIn(f"('{step.VERSION}'", self.sql,
+                          f"migration {step.VERSION} is not recorded by bootstrap.sql")
+
+    def test_the_overlap_constraint_and_query_indexes_are_there(self):
+        for fragment in ("bookings_no_overlap", "btree_gist",
+                         "ix_bookings_vehicle_dates", "ix_bookings_status_start",
+                         "ix_vehicles_active"):
+            self.assertIn(fragment, self.sql)
+
+    def test_every_application_table_is_closed_to_the_rest_api(self):
+        """Supabase exposes public schema tables through PostgREST by default."""
+        for table in db.metadata.sorted_tables:
+            self.assertIn(f"'{table.name}'", self.sql,
+                          f"{table.name} is not in the RLS list")
+        self.assertIn("enable row level security", self.sql)
+        self.assertIn("revoke all on table public.%I from anon, authenticated", self.sql)
+
+    def test_the_media_bucket_is_read_only_to_the_public(self):
+        self.assertIn('create policy "media_public_read"', self.sql)
+        self.assertIn("for select", self.sql)
+        # No write policy may exist: uploads go through the server.
+        self.assertNotIn("for insert", self.sql)
+        self.assertNotIn("for update", self.sql)
+        self.assertNotIn("for delete", self.sql)
+
+    def test_it_can_be_run_twice(self):
+        """Every creating statement has to be guarded."""
+        # Whole lines, not just the keyword: findall on a group returns the group.
+        for line in self.sql.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("--"):
+                continue
+            upper = stripped.upper()
+            if upper.startswith("CREATE TABLE") or "CREATE INDEX" in upper \
+                    or "CREATE UNIQUE INDEX" in upper:
+                self.assertIn("IF NOT EXISTS", upper, stripped[:90])
+
+    def test_the_generator_check_flag_agrees(self):
+        self.assertEqual(self.generator.render(), self.sql)
+
+
+# --- what the host checks ---------------------------------------------------
+
+class HealthCheckTests(unittest.TestCase):
+    """Render gates a deployment on this, so it has to mean something."""
+
+    def setUp(self):
+        self.app = create_app(TestConfig)
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        db.create_all()
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.ctx.pop()
+
+    def test_a_working_deployment_reports_ok(self):
+        response = self.client.get("/healthz")
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(body["status"], "ok")
+        self.assertEqual(body["database"], "ok")
+
+    def test_an_unreachable_database_fails_the_check(self):
+        """Otherwise a deployment with the wrong URL goes live and loses bookings."""
+        logging.disable(logging.CRITICAL)
+        try:
+            with mock.patch.object(db.session, "execute",
+                                   side_effect=Exception("could not connect")):
+                response = self.client.get("/healthz")
+        finally:
+            logging.disable(logging.NOTSET)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["database"], "unreachable")
+
+    def test_the_failure_body_does_not_leak_the_connection_string(self):
+        """Exception text from a driver often contains host, user and password."""
+        secret = "postgresql://postgres.ref:SUPERSECRET@host:5432/postgres"
+        logging.disable(logging.CRITICAL)
+        try:
+            with mock.patch.object(db.session, "execute",
+                                   side_effect=Exception(f"failed for {secret}")):
+                response = self.client.get("/healthz")
+        finally:
+            logging.disable(logging.NOTSET)
+        body = response.get_data(as_text=True)
+        self.assertNotIn("SUPERSECRET", body)
+        self.assertNotIn("postgresql://", body)
+
+    def test_it_answers_even_while_the_site_is_a_draft(self):
+        """The host must be able to tell a broken deploy from an unpublished one."""
+        from app.settings import save_settings
+
+        save_settings({"site_live": False})
+        self.assertEqual(self.client.get("/").status_code, 200)  # holding page
+        self.assertNotIn("nearly ready",
+                         self.client.get("/healthz").get_data(as_text=True))
+        self.assertEqual(self.client.get("/healthz").status_code, 200)
+
+    def test_it_needs_no_sign_in(self):
+        self.assertEqual(self.app.test_client().get("/healthz").status_code, 200)
+
+
+class RenderBlueprintTests(unittest.TestCase):
+    """render.yaml has to match what Render and this app actually require."""
+
+    def setUp(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.text = open(os.path.join(root, "render.yaml"), encoding="utf-8").read()
+
+    def test_it_binds_the_port_render_provides(self):
+        """Render requires 0.0.0.0 and supplies PORT; a fixed port never serves."""
+        self.assertIn("--bind 0.0.0.0:$PORT", self.text)
+
+    def test_it_starts_the_wsgi_entrypoint(self):
+        self.assertIn("gunicorn wsgi:app", self.text)
+
+    def test_gunicorn_is_pinned_in_requirements(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        requirements = open(os.path.join(root, "requirements.txt"), encoding="utf-8").read()
+        self.assertRegex(requirements, r"gunicorn==\d+\.\d+")
+
+    def test_the_health_check_is_the_endpoint_that_exists(self):
+        self.assertIn("healthCheckPath: /healthz", self.text)
+
+    def test_a_long_lived_host_is_told_to_use_tls(self):
+        self.assertIn("JATTA_DB_SSLMODE", self.text)
+        self.assertIn("require", self.text)
+
+    def test_every_secret_is_left_to_the_dashboard(self):
+        for key in ("JATTA_SECRET_KEY", "JATTA_DATABASE_URL", "SUPABASE_URL",
+                    "SUPABASE_SERVICE_ROLE_KEY"):
+            block = self.text.split(f"key: {key}", 1)
+            self.assertEqual(len(block), 2, f"{key} is not declared")
+            self.assertIn("sync: false", block[1][:120],
+                          f"{key} must be set in the dashboard, not in the file")
+
+    def test_no_credential_is_committed_in_it(self):
+        # <angle-bracket> placeholders in the comments are documentation, not
+        # secrets, so they are excluded rather than matched.
+        for pattern in (r"eyJ[A-Za-z0-9_-]{20,}",
+                        r"postgres(ql)?://[^\s<>]*:[^\s@<>]{8,}@"):
+            self.assertIsNone(re.search(pattern, self.text),
+                              "render.yaml appears to contain a credential")
+
+    def test_the_vercel_config_is_still_there(self):
+        """Render is the documented path; Vercel stays a working option."""
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for name in ("vercel.json", "wsgi.py"):
+            self.assertTrue(os.path.exists(os.path.join(root, name)), name)
