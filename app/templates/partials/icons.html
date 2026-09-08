@@ -71,3 +71,15 @@
 {% macro quote_mark(size=52) %}
 <svg width="{{ size }}" height="{{ size }}" viewBox="0 0 48 48" fill="currentColor" aria-hidden="true"><path d="M6 30c0-9.5 5.4-16.6 14-19l1.8 4.2C16.6 17.4 13.4 21 13 25h6.6V42H6V30Zm22.4 0c0-9.5 5.4-16.6 14-19L44 15.2C39 17.4 35.8 21 35.4 25H42V42H28.4V30Z"/></svg>
 {% endmacro %}
+
+{% macro icon_by_name(name, size=40) %}
+  {%- if name == 'shield' -%}{{ shield(size) }}
+  {%- elif name == 'road' -%}{{ road(size) }}
+  {%- elif name == 'clock' -%}{{ clock(size) }}
+  {%- elif name == 'check_circle' -%}{{ check_circle(size) }}
+  {%- elif name == 'car' -%}{{ car(size) }}
+  {%- elif name == 'pin' -%}{{ pin(size) }}
+  {%- elif name == 'building' -%}{{ building(size) }}
+  {%- else -%}{{ coin(size) }}
+  {%- endif -%}
+{% endmacro %}

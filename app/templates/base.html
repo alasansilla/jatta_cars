@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+{% if show_editbar %}{% include "partials/editbar.html" %}{% endif %}
 {% include "partials/header.html" %}
 
 {% with messages = get_flashed_messages(with_categories=true) %}
@@ -29,5 +30,6 @@
 </main>
 
 {% include "partials/footer.html" %}
+{% if show_editbar %}<script src="{{ url_for('static', filename='js/editor.js') }}" defer></script>{% endif %}
 </body>
 </html>

@@ -1,75 +1,50 @@
 {% extends "base.html" %}
-{% from "partials/icons.html" import check, arrow, fleet_icon, building, clock %}
+{% from "partials/icons.html" import check, arrow %}
 
 {% block title %}About us — {{ company_name }}{% endblock %}
 
 {% block content %}
 <section class="page-head">
   <div class="wrap">
-    <p class="eyebrow">About us</p>
-    <h1>A small hire company that likes cars</h1>
-    <p>{{ company_tagline }}</p>
+    <p class="eyebrow" data-edit="about_eyebrow">{{ site.about_eyebrow }}</p>
+    <h1 data-edit="about_heading">{{ site.about_heading }}</h1>
+    <p data-edit="company_tagline">{{ site.company_tagline }}</p>
   </div>
 </section>
 
 <section class="section">
   <div class="wrap split">
     <div>
-      <h2>Why we started</h2>
-      <p>
-        Anyone who has hired a car knows the routine: a good price online, then forty
-        minutes at a counter while the total quietly doubles. Insurance you thought was
-        included. A fee for the second driver. A tank of fuel at twice the pump price.
-      </p>
-      <p>
-        Jatta Cars exists because we thought that was a solvable problem. One rate with
-        everything in it, a deposit that comes back, and a car that has actually been
-        cleaned. It is not a complicated idea — it is just easier to run a hire company
-        the other way.
-      </p>
-      <h2 style="margin-top:44px">How we look after the cars</h2>
-      <p>
-        Every vehicle is bought new or nearly new and serviced strictly to schedule,
-        not when it becomes convenient. Tyres are changed on tread depth rather than
-        optimism, winter tyres go on from October, and cars leave the fleet at four
-        years old.
-      </p>
-      <p>
-        Between hires each car is cleaned inside and out and checked over — fluids,
-        lights, tyres, warning lights. If something is not right, the car does not go out.
-      </p>
+      <h2 data-edit="about_section1_heading">{{ site.about_section1_heading }}</h2>
+      <div data-edit="about_section1_body" data-edit-multiline>{{ site.about_section1_body | paragraphs }}</div>
+
+      <h2 style="margin-top:44px" data-edit="about_section2_heading">{{ site.about_section2_heading }}</h2>
+      <div data-edit="about_section2_body" data-edit-multiline>{{ site.about_section2_body | paragraphs }}</div>
     </div>
 
     <div class="stack">
       <div class="panel">
-        <h3>What every hire includes</h3>
-        <ul class="feature-list" style="grid-template-columns:1fr">
-          <li>{{ check(18) }} <span>Comprehensive insurance</span></li>
-          <li>{{ check(18) }} <span>Unlimited kilometres in Germany and the EU</span></li>
-          <li>{{ check(18) }} <span>24/7 roadside assistance</span></li>
-          <li>{{ check(18) }} <span>A second driver, free of charge</span></li>
-          <li>{{ check(18) }} <span>Winter tyres from October to Easter</span></li>
-          <li>{{ check(18) }} <span>Free cancellation up to 24 hours before</span></li>
+        <h3 data-edit="about_included_heading">{{ site.about_included_heading }}</h3>
+        <ul class="feature-list" data-edit-list="about_included_items" style="grid-template-columns:1fr">
+          {% for item in site.about_included_items %}
+            <li data-edit-item>{{ check(18) }} <span>{{ item }}</span></li>
+          {% endfor %}
         </ul>
       </div>
 
       <div class="panel">
-        <h3>The requirements</h3>
-        <p class="small" style="margin-bottom:10px">Not much, but these ones we cannot bend:</p>
-        <ul class="feature-list" style="grid-template-columns:1fr">
-          <li>{{ check(18) }} <span>21 or over, licence held for at least a year</span></li>
-          <li>{{ check(18) }} <span>A full licence — non-EU licences need an international permit</span></li>
-          <li>{{ check(18) }} <span>A credit or debit card in the driver's name for the deposit</span></li>
-          <li>{{ check(18) }} <span>Photo ID or passport</span></li>
+        <h3 data-edit="about_requirements_heading">{{ site.about_requirements_heading }}</h3>
+        <p class="small" style="margin-bottom:10px" data-edit="about_requirements_intro">{{ site.about_requirements_intro }}</p>
+        <ul class="feature-list" data-edit-list="about_requirements_items" style="grid-template-columns:1fr">
+          {% for item in site.about_requirements_items %}
+            <li data-edit-item>{{ check(18) }} <span>{{ item }}</span></li>
+          {% endfor %}
         </ul>
       </div>
 
       <div class="panel">
-        <h3>Opening hours</h3>
-        <p style="margin:0">
-          Seven days a week, 7am to 9pm, at all {{ locations | length }} pick-up points.
-          Out-of-hours collection can be arranged — just ask when you book.
-        </p>
+        <h3 data-edit="about_hours_heading">{{ site.about_hours_heading }}</h3>
+        <p style="margin:0" data-edit="about_hours_body">{{ site.about_hours_body }}</p>
       </div>
     </div>
   </div>
@@ -77,9 +52,9 @@
 
 <section class="section section--soft">
   <div class="wrap center">
-    <h2>Have a look at the fleet</h2>
-    <p class="lede" style="margin:0 auto 30px">
-      {{ stats.vehicles }} cars, from small runarounds to seven-seat vans.
+    <h2 data-edit="about_cta_heading">{{ site.about_cta_heading }}</h2>
+    <p class="lede" style="margin:0 auto 30px" data-edit="about_cta_body">
+      {{ site.about_cta_body | tokens(fleet_size=stats.vehicles) }}
     </p>
     <a class="btn btn--primary btn--lg" href="{{ url_for('public.fleet') }}">Browse cars {{ arrow(18) }}</a>
   </div>

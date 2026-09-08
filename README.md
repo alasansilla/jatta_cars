@@ -16,12 +16,31 @@ fleet, bookings and enquiries. Flask + SQLite, no build step.
 - Contact form; messages are stored and read in the staff area
 - About page
 
+**Editing the site**
+
+Sign in at `/admin/login` and a bar appears across the top of every public page.
+Press **Edit this page** and the page itself becomes editable:
+
+- Click any heading, paragraph or label and type over it
+- Click a picture to replace it — the file uploads and swaps in place
+- Click the round icons beside "Why choose us" to pick a different one
+- Lists get an **× ** on each item and an **+ Add item** button
+- **Save changes** writes everything at once and reloads; **Discard** throws it away
+
+Wording lives in `app/settings.py` as defaults, and edits are stored in the
+database. Anything never edited falls back to the default, so a page cannot end
+up blank.
+
 **Staff area** (`/admin`)
 
 - Dashboard: pending and confirmed bookings, cars out today, 30-day booked value
-- Fleet management: add, edit, hide and delete vehicles
+- Fleet management: add, edit, hide and delete vehicles, with photo upload
 - Bookings: filter by status, confirm / complete / cancel
 - Enquiries from the contact form
+- Pictures: everything uploaded to the site, with deletion blocked while an image
+  is still in use
+- Settings: the things with no visible place on a page — currency, pick-up points,
+  booking limits, insurance excess. Each group can be reset to its original wording.
 
 **Booking rules that are actually enforced**
 
@@ -54,10 +73,12 @@ left alone.
 
 ## Configuration
 
-Business details, pick-up points, currency and booking limits live in
-`config.py`. Change them there; everything on the site reads from that file.
+Almost nothing needs configuring in code. Business details, pick-up points,
+currency, booking limits and every piece of page copy are edited in the browser
+and stored in the database; `app/settings.py` only holds the starting values.
 
-Environment variables override the sensitive parts:
+`config.py` is what is left: secrets, the database URL and the upload limit.
+Environment variables override them:
 
 | Variable | Purpose |
 | --- | --- |
@@ -65,28 +86,37 @@ Environment variables override the sensitive parts:
 | `JATTA_DATABASE_URL` | Database URL. Defaults to SQLite in `instance/`. |
 | `JATTA_ADMIN_USER` | Admin username for `seed.py` (default `admin`). |
 | `JATTA_ADMIN_PASSWORD` | Admin password for `seed.py`. |
-| `JATTA_PROMO` | Ribbon text on the home page panel. Empty string hides it. |
+
+Uploads are capped at 8 MB and limited to JPG, PNG, WebP and GIF.
 
 ## Vehicle photos
 
 Cars fall back to a flat illustration matching their category
-(`app/static/img/car-*.svg`). To use a real photo, drop the file into
-`app/static/img/` and put `img/your-file.jpg` in the vehicle's **Photo** field in
-the staff area. Cut-outs on a white or transparent background look best; the
-layout expects a roughly 16:10 landscape image.
+(`app/static/img/car-*.svg`). To use a real photo, either click the car's picture
+while editing a page, or upload it on the vehicle's edit form. Cut-outs on a
+white or transparent background look best; the layout expects a roughly 16:10
+landscape image.
+
+Uploads land in `app/static/uploads/`, which is deliberately kept out of git —
+it is site data, not source. Back it up along with `instance/jatta.db`.
 
 ## Layout
 
 ```
 app/
   __init__.py      application factory, template filters, globals
-  models.py        Vehicle, Booking, Enquiry, AdminUser
+  models.py        Vehicle, Booking, Enquiry, AdminUser, Setting, MediaAsset
+  settings.py      the editable-settings schema and its defaults
+  media.py         image uploads and where each one is used
   forms.py         hand-rolled validation helpers
   public.py        customer-facing routes
-  admin.py         staff routes
+  admin.py         staff routes, including the inline-editor API
   templates/       Jinja templates (partials/ holds the shared pieces)
-  static/          stylesheet and images
-config.py          all configuration
+  static/
+    css/style.css  the whole stylesheet
+    js/editor.js   the inline page editor
+    uploads/       uploaded pictures (git-ignored)
+config.py          secrets, database URL, upload limits
 seed.py            database setup and starting fleet
 run.py             development server
 ```
@@ -99,3 +129,8 @@ run.py             development server
 - **No online payment.** Bookings are requests; payment and the deposit happen
   at the desk.
 - One shared staff login rather than per-user accounts.
+- No revision history on edits — saving overwrites. "Reset to defaults" in
+  Settings restores the original wording for a group.
+- The inline editor covers text, pictures, icons and lists. Structured vehicle
+  data (seats, doors, transmission, category) is still edited on the vehicle form,
+  because those drive the search filters and need validating.

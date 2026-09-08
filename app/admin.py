@@ -7,16 +7,37 @@ from datetime import date, timedelta
 from functools import wraps
 
 from flask import (
-    Blueprint, abort, flash, redirect, render_template, request, session, url_for
+    Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
+    request, session, url_for
 )
 
+from .media import delete_asset, save_upload
 from .models import (
-    CATEGORIES, FUELS, TRANSMISSIONS, AdminUser, Booking, Enquiry, Vehicle, db
+    CATEGORIES, FUELS, TRANSMISSIONS, AdminUser, Booking, Enquiry, MediaAsset,
+    Setting, Vehicle, db
 )
+from .settings import FIELDS, GROUPS, SCHEMA, current_settings, reset_group, save_settings
 
 bp = Blueprint("admin", __name__)
 
 BOOKING_STATUSES = ["pending", "confirmed", "completed", "cancelled"]
+
+
+@bp.before_request
+def check_csrf():
+    """Every state-changing staff request must carry the session's token."""
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
+    if request.endpoint == "admin.login":
+        return None  # nothing privileged to protect yet, and no token issued
+    expected = session.get("_csrf_token")
+    supplied = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token")
+    if not expected or supplied != expected:
+        if request.path.startswith("/admin/api/"):
+            return jsonify({"error": "Your session expired. Reload the page and sign in again."}), 400
+        flash("That form expired. Please try again.", "error")
+        return redirect(request.referrer or url_for("admin.dashboard"))
+    return None
 
 
 @bp.context_processor
@@ -180,6 +201,7 @@ def vehicle_form(vehicle_id=None):
                 categories=CATEGORIES,
                 transmissions=TRANSMISSIONS,
                 fuels=FUELS,
+                assets=MediaAsset.query.order_by(MediaAsset.uploaded_at.desc()).all(),
             )
 
         if vehicle is None:
@@ -198,7 +220,20 @@ def vehicle_form(vehicle_id=None):
         vehicle.daily_rate = daily_rate
         vehicle.weekly_rate = weekly_rate
         vehicle.deposit = deposit
-        vehicle.image = (form.get("image") or "").strip() or None
+        # An uploaded file wins over the library dropdown.
+        upload = request.files.get("photo_file")
+        if upload is not None and upload.filename:
+            asset, upload_error = save_upload(upload)
+            if upload_error:
+                flash(upload_error, "error")
+                return render_template(
+                    "admin/vehicle_form.html", vehicle=vehicle, form=form,
+                    categories=CATEGORIES, transmissions=TRANSMISSIONS, fuels=FUELS,
+                    assets=MediaAsset.query.order_by(MediaAsset.uploaded_at.desc()).all(),
+                )
+            vehicle.image = asset.path
+        else:
+            vehicle.image = (form.get("image") or "").strip() or None
         vehicle.description = (form.get("description") or "").strip() or None
         vehicle.features = (form.get("features") or "").strip() or None
         vehicle.is_active = form.get("is_active") == "on"
@@ -214,6 +249,7 @@ def vehicle_form(vehicle_id=None):
         categories=CATEGORIES,
         transmissions=TRANSMISSIONS,
         fuels=FUELS,
+        assets=MediaAsset.query.order_by(MediaAsset.uploaded_at.desc()).all(),
     )
 
 
@@ -306,3 +342,171 @@ def toggle_enquiry(enquiry_id):
     enquiry.is_read = not enquiry.is_read
     db.session.commit()
     return redirect(url_for("admin.enquiries"))
+
+
+# --- Settings ---------------------------------------------------------------
+
+# Groups whose fields are all edited inline on the live pages; the settings
+# screen only carries what has no visible place on the site.
+INLINE_ONLY_GROUPS = {"home", "about", "contact", "footer"}
+
+
+@bp.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings():
+    """Configuration with no natural home on a public page.
+
+    Page copy is not edited here — staff change that on the pages themselves.
+    """
+    groups = [group for group in SCHEMA if group.key not in INLINE_ONLY_GROUPS]
+
+    if request.method == "POST":
+        group_key = request.form.get("group")
+        if group_key not in {group.key for group in groups}:
+            abort(400)
+        save_settings(request.form, group_key)
+        flash(f"{GROUPS[group_key].label} saved.", "success")
+        return redirect(url_for("admin.settings"))
+
+    return render_template("admin/settings.html", groups=groups, values=current_settings())
+
+
+@bp.route("/settings/<group_key>/reset", methods=["POST"])
+@login_required
+def settings_reset(group_key):
+    if group_key not in GROUPS:
+        abort(404)
+    reset_group(group_key)
+    flash(f"{GROUPS[group_key].label} reset to the original wording.", "success")
+    return redirect(request.referrer or url_for("admin.settings"))
+
+
+# --- Media ------------------------------------------------------------------
+
+@bp.route("/media", methods=["GET", "POST"])
+@login_required
+def media():
+    if request.method == "POST":
+        asset, error = save_upload(request.files.get("file"), request.form.get("alt_text"))
+        if error:
+            flash(error, "error")
+        else:
+            flash(f"Uploaded {asset.original_name}.", "success")
+        return redirect(url_for("admin.media"))
+
+    assets = MediaAsset.query.order_by(MediaAsset.uploaded_at.desc()).all()
+    return render_template("admin/media.html", assets=assets)
+
+
+@bp.route("/media/<int:asset_id>/delete", methods=["POST"])
+@login_required
+def media_delete(asset_id):
+    asset = MediaAsset.query.get_or_404(asset_id)
+    error = delete_asset(asset)
+    flash(error or f"Deleted {asset.original_name}.", "error" if error else "success")
+    return redirect(url_for("admin.media"))
+
+
+# --- Inline editor API ------------------------------------------------------
+
+# Vehicle columns the inline editor is allowed to write, with their coercions.
+EDITABLE_VEHICLE_FIELDS = {
+    "make": str,
+    "model": str,
+    "description": str,
+    "features": str,
+    "image": str,
+    "daily_rate": float,
+    "weekly_rate": float,
+    "deposit": float,
+}
+
+
+@bp.route("/api/save", methods=["POST"])
+@login_required
+def api_save():
+    """Apply a batch of inline edits: site settings and per-vehicle fields.
+
+    Everything is validated before anything is written, so a single bad value
+    cannot leave half the page saved.
+    """
+    payload = request.get_json(silent=True) or {}
+    setting_changes = payload.get("settings") or {}
+    record_changes = payload.get("records") or {}
+
+    unknown = [key for key in setting_changes if key not in FIELDS]
+    if unknown:
+        return jsonify({"error": f"Unknown setting: {unknown[0]}"}), 400
+
+    planned = []
+    for reference, raw in record_changes.items():
+        parts = reference.split(":")
+        if len(parts) != 3 or parts[0] != "vehicle":
+            return jsonify({"error": f"Cannot edit \u201c{reference}\u201d here."}), 400
+
+        _, raw_id, column = parts
+        caster = EDITABLE_VEHICLE_FIELDS.get(column)
+        if caster is None or not raw_id.isdigit():
+            return jsonify({"error": f"Cannot edit \u201c{reference}\u201d here."}), 400
+
+        vehicle = db.session.get(Vehicle, int(raw_id))
+        if vehicle is None:
+            return jsonify({"error": "That vehicle no longer exists."}), 404
+
+        value = (raw or "").strip()
+        if caster is float:
+            try:
+                value = float(value.replace(",", ""))
+            except ValueError:
+                return jsonify({"error": f"\u201c{raw}\u201d is not a number."}), 400
+            if value < 0:
+                return jsonify({"error": "Prices cannot be negative."}), 400
+        elif column in ("make", "model") and not value:
+            return jsonify({"error": "Make and model cannot be empty."}), 400
+        else:
+            value = value or None
+
+        planned.append((vehicle, column, value))
+
+    try:
+        if setting_changes:
+            save_settings(setting_changes)
+        for vehicle, column, value in planned:
+            setattr(vehicle, column, value)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Inline save failed")
+        return jsonify({"error": "Could not save those changes."}), 500
+
+    return jsonify({"saved": len(setting_changes) + len(planned)})
+
+
+@bp.route("/api/upload", methods=["POST"])
+@login_required
+def api_upload():
+    asset, error = save_upload(request.files.get("file"))
+    if error:
+        return jsonify({"error": error}), 400
+    return jsonify({
+        "path": asset.path,
+        "url": url_for("static", filename=asset.path),
+        "id": asset.id,
+    })
+
+
+@bp.route("/api/icons")
+@login_required
+def api_icons():
+    """The icon set offered by the inline icon picker."""
+    from flask import render_template_string
+
+    from .settings import ICON_CHOICES
+
+    template = (
+        "{% from 'partials/icons.html' import icon_by_name %}{{ icon_by_name(name, 26) }}"
+    )
+    return jsonify({
+        name: render_template_string(template, name=name).strip()
+        for name, _label in ICON_CHOICES
+    })

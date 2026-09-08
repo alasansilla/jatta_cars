@@ -7,6 +7,7 @@ from flask import (
 
 from .forms import parse_date, validate_customer, validate_rental_dates
 from .models import CATEGORIES, TRANSMISSIONS, Booking, Enquiry, Vehicle, db
+from .settings import current_settings
 
 bp = Blueprint("public", __name__)
 
@@ -76,7 +77,7 @@ def fleet():
     days = None
     if filters["start"] or filters["end"]:
         start, end, date_errors = validate_rental_dates(
-            filters["start"], filters["end"], current_app.config
+            filters["start"], filters["end"], current_settings()
         )
         if not date_errors and start and end:
             days = (end - start).days
@@ -139,8 +140,9 @@ def vehicle_detail(vehicle_id):
         tabs = tabs[:3] + [vehicle]
 
     pickup = request.args.get("pickup", "").strip()
-    if pickup not in current_app.config["LOCATIONS"]:
-        pickup = current_app.config["LOCATIONS"][0]
+    locations = current_settings()["locations"]
+    if pickup not in locations:
+        pickup = locations[0] if locations else ""
 
     return render_template(
         "vehicle.html",
@@ -162,15 +164,16 @@ def book(vehicle_id):
     if not vehicle.is_active:
         abort(404)
 
+    settings = current_settings()
     start, end, errors = validate_rental_dates(
-        request.form.get("start"), request.form.get("end"), current_app.config
+        request.form.get("start"), request.form.get("end"), settings
     )
     customer, customer_errors = validate_customer(request.form)
     errors += customer_errors
 
     pickup = (request.form.get("pickup_location") or "").strip()
     dropoff = (request.form.get("dropoff_location") or "").strip() or pickup
-    valid_locations = current_app.config["LOCATIONS"]
+    valid_locations = settings["locations"]
     if pickup not in valid_locations:
         errors.append("Choose a pick-up location.")
     if dropoff not in valid_locations:
@@ -269,7 +272,7 @@ def contact():
                 )
             )
             db.session.commit()
-            flash("Thanks — your message is with us. We usually reply the same day.", "success")
+            flash(current_settings()["contact_success"], "success")
             return redirect(url_for("public.contact"))
 
     return render_template("contact.html")

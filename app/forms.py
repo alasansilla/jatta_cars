@@ -19,8 +19,8 @@ def parse_date(value):
         return None
 
 
-def validate_rental_dates(start_raw, end_raw, config):
-    """Check a requested hire period.
+def validate_rental_dates(start_raw, end_raw, settings):
+    """Check a requested hire period against the limits set in the staff area.
 
     Returns (start, end, errors). Dates are inclusive of the pickup day and
     exclusive of the return day, so a Friday-to-Sunday hire is two days.
@@ -43,13 +43,17 @@ def validate_rental_dates(start_raw, end_raw, config):
         errors.append("The return date must be after the pick-up date.")
         return start, end, errors
 
+    minimum = settings["min_rental_days"]
+    maximum = settings["max_rental_days"]
+    advance = settings["max_advance_days"]
+
     days = (end - start).days
-    if days < config["MIN_RENTAL_DAYS"]:
-        errors.append(f"The minimum hire is {config['MIN_RENTAL_DAYS']} day(s).")
-    if days > config["MAX_RENTAL_DAYS"]:
-        errors.append(f"The maximum hire is {config['MAX_RENTAL_DAYS']} days.")
-    if (start - today).days > config["MAX_ADVANCE_DAYS"]:
-        errors.append(f"Bookings open {config['MAX_ADVANCE_DAYS']} days ahead at most.")
+    if days < minimum:
+        errors.append(f"The minimum hire is {minimum} day(s).")
+    if days > maximum:
+        errors.append(f"The maximum hire is {maximum} days.")
+    if (start - today).days > advance:
+        errors.append(f"Bookings open {advance} days ahead at most.")
 
     return start, end, errors
 

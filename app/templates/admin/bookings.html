@@ -48,7 +48,7 @@
               <td class="nowrap">{{ booking.total_price | money }}</td>
               <td><span class="tag tag--{{ booking.status }}">{{ booking.status }}</span></td>
               <td>
-                <form method="post" action="{{ url_for('admin.update_booking_status', booking_id=booking.id) }}" class="actions">
+                <form method="post" action="{{ url_for('admin.update_booking_status', booking_id=booking.id) }}" class="actions"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                   <select name="status" style="width:auto;padding:7px 10px;font-size:.85rem">
                     {% for item in statuses %}
                       <option value="{{ item }}" {{ 'selected' if booking.status == item }}>{{ item | capitalize }}</option>

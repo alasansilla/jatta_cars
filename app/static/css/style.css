@@ -29,6 +29,10 @@
 }
 
 * { box-sizing: border-box; }
+
+/* An author rule such as .btn{display:inline-flex} otherwise beats the browser's
+   own [hidden] rule, so hidden elements would still show. */
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 
 body {
@@ -598,3 +602,121 @@ td.nowrap, th.nowrap { white-space: nowrap; }
   .footer-grid { grid-template-columns: 1fr; }
   .quote-card { padding: 28px; }
 }
+
+/* --- Inline editor (staff only) ------------------------------------------- */
+
+.editbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: var(--ink);
+  color: #fff;
+  font-size: .9rem;
+}
+.editbar__inner {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.editbar__brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.editbar__actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.editbar .btn--ghost { background: transparent; color: #d2d2d8; border-color: rgba(255, 255, 255, .28); }
+.editbar .btn--ghost:hover { color: #fff; border-color: #fff; }
+.editbar__status { color: #b8b8c0; font-size: .85rem; }
+.editbar__status[data-state="dirty"] { color: #ffb199; }
+.editbar__status[data-state="saved"] { color: #7fd6ae; }
+.editbar__status[data-state="error"] { color: #ff9c8f; }
+
+/* The header is sticky too, so it has to sit below the bar rather than over it. */
+body.is-editing .site-header { position: static; }
+
+body.is-editing [data-edit],
+body.is-editing [data-edit-list],
+body.is-editing [data-edit-image],
+body.is-editing [data-edit-icon] {
+  outline: 1px dashed rgba(255, 77, 48, .5);
+  outline-offset: 4px;
+  border-radius: 3px;
+  transition: outline-color .15s ease, background-color .15s ease;
+}
+body.is-editing [data-edit]:hover,
+body.is-editing [data-edit-list]:hover,
+body.is-editing [data-edit-image]:hover,
+body.is-editing [data-edit-icon]:hover {
+  outline-color: var(--accent);
+  background-color: rgba(255, 77, 48, .05);
+}
+body.is-editing [data-edit]:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  background-color: rgba(255, 77, 48, .06);
+}
+body.is-editing [data-edit-image] { cursor: pointer; }
+body.is-editing [data-edit-icon] { cursor: pointer; }
+body.is-editing a[data-edit] { pointer-events: auto; }
+body.is-editing .is-changed { outline-color: var(--good) !important; }
+
+/* Placeholder for an empty editable region, so it can still be clicked. */
+body.is-editing [data-edit]:empty::before,
+body.is-editing [data-edit].is-empty::before {
+  content: attr(data-edit-placeholder);
+  color: var(--muted);
+  font-style: italic;
+}
+
+.edit-item-tools { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.edit-chip {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--body);
+  border-radius: 999px;
+  width: 22px; height: 22px;
+  line-height: 1;
+  font-size: .8rem;
+  cursor: pointer;
+  padding: 0;
+}
+.edit-chip:hover { border-color: var(--accent); color: var(--accent); }
+.edit-add {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px dashed var(--line);
+  background: #fff;
+  color: var(--body);
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  font: inherit;
+  font-size: .85rem;
+  cursor: pointer;
+  margin-top: 10px;
+}
+.edit-add:hover { border-color: var(--accent); color: var(--accent); }
+
+.edit-popover {
+  position: absolute;
+  z-index: 70;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, 44px);
+  gap: 6px;
+}
+.edit-popover button {
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  cursor: pointer;
+}
+.edit-popover button:hover { border-color: var(--accent); }
+.edit-popover button[aria-pressed="true"] { background: var(--accent-tint); border-color: var(--accent); }
+
+@media print { .editbar { display: none; } }

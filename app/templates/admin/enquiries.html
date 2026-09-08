@@ -26,7 +26,7 @@
               <td>{{ enquiry.subject or '—' }}</td>
               <td style="max-width:420px">{{ enquiry.message }}</td>
               <td class="nowrap">
-                <form method="post" action="{{ url_for('admin.toggle_enquiry', enquiry_id=enquiry.id) }}">
+                <form method="post" action="{{ url_for('admin.toggle_enquiry', enquiry_id=enquiry.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                   <button class="btn btn--ghost btn--sm" type="submit">
                     {{ 'Mark unread' if enquiry.is_read else 'Mark read' }}
                   </button>

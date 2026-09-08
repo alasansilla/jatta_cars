@@ -33,11 +33,11 @@
               <td>
                 <div class="actions">
                   <a class="btn btn--ghost btn--sm" href="{{ url_for('admin.vehicle_form', vehicle_id=vehicle.id) }}">Edit</a>
-                  <form class="inline-form" method="post" action="{{ url_for('admin.toggle_vehicle', vehicle_id=vehicle.id) }}">
+                  <form class="inline-form" method="post" action="{{ url_for('admin.toggle_vehicle', vehicle_id=vehicle.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button class="btn btn--ghost btn--sm" type="submit">{{ 'Hide' if vehicle.is_active else 'List' }}</button>
                   </form>
                   <form class="inline-form" method="post" action="{{ url_for('admin.delete_vehicle', vehicle_id=vehicle.id) }}"
-                        onsubmit="return confirm('Delete {{ vehicle.name }}? This cannot be undone.')">
+                        onsubmit="return confirm('Delete {{ vehicle.name }}? This cannot be undone.')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button class="btn btn--danger btn--sm" type="submit">Delete</button>
                   </form>
                 </div>

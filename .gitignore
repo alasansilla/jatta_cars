@@ -15,3 +15,7 @@ instance/
 .DS_Store
 .idea/
 .vscode/
+
+# Uploaded images are site data, not source
+app/static/uploads/*
+!app/static/uploads/.gitkeep

@@ -22,47 +22,48 @@
   <div class="wrap detail-layout">
     <div>
       <div class="detail-media">
-        <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="{{ vehicle.name }}">
+        <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="{{ vehicle.name }}"
+             data-edit-image="vehicle:{{ vehicle.id }}:image">
       </div>
 
       <div style="margin-top:44px">
         <p class="eyebrow">{{ vehicle.category }}</p>
-        <h1 style="font-size:clamp(2rem,4vw,2.8rem)">{{ vehicle.name }}</h1>
-        {% if vehicle.description %}
-          <p class="lede">{{ vehicle.description }}</p>
-        {% endif %}
+        <h1 style="font-size:clamp(2rem,4vw,2.8rem)">
+          <span data-edit="vehicle:{{ vehicle.id }}:make">{{ vehicle.make }}</span>
+          <span data-edit="vehicle:{{ vehicle.id }}:model">{{ vehicle.model }}</span>
+        </h1>
+        <p class="lede" data-edit="vehicle:{{ vehicle.id }}:description"
+           data-edit-placeholder="Describe this car — who is it for, what is it like to drive?">{{ vehicle.description or '' }}</p>
       </div>
 
-      {% if vehicle.feature_list %}
+      {% if vehicle.feature_list or show_editbar %}
         <div style="margin-top:36px">
           <h3>What's on board</h3>
-          <ul class="feature-list">
+          <ul class="feature-list" data-edit-list="vehicle:{{ vehicle.id }}:features">
             {% for feature in vehicle.feature_list %}
-              <li>{{ check(18) }} <span>{{ feature }}</span></li>
+              <li data-edit-item>{{ check(18) }} <span>{{ feature }}</span></li>
             {% endfor %}
           </ul>
         </div>
       {% endif %}
 
       <div style="margin-top:36px">
-        <h3>Included in every hire</h3>
-        <ul class="feature-list">
-          <li>{{ check(18) }} <span>Comprehensive insurance</span></li>
-          <li>{{ check(18) }} <span>Unlimited kilometres</span></li>
-          <li>{{ check(18) }} <span>24/7 roadside assistance</span></li>
-          <li>{{ check(18) }} <span>Second driver at no charge</span></li>
+        <h3 data-edit="vehicle_included_heading">{{ site.vehicle_included_heading }}</h3>
+        <ul class="feature-list" data-edit-list="vehicle_included_items">
+          {% for item in site.vehicle_included_items %}
+            <li data-edit-item>{{ check(18) }} <span>{{ item }}</span></li>
+          {% endfor %}
         </ul>
-        <p class="small muted" style="margin-top:18px">
-          Refundable deposit of {{ vehicle.deposit | money }}, taken when you collect the car and
-          returned once it is back with us. Drivers must be 21 or over and have held a
-          licence for at least a year.
+        <p class="small muted" style="margin-top:18px" data-edit="vehicle_terms_note">
+          {{ site.vehicle_terms_note | tokens(deposit=vehicle.deposit | money) }}
         </p>
       </div>
     </div>
 
     <div>
       <div class="booking-box">
-        <div class="price-lead">{{ vehicle.daily_rate | money }}</div>
+        <div class="price-lead">{{ site.currency }}<span
+             data-edit="vehicle:{{ vehicle.id }}:daily_rate">{{ '%.2f' | format(vehicle.daily_rate | float) }}</span></div>
         <p>per day{% if vehicle.weekly_rate %} &middot; {{ vehicle.weekly_rate | money }} per week{% endif %}</p>
 
         <ul class="spec-list">
@@ -151,8 +152,8 @@
           <button type="submit" class="btn btn--primary btn--block btn--lg" style="margin-top:24px">
             Request this car {{ check_circle(20) }}
           </button>
-          <p class="hint center" style="margin-top:14px">
-            Nothing to pay now. We confirm by email, usually within the hour.
+          <p class="hint center" style="margin-top:14px" data-edit="vehicle_booking_note">
+            {{ site.vehicle_booking_note }}
           </p>
         </form>
       </div>

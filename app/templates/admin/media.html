@@ -1,0 +1,71 @@
+{% extends "admin/base.html" %}
+{% block title %}Pictures — {{ company_name }} staff{% endblock %}
+
+{% block admin_content %}
+<div class="panel__head">
+  <div>
+    <h1 style="font-size:2rem;margin:0">Pictures</h1>
+    <p class="small muted" style="margin:4px 0 0">
+      Everything uploaded to the site. You can also replace a picture directly on a
+      page — press <strong>Edit this page</strong> and click the image.
+    </p>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Upload a picture</h3>
+  <form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="file">Image file</label>
+        <input type="file" id="file" name="file" accept="image/*" required>
+        <p class="hint">JPG, PNG, WebP or GIF, up to 8&nbsp;MB. Landscape images around 16:10 fit the layout best.</p>
+      </div>
+      <div class="field">
+        <label for="alt_text">Description <span class="muted" style="font-weight:400">(optional)</span></label>
+        <input type="text" id="alt_text" name="alt_text" placeholder="Red Fiat 500, front three-quarter view">
+        <p class="hint">Read aloud by screen readers.</p>
+      </div>
+    </div>
+    <button class="btn btn--primary" type="submit" style="margin-top:20px">Upload</button>
+  </form>
+</div>
+
+<div class="panel">
+  <h3>Library</h3>
+  {% if assets %}
+    <div class="grid grid--4" style="margin-top:20px">
+      {% for asset in assets %}
+        <div class="card">
+          <div class="card__media">
+            <img src="{{ url_for('static', filename=asset.path) }}" alt="{{ asset.alt_text or '' }}" loading="lazy">
+          </div>
+          <div class="card__body">
+            <p class="small" style="margin:0 0 4px;color:var(--ink);font-weight:600;word-break:break-all">
+              {{ asset.original_name }}
+            </p>
+            <p class="small muted" style="margin:0 0 12px">
+              {{ asset.size_label }} &middot; {{ asset.uploaded_at.strftime('%d %b %Y') }}
+            </p>
+            <p class="small muted" style="margin:0 0 12px;word-break:break-all">
+              <code>{{ asset.path }}</code>
+            </p>
+            <div class="card__footer">
+              <a class="btn btn--ghost btn--sm" href="{{ url_for('static', filename=asset.path) }}" target="_blank" rel="noopener">View</a>
+              <form method="post" action="{{ url_for('admin.media_delete', asset_id=asset.id) }}"
+                    onsubmit="return confirm('Delete {{ asset.original_name }}?')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn btn--danger btn--sm" type="submit">Delete</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">
+      <h3>Nothing uploaded yet</h3>
+      <p>Car photos and the home page picture will show up here.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

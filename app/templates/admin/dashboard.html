@@ -42,7 +42,7 @@
               <td><span class="tag tag--{{ booking.status }}">{{ booking.status }}</span></td>
               <td class="nowrap">
                 {% if booking.status == 'pending' %}
-                  <form class="inline-form" method="post" action="{{ url_for('admin.update_booking_status', booking_id=booking.id) }}">
+                  <form class="inline-form" method="post" action="{{ url_for('admin.update_booking_status', booking_id=booking.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="status" value="confirmed">
                     <button class="btn btn--primary btn--sm" type="submit">Confirm</button>
                   </form>

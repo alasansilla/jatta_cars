@@ -178,3 +178,43 @@ class Enquiry(db.Model):
 
     def __repr__(self):
         return f"<Enquiry {self.id} from {self.email}>"
+
+
+class Setting(db.Model):
+    """One editable site setting. Absent rows fall back to the schema default."""
+
+    __tablename__ = "settings"
+
+    key = db.Column(db.String(80), primary_key=True)
+    value = db.Column(db.Text, nullable=False, default="")
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Setting {self.key}>"
+
+
+class MediaAsset(db.Model):
+    """An image uploaded through the staff area."""
+
+    __tablename__ = "media_assets"
+
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(200), nullable=False, unique=True)
+    original_name = db.Column(db.String(200), nullable=False)
+    alt_text = db.Column(db.String(200), nullable=True)
+    size_bytes = db.Column(db.Integer, nullable=False, default=0)
+    uploaded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    @property
+    def path(self):
+        """Path relative to app/static/, which is how images are referenced."""
+        return f"uploads/{self.filename}"
+
+    @property
+    def size_label(self):
+        kb = self.size_bytes / 1024
+        return f"{kb:.0f} KB" if kb < 1024 else f"{kb / 1024:.1f} MB"
+
+    def __repr__(self):
+        return f"<MediaAsset {self.filename}>"

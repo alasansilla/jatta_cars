@@ -10,15 +10,15 @@
             <path d="M44 12a10 10 0 0 1 8 4M47 6a17 17 0 0 1 13 7" stroke="#ff4d30" stroke-width="3" stroke-linecap="round"/>
           </svg>
           <span class="brand__text">
-            <span class="brand__name">Jatta</span>
-            <span class="brand__sub">Cars</span>
+            <span class="brand__name" data-edit="brand_name">{{ site.brand_name }}</span>
+            <span class="brand__sub" data-edit="brand_sub">{{ site.brand_sub }}</span>
           </span>
         </div>
-        <p style="max-width:34ch">{{ company_tagline }} Well-kept cars, honest prices and keys in your hand in under ten minutes.</p>
+        <p style="max-width:34ch" data-edit="footer_blurb">{{ site.footer_blurb }}</p>
       </div>
 
       <div>
-        <h4>Company</h4>
+        <h4 data-edit="footer_company_heading">{{ site.footer_company_heading }}</h4>
         <ul>
           <li><a href="{{ url_for('public.about') }}">About us</a></li>
           <li><a href="{{ url_for('public.fleet') }}">Our fleet</a></li>
@@ -28,18 +28,18 @@
       </div>
 
       <div>
-        <h4>Pick-up points</h4>
+        <h4 data-edit="footer_locations_heading">{{ site.footer_locations_heading }}</h4>
         <ul>
           {% for location in locations %}<li>{{ location }}</li>{% endfor %}
         </ul>
       </div>
 
       <div>
-        <h4>Get in touch</h4>
+        <h4 data-edit="footer_contact_heading">{{ site.footer_contact_heading }}</h4>
         <ul>
-          <li><a href="tel:{{ company_phone | replace(' ', '') }}">{{ company_phone }}</a></li>
-          <li><a href="mailto:{{ company_email }}">{{ company_email }}</a></li>
-          <li>{{ company_address }}</li>
+          <li><a href="tel:{{ company_phone | replace(' ', '') }}" data-edit="company_phone">{{ company_phone }}</a></li>
+          <li><a href="mailto:{{ company_email }}" data-edit="company_email">{{ company_email }}</a></li>
+          <li data-edit="company_address">{{ company_address }}</li>
         </ul>
       </div>
     </div>

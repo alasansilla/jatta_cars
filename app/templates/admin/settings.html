@@ -1,0 +1,79 @@
+{% extends "admin/base.html" %}
+{% block title %}Settings — {{ company_name }} staff{% endblock %}
+
+{% macro render_field(field, value) %}
+  <div class="field">
+    <label for="f-{{ field.key }}">{{ field.label }}</label>
+
+    {% if field.type == 'textarea' %}
+      <textarea id="f-{{ field.key }}" name="{{ field.key }}" rows="{{ field.rows }}">{{ value }}</textarea>
+
+    {% elif field.type == 'lines' %}
+      <textarea id="f-{{ field.key }}" name="{{ field.key }}" rows="{{ field.rows }}">{{ value | join('\n') }}</textarea>
+
+    {% elif field.type == 'number' %}
+      <input type="number" step="any" id="f-{{ field.key }}" name="{{ field.key }}" value="{{ value }}">
+
+    {% elif field.type == 'boolean' %}
+      <label class="checkbox">
+        <input type="checkbox" name="{{ field.key }}" {{ 'checked' if value }}>
+        <span>Enabled</span>
+      </label>
+
+    {% elif field.type == 'choice' %}
+      <select id="f-{{ field.key }}" name="{{ field.key }}">
+        {% for option, label in field.choices %}
+          <option value="{{ option }}" {{ 'selected' if value == option }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+
+    {% elif field.type == 'image' %}
+      <div style="display:flex;gap:16px;align-items:center">
+        {% if value %}<img src="{{ url_for('static', filename=value) }}" alt="" width="120"
+                           style="background:var(--soft);border-radius:6px">{% endif %}
+        <input type="text" id="f-{{ field.key }}" name="{{ field.key }}" value="{{ value }}">
+      </div>
+
+    {% else %}
+      <input type="text" id="f-{{ field.key }}" name="{{ field.key }}" value="{{ value }}">
+    {% endif %}
+
+    {% if field.help %}<p class="hint">{{ field.help }}</p>{% endif %}
+  </div>
+{% endmacro %}
+
+{% block admin_content %}
+<div class="panel__head">
+  <div>
+    <h1 style="font-size:2rem;margin:0">Settings</h1>
+    <p class="small muted" style="margin:4px 0 0">
+      Wording and pictures are edited on the pages themselves — open any page and
+      press <strong>Edit this page</strong>. What is here has no visible place on the site.
+    </p>
+  </div>
+  <a class="btn btn--ghost" href="{{ url_for('public.index') }}">Go and edit a page</a>
+</div>
+
+{% for group in groups %}
+  <div class="panel">
+    <div class="panel__head">
+      <div>
+        <h2 style="font-size:1.3rem;margin:0">{{ group.label }}</h2>
+        <p class="small muted" style="margin:4px 0 0;max-width:60ch">{{ group.description }}</p>
+      </div>
+      <form method="post" action="{{ url_for('admin.settings_reset', group_key=group.key) }}"
+            onsubmit="return confirm('Reset {{ group.label }} to the original values?')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn btn--ghost btn--sm" type="submit">Reset to defaults</button>
+      </form>
+    </div>
+
+    <form method="post" style="max-width:760px"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="group" value="{{ group.key }}">
+      {% for field in group.fields %}
+        {{ render_field(field, values[field.key]) }}
+      {% endfor %}
+      <button class="btn btn--primary" type="submit" style="margin-top:26px">Save {{ group.label | lower }}</button>
+    </form>
+  </div>
+{% endfor %}
+{% endblock %}

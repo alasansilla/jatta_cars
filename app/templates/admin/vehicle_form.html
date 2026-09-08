@@ -15,7 +15,7 @@
 </div>
 
 <div class="panel" style="max-width:820px">
-  <form method="post">
+  <form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="field-row">
       <div class="field">
         <label for="make">Make</label>
@@ -93,12 +93,33 @@
     </div>
 
     <div class="field">
-      <label for="image">Photo</label>
-      <input type="text" id="image" name="image" value="{{ value('image') }}" placeholder="img/golf.jpg">
-      <p class="hint">
-        Path inside <code>app/static/</code>. Drop a photo in <code>app/static/img/</code> and put
-        <code>img/your-file.jpg</code> here. Leave blank to use the illustration for this category.
-      </p>
+      <label for="photo_file">Photo</label>
+      {% if vehicle %}
+        <div style="display:flex;gap:18px;align-items:center;margin-bottom:14px">
+          <img src="{{ url_for('static', filename=vehicle.image_url) }}" alt="" width="150"
+               style="background:var(--soft);border-radius:8px">
+          <span class="small muted">
+            {% if vehicle.image %}Currently: <code>{{ vehicle.image }}</code>
+            {% else %}Using the {{ vehicle.category | lower }} illustration.{% endif %}
+          </span>
+        </div>
+      {% endif %}
+      <input type="file" id="photo_file" name="photo_file" accept="image/*">
+      <p class="hint">Upload a new photo, or pick one already in the library below.</p>
+
+      <div style="margin-top:14px">
+        <label for="image">Or choose an existing picture</label>
+        <select id="image" name="image">
+          <option value="">Use the illustration for this category</option>
+          {% set chosen = form.get('image') if form else (vehicle.image if vehicle else '') %}
+          {% for asset in assets %}
+            <option value="{{ asset.path }}" {{ 'selected' if chosen == asset.path }}>{{ asset.original_name }}</option>
+          {% endfor %}
+          {% if chosen and chosen not in assets | map(attribute='path') | list %}
+            <option value="{{ chosen }}" selected>{{ chosen }}</option>
+          {% endif %}
+        </select>
+      </div>
     </div>
 
     <div class="field">

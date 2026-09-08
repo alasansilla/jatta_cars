@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}File too large — {{ company_name }}{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="wrap center" style="max-width:560px">
+    <p class="eyebrow">413</p>
+    <h1>That file is too big</h1>
+    <p class="lede" style="margin:0 auto 30px">
+      Uploads are limited to 8&nbsp;MB. Try saving the picture at a smaller size and upload it again.
+    </p>
+    <a class="btn btn--primary btn--lg" href="{{ url_for('admin.media') }}">Back to pictures</a>
+  </div>
+</section>
+{% endblock %}

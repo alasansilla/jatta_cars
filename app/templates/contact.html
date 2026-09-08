@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% from "partials/icons.html" import pin, clock %}
+{% from "partials/icons.html" import pin %}
 
 {% block title %}Contact us — {{ company_name }}{% endblock %}
 
 {% block content %}
 <section class="page-head">
   <div class="wrap">
-    <p class="eyebrow">Contact</p>
-    <h1>Talk to a person</h1>
-    <p>Questions about a booking, a long hire, or something the website does not cover.</p>
+    <p class="eyebrow" data-edit="contact_eyebrow">{{ site.contact_eyebrow }}</p>
+    <h1 data-edit="contact_heading">{{ site.contact_heading }}</h1>
+    <p data-edit="contact_intro">{{ site.contact_intro }}</p>
   </div>
 </section>
 
@@ -16,7 +16,7 @@
   <div class="wrap split">
     <div>
       <div class="panel">
-        <h3>Send us a message</h3>
+        <h3 data-edit="contact_form_heading">{{ site.contact_form_heading }}</h3>
         <form method="post">
           <div class="field-row">
             <div class="field">
@@ -51,24 +51,25 @@
       <div class="panel">
         <h3>Get in touch directly</h3>
         <p style="margin-bottom:8px"><strong style="color:var(--ink)">Phone</strong><br>
-          <a href="tel:{{ company_phone | replace(' ', '') }}">{{ company_phone }}</a></p>
+          <span data-edit="company_phone">{{ site.company_phone }}</span></p>
         <p style="margin-bottom:8px"><strong style="color:var(--ink)">Email</strong><br>
-          <a href="mailto:{{ company_email }}">{{ company_email }}</a></p>
-        <p style="margin-bottom:0"><strong style="color:var(--ink)">Office</strong><br>{{ company_address }}</p>
+          <span data-edit="company_email">{{ site.company_email }}</span></p>
+        <p style="margin-bottom:0"><strong style="color:var(--ink)">Office</strong><br>
+          <span data-edit="company_address">{{ site.company_address }}</span></p>
       </div>
 
       <div class="panel">
         <h3>Where you can collect</h3>
-        <ul class="feature-list" style="grid-template-columns:1fr">
+        <ul class="feature-list" data-edit-list="locations" style="grid-template-columns:1fr">
           {% for location in locations %}
-            <li>{{ pin(18) }} <span>{{ location }}</span></li>
+            <li data-edit-item>{{ pin(18) }} <span>{{ location }}</span></li>
           {% endfor %}
         </ul>
       </div>
 
       <div class="panel">
-        <h3>Opening hours</h3>
-        <p style="margin:0">Monday to Sunday, 7am – 9pm. Out-of-hours pick-up by arrangement.</p>
+        <h3 data-edit="about_hours_heading">{{ site.about_hours_heading }}</h3>
+        <p style="margin:0" data-edit="opening_hours">{{ site.opening_hours }}</p>
       </div>
     </div>
   </div>

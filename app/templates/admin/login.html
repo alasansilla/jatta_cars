@@ -5,7 +5,7 @@
   <div class="panel auth-card">
     <p class="eyebrow">Staff area</p>
     <h1 style="font-size:1.8rem">Sign in</h1>
-    <form method="post">
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="field">
         <label for="username">Username</label>
         <input type="text" id="username" name="username" required autocomplete="username" autofocus>
