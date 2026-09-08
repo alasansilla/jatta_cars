@@ -69,7 +69,8 @@ JATTA_ADMIN_PASSWORD='something-long' .venv/bin/python seed.py
 ```
 
 Running `seed.py` again is safe — existing vehicles and the admin account are
-left alone.
+left alone. Change the password afterwards under **Account** in the staff area;
+`seed.py` will not reset it.
 
 ## Configuration
 
@@ -128,7 +129,8 @@ run.py             development server
   service like Postmark) when you want them delivered.
 - **No online payment.** Bookings are requests; payment and the deposit happen
   at the desk.
-- One shared staff login rather than per-user accounts.
+- One shared staff login rather than per-user accounts. It can be renamed only by
+  editing the database; the password is changed under **Account**.
 - No revision history on edits — saving overwrites. "Reset to defaults" in
   Settings restores the original wording for a group.
 - The inline editor covers text, pictures, icons and lists. Structured vehicle

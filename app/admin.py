@@ -510,3 +510,39 @@ def api_icons():
         name: render_template_string(template, name=name).strip()
         for name, _label in ICON_CHOICES
     })
+
+
+@bp.route("/account", methods=["GET", "POST"])
+@login_required
+def account():
+    """Change the signed-in staff password."""
+    user = db.session.get(AdminUser, session["admin_id"])
+    if user is None:
+        session.clear()
+        return redirect(url_for("admin.login"))
+
+    if request.method == "POST":
+        current = request.form.get("current_password") or ""
+        new = request.form.get("new_password") or ""
+        confirm = request.form.get("confirm_password") or ""
+
+        errors = []
+        if not user.check_password(current):
+            errors.append("Your current password is not right.")
+        if len(new) < 10:
+            errors.append("Choose a new password of at least 10 characters.")
+        if new != confirm:
+            errors.append("The two new passwords do not match.")
+        if new and new == current:
+            errors.append("The new password must be different from the old one.")
+
+        if errors:
+            for error in errors:
+                flash(error, "error")
+        else:
+            user.set_password(new)
+            db.session.commit()
+            flash("Password changed.", "success")
+            return redirect(url_for("admin.dashboard"))
+
+    return render_template("admin/account.html", user=user)
