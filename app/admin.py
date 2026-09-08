@@ -6,6 +6,8 @@ operation; move to Flask-Login and per-user accounts if the team grows.
 from datetime import date, timedelta
 from functools import wraps
 
+import math
+
 from flask import (
     Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
     request, session, url_for
@@ -431,8 +433,13 @@ def api_save():
     cannot leave half the page saved.
     """
     payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Send an object containing settings and records."}), 400
     setting_changes = payload.get("settings") or {}
     record_changes = payload.get("records") or {}
+
+    if not isinstance(setting_changes, dict) or not isinstance(record_changes, dict):
+        return jsonify({"error": "Settings and records must be objects."}), 400
 
     unknown = [key for key in setting_changes if key not in FIELDS]
     if unknown:
@@ -453,14 +460,16 @@ def api_save():
         if vehicle is None:
             return jsonify({"error": "That vehicle no longer exists."}), 404
 
-        value = (raw or "").strip()
+        if not isinstance(raw, str):
+            return jsonify({"error": "Field values must be text."}), 400
+        value = raw.strip()
         if caster is float:
             try:
                 value = float(value.replace(",", ""))
             except ValueError:
                 return jsonify({"error": f"\u201c{raw}\u201d is not a number."}), 400
-            if value < 0:
-                return jsonify({"error": "Prices cannot be negative."}), 400
+            if not math.isfinite(value) or value < 0:
+                return jsonify({"error": "Enter a finite, non-negative price."}), 400
         elif column in ("make", "model") and not value:
             return jsonify({"error": "Make and model cannot be empty."}), 400
         else:

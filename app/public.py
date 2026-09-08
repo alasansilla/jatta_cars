@@ -2,7 +2,7 @@
 from datetime import date, timedelta
 
 from flask import (
-    Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
+    Blueprint, abort, current_app, flash, redirect, render_template, request, session, make_response, url_for
 )
 
 from .forms import parse_date, validate_customer, validate_rental_dates
@@ -214,13 +214,20 @@ def book(vehicle_id):
     db.session.add(booking)
     db.session.commit()
 
+    session["booking_reference"] = booking.reference
     return redirect(url_for("public.booking_detail", reference=booking.reference))
 
 
 @bp.route("/booking/<reference>")
 def booking_detail(reference):
-    booking = Booking.query.filter_by(reference=reference.upper()).first_or_404()
-    return render_template("booking.html", booking=booking)
+    reference = reference.upper()
+    if session.get("booking_reference") != reference:
+        return redirect(url_for("public.booking_lookup"))
+    booking = Booking.query.filter_by(reference=reference).first_or_404()
+    response = make_response(render_template("booking.html", booking=booking))
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 @bp.route("/booking", methods=["GET", "POST"])
@@ -231,6 +238,7 @@ def booking_lookup():
         email = (request.form.get("email") or "").strip().lower()
         booking = Booking.query.filter_by(reference=reference).first()
         if booking and booking.email.lower() == email:
+            session["booking_reference"] = booking.reference
             return redirect(url_for("public.booking_detail", reference=booking.reference))
         flash("No booking matches that reference and email address.", "error")
     return render_template("booking_lookup.html")
