@@ -63,6 +63,13 @@ ICON_CHOICES = [
     ("building", "Building"),
 ]
 
+# Text that still has to be replaced with real business detail is prefixed with
+# this marker. The staff area lists every setting that still contains it, so a
+# draft cannot quietly go live with invented facts in it.
+PLACEHOLDER_MARKER = "[TBC]"
+
+TBC = PLACEHOLDER_MARKER
+
 SCHEMA = [
     Group(
         "business", "Business details",
@@ -73,134 +80,187 @@ SCHEMA = [
             Field("brand_name", "Logo — first word", default="Jatta",
                   help="The bold word in the logo, top left."),
             Field("brand_sub", "Logo — second word", default="Cars"),
-            Field("company_tagline", "Tagline", default="Car hire, made simple."),
-            Field("company_email", "Email address", default="hello@jattacars.com"),
-            Field("company_phone", "Phone number", default="+49 30 123 4567"),
+            Field("company_tagline", "Tagline",
+                  default="Self-drive car hire in The Gambia."),
+            Field("company_email", "Email address",
+                  default=f"{TBC} add the email address enquiries should go to",
+                  help="Shown on the site and used as the reply address customers write to."),
+            Field("company_phone", "Phone number",
+                  default=f"{TBC} add your phone number",
+                  help="Include the country code, for example +220 …"),
             Field("company_address", "Address", type="textarea", rows=2,
-                  default="Hauptstrasse 1, 10827 Berlin, Germany"),
-            Field("currency", "Currency symbol", default="€",
-                  help="Used in front of every price, e.g. € or £ or $."),
+                  default=f"{TBC} add the address customers should come to"),
+            Field("currency", "Currency symbol", default="D",
+                  help="Shown in front of every price. D is the usual short form for "
+                       "the Gambian dalasi; change it if you quote in something else."),
             Field("locations", "Pick-up points", type="lines", rows=6,
-                  default="Berlin City Centre\nBerlin Brandenburg Airport (BER)\n"
-                          "Berlin Hauptbahnhof\nPotsdam",
-                  help="One per line. These are the options customers pick from when booking."),
+                  default=f"{TBC} pick-up point 1 — for example your office\n"
+                          f"{TBC} pick-up point 2 — for example the airport\n"
+                          f"{TBC} pick-up point 3 — for example hotel delivery",
+                  help="One per line. Customers choose from these when booking, so put "
+                       "real places here before the site goes live."),
             Field("opening_hours", "Opening hours",
-                  default="Monday to Sunday, 7am – 9pm"),
+                  default=f"{TBC} add the days and hours you are open"),
+            Field("seo_description", "Search-engine description", type="textarea", rows=2,
+                  default="Self-drive car hire in The Gambia. Book online in a couple of "
+                          "minutes — nothing to pay on the website.",
+                  help="The sentence search engines show under your site's name."),
         ],
     ),
     Group(
         "booking", "Booking rules",
-        "The limits applied when someone requests a car, and the deposit terms shown to them.",
+        "The limits applied when someone requests a car, and what they are told about "
+        "paying and collecting.",
         [
             Field("promo_message", "Ribbon on the booking panel", type="text",
-                  default="Free cancellation up to 24 hours before pick-up",
-                  help="Shown above the home page booking panel. Leave empty to hide it."),
+                  default="",
+                  help="Shown above the home page booking panel. Leave it empty until "
+                       "you have an offer you can actually honour."),
             Field("min_rental_days", "Minimum hire (days)", type="number", default=1),
             Field("max_rental_days", "Maximum hire (days)", type="number", default=90),
             Field("max_advance_days", "How far ahead bookings open (days)", type="number", default=365),
-            Field("default_excess", "Insurance excess", type="number", default=750,
-                  help="Quoted on the home page. Just the number — the currency symbol is added."),
+            Field("default_excess", "Insurance excess", type="number", default=0,
+                  help="Set this once you know your insurance terms. Left at 0 it is "
+                       "treated as not yet decided and is not quoted anywhere."),
+            Field("payment_note", "How customers pay", type="textarea", rows=3,
+                  default=f"Nothing is charged on this website. You settle up with us "
+                          f"directly when you collect the car. {TBC} confirm which payment "
+                          f"methods you accept.",
+                  help="This site cannot take payments. Say how payment actually happens."),
+            Field("booking_collect_note", "What to bring at collection", type="textarea", rows=3,
+                  default=f"{TBC} list what a driver must bring — driving licence, ID or "
+                          f"passport, and the deposit.",
+                  help="Shown on a confirmed booking."),
+            Field("booking_change_note", "Changing or cancelling", type="textarea", rows=3,
+                  default=f"{TBC} set out your cancellation terms — how much notice you "
+                          f"need and whether anything is charged.",
+                  help="Shown at the bottom of a booking page."),
         ],
     ),
     Group(
         "home", "Home page",
         "Every piece of text and the main image on the home page.",
         [
-            Field("home_eyebrow", "Small label above the headline", default="Plan your trip now"),
-            Field("home_heading", "Headline", default="Hire a car without the small print"),
-            Field("home_heading_highlight", "Word(s) to colour in the headline", default="without",
+            Field("home_eyebrow", "Small label above the headline", default="Plan your trip"),
+            Field("home_heading", "Headline", default="Explore The Gambia at your own pace"),
+            Field("home_heading_highlight", "Word(s) to colour in the headline",
+                  default="your own pace",
                   help="The first match inside the headline is shown in the accent colour. "
                        "Leave empty for a plain headline."),
             Field("home_intro", "Introduction", type="textarea", rows=4,
-                  default="A tidy, well-serviced fleet at four pick-up points across Berlin. "
-                          "One price covers insurance, breakdown cover and unlimited kilometres "
-                          "— what you see at booking is what you pay at the desk."),
+                  default=f"A small, locally run fleet of self-drive cars. Choose your dates, "
+                          f"send a request in about two minutes, and we come back to you to "
+                          f"confirm. There is nothing to pay on this website.\n\n"
+                          f"{TBC} add a sentence about what makes hiring from you different."),
             Field("home_hero_image", "Main image", type="image", default="img/car-economy.svg",
-                  help="The large picture beside the headline."),
+                  help="The large picture beside the headline. A photo of one of your own "
+                       "cars works far better than the drawing that ships with the site."),
             Field("home_cta_primary", "Primary button", default="Book a car"),
             Field("home_cta_secondary", "Secondary button", default="Learn more"),
 
             Field("home_search_heading", "Booking panel heading", default="Book a car"),
 
-            Field("home_fleet_eyebrow", "Fleet section label", default="Our fleet"),
+            Field("home_fleet_eyebrow", "Fleet section label", default="Our cars"),
             Field("home_fleet_heading", "Fleet section heading",
-                  default="Pick the car that fits the trip"),
+                  default="Choose the car that suits the trip"),
             Field("home_fleet_intro", "Fleet section intro", type="textarea", rows=2,
-                  default="Every car is under four years old, serviced on schedule and "
-                          "cleaned between hires."),
+                  default=f"{TBC} add a line about how your cars are looked after and "
+                          f"prepared between hires."),
 
-            Field("home_why_eyebrow", "Why-choose-us label", default="Why choose us"),
+            Field("home_why_eyebrow", "Why-choose-us label", default="Why book with us"),
             Field("home_why_heading", "Why-choose-us heading",
-                  default="The price you were quoted, and nothing else"),
+                  default="Booked direct, straight with you"),
             Field("home_why_body", "Why-choose-us text", type="textarea", rows=6,
-                  default="Most of what makes car hire irritating is added at the counter. "
-                          "We took the other route: one rate, everything in it, and a deposit "
-                          "that goes back on your card the day the car comes home.\n\n"
-                          "Book online in about two minutes. We confirm by email, usually within the hour."),
-            Field("home_why_cta", "Why-choose-us button", default="Find a car"),
+                  default=f"You are dealing with us, not an agency. Every request comes "
+                          f"straight to our own team, and a person checks the car and comes "
+                          f"back to you.\n\n"
+                          f"{TBC} replace this with what you want customers to know about "
+                          f"your service."),
+            Field("home_why_cta", "Why-choose-us button", default="See the cars"),
 
             Field("reason_1_icon", "Reason 1 — icon", type="choice", default="coin", choices=ICON_CHOICES),
-            Field("reason_1_title", "Reason 1 — heading", default="All-inclusive pricing"),
+            Field("reason_1_title", "Reason 1 — heading", default="Pay when you collect"),
             Field("reason_1_body", "Reason 1 — text", type="textarea", rows=3,
-                  default="Insurance, breakdown cover, VAT and unlimited kilometres are in the "
-                          "rate. No airport surcharge, no young-driver fee, no fuel-service charge."),
+                  default=f"Nothing is charged on this website. You settle up with us when "
+                          f"you pick the car up. {TBC} confirm which payment methods you take."),
             Field("reason_2_icon", "Reason 2 — icon", type="choice", default="shield", choices=ICON_CHOICES),
-            Field("reason_2_title", "Reason 2 — heading", default="Cover that actually covers"),
+            Field("reason_2_title", "Reason 2 — heading", default=f"{TBC} what the price covers"),
             Field("reason_2_body", "Reason 2 — text", type="textarea", rows=3,
-                  default="Comprehensive insurance comes as standard with a {excess} excess. "
-                          "Reduce it to zero at the desk if you would rather not think about it.",
-                  help="{excess} is replaced with the insurance excess from Booking rules."),
-            Field("reason_3_icon", "Reason 3 — icon", type="choice", default="road", choices=ICON_CHOICES),
-            Field("reason_3_title", "Reason 3 — heading", default="Take it where you like"),
+                  default=f"{TBC} set out what a day's hire includes — insurance and its "
+                          f"excess, mileage, fuel and extra drivers — and what it does not."),
+            Field("reason_3_icon", "Reason 3 — icon", type="choice", default="pin", choices=ICON_CHOICES),
+            Field("reason_3_title", "Reason 3 — heading", default=f"{TBC} where we can meet you"),
             Field("reason_3_body", "Reason 3 — text", type="textarea", rows=3,
-                  default="Unlimited kilometres across Germany, and travel into the EU at no "
-                          "extra cost — just tell us where you are heading so the paperwork "
-                          "travels with you."),
+                  default=f"{TBC} describe your pick-up points, whether you deliver to hotels "
+                          f"or the airport, and what happens outside opening hours."),
 
             Field("home_steps_eyebrow", "Steps section label", default="How it works"),
             Field("home_steps_heading", "Steps section heading",
                   default="Three steps and you are driving"),
             Field("step_1_title", "Step 1 — heading", default="Choose your dates"),
             Field("step_1_body", "Step 1 — text", type="textarea", rows=3,
-                  default="Tell us when and where. Only cars that are genuinely free for those "
-                          "days are shown — no phantom availability."),
-            Field("step_2_title", "Step 2 — heading", default="Book in two minutes"),
+                  default="Tell us when and where. Only cars that are genuinely free for "
+                          "those days are shown."),
+            Field("step_2_title", "Step 2 — heading", default="Send your request"),
             Field("step_2_body", "Step 2 — text", type="textarea", rows=3,
-                  default="Name, email, phone. Nothing to pay online; we take the deposit when "
-                          "you collect the car."),
-            Field("step_3_title", "Step 3 — heading", default="Collect and go"),
+                  default="Your name, phone and email. Nothing is charged online — this is a "
+                          "request, and we come back to you to confirm it."),
+            Field("step_3_title", "Step 3 — heading", default="Collect and drive"),
             Field("step_3_body", "Step 3 — text", type="textarea", rows=3,
-                  default="Bring your licence and the card the deposit goes on. Keys in hand in "
-                          "about ten minutes."),
+                  default=f"{TBC} say what happens on the day — where to come, what to bring "
+                          f"and how long the handover takes."),
 
             Field("home_about_eyebrow", "About section label", default="About us"),
             Field("home_about_heading", "About section heading",
-                  default="You start the engine, your trip starts properly"),
+                  default="A local fleet, run by people you can reach"),
             Field("home_about_body", "About section text", type="textarea", rows=7,
-                  default="Jatta Cars is a family-run hire company working out of Berlin. We are "
-                          "small enough that the person who answers the phone is the person who "
-                          "hands you the keys, and stubborn enough to keep the pricing honest "
-                          "while the big chains take the other approach.\n\n"
-                          "Every car is bought new or nearly new, kept on a strict service "
-                          "schedule and retired before it can become someone's bad day."),
+                  default=f"{TBC} introduce your business — who runs it, how long you have "
+                          f"been hiring cars, and where you are based.\n\n"
+                          f"{TBC} add a second paragraph about how you look after the cars."),
             Field("home_about_cta", "About section button", default="More about us"),
-            Field("home_stat3_value", "Third statistic — number", default="7"),
-            Field("home_stat3_label", "Third statistic — label", default="Days a week, 7am–9pm"),
+            Field("home_stat3_value", "Third statistic — number", default=f"{TBC}"),
+            Field("home_stat3_label", "Third statistic — label",
+                  default=f"{TBC} e.g. years hiring cars"),
 
-            Field("home_included_eyebrow", "Included section label", default="Included as standard"),
+            Field("home_included_eyebrow", "Included section label", default="Good to know"),
             Field("home_included_heading", "Included section heading",
-                  default="Everything below is in the price"),
+                  default="What to check before you book"),
             Field("home_included_items", "Included items", type="lines", rows=9,
-                  default="Comprehensive insurance\n24/7 roadside assistance\n"
-                          "Unlimited kilometres\nSecond driver at no charge\n"
-                          "Winter tyres, October to Easter\nFree cancellation up to 24h before\n"
-                          "Child seats on request\nVAT and all local charges",
-                  help="One per line."),
+                  default=f"{TBC} what the insurance covers, and the excess\n"
+                          f"{TBC} mileage — a daily limit, or unlimited\n"
+                          f"{TBC} the fuel policy\n"
+                          f"{TBC} whether extra drivers are allowed, and any charge\n"
+                          f"{TBC} the deposit, and when it comes back\n"
+                          f"{TBC} minimum age and how long a licence must be held\n"
+                          f"{TBC} what happens if the car breaks down\n"
+                          f"{TBC} your cancellation terms",
+                  help="One per line. Replace each with the real answer — these are the "
+                       "questions customers ask before booking."),
+
+            Field("home_reviews_eyebrow", "Reviews section label", default="What customers say"),
+            Field("home_reviews_heading", "Reviews section heading", default="In their words"),
+            Field("home_reviews_intro", "Reviews section intro", type="textarea", rows=2,
+                  default=f"{TBC} replace the three quotes below with real reviews, and only "
+                          f"use them with the customer's permission."),
+            Field("review_1_quote", "Review 1 — quote", type="textarea", rows=3,
+                  default=f"{TBC} paste a real customer review here."),
+            Field("review_1_name", "Review 1 — name", default=f"{TBC} customer name"),
+            Field("review_1_place", "Review 1 — where from", default=f"{TBC} where they came from"),
+            Field("review_2_quote", "Review 2 — quote", type="textarea", rows=3,
+                  default=f"{TBC} paste a real customer review here."),
+            Field("review_2_name", "Review 2 — name", default=f"{TBC} customer name"),
+            Field("review_2_place", "Review 2 — where from", default=f"{TBC} where they came from"),
+            Field("review_3_quote", "Review 3 — quote", type="textarea", rows=3,
+                  default=f"{TBC} paste a real customer review here."),
+            Field("review_3_name", "Review 3 — name", default=f"{TBC} customer name"),
+            Field("review_3_place", "Review 3 — where from", default=f"{TBC} where they came from"),
+            Field("show_reviews", "Show the reviews section", type="boolean", default=True,
+                  help="Turn this off until you have real reviews to show."),
 
             Field("home_final_heading", "Closing heading", default="Ready when you are"),
             Field("home_final_body", "Closing text", type="textarea", rows=2,
-                  default="Have a look at what is available, or call us on {phone} and we will "
-                          "sort it out over the phone.",
+                  default="Have a look at the cars, or call us on {phone} and we will sort "
+                          "it out over the phone.",
                   help="{phone} is replaced with your phone number."),
         ],
     ),
@@ -209,50 +269,47 @@ SCHEMA = [
         "The whole of the About page.",
         [
             Field("about_eyebrow", "Small label", default="About us"),
-            Field("about_heading", "Page heading", default="A small hire company that likes cars"),
-            Field("about_section1_heading", "First section heading", default="Why we started"),
+            Field("about_heading", "Page heading",
+                  default="Self-drive hire, arranged with a person"),
+            Field("about_section1_heading", "First section heading", default="Who we are"),
             Field("about_section1_body", "First section text", type="textarea", rows=8,
-                  default="Anyone who has hired a car knows the routine: a good price online, "
-                          "then forty minutes at a counter while the total quietly doubles. "
-                          "Insurance you thought was included. A fee for the second driver. "
-                          "A tank of fuel at twice the pump price.\n\n"
-                          "Jatta Cars exists because we thought that was a solvable problem. "
-                          "One rate with everything in it, a deposit that comes back, and a car "
-                          "that has actually been cleaned. It is not a complicated idea — it is "
-                          "just easier to run a hire company the other way."),
+                  default=f"{TBC} write a short introduction — who runs Jatta Cars, where you "
+                          f"are based, and how long you have been hiring cars.\n\n"
+                          f"{TBC} add a second paragraph about the kind of trips your "
+                          f"customers take and how you help them plan."),
             Field("about_section2_heading", "Second section heading",
                   default="How we look after the cars"),
             Field("about_section2_body", "Second section text", type="textarea", rows=8,
-                  default="Every vehicle is bought new or nearly new and serviced strictly to "
-                          "schedule, not when it becomes convenient. Tyres are changed on tread "
-                          "depth rather than optimism, winter tyres go on from October, and cars "
-                          "leave the fleet at four years old.\n\n"
-                          "Between hires each car is cleaned inside and out and checked over — "
-                          "fluids, lights, tyres, warning lights. If something is not right, the "
-                          "car does not go out."),
+                  default=f"{TBC} describe how the cars are serviced and checked, who does "
+                          f"the work, and what happens between one hire and the next.\n\n"
+                          f"{TBC} say what a customer should do if something goes wrong while "
+                          f"they have the car."),
             Field("about_included_heading", "Included box — heading",
-                  default="What every hire includes"),
+                  default="What a day's hire includes"),
             Field("about_included_items", "Included box — items", type="lines", rows=7,
-                  default="Comprehensive insurance\nUnlimited kilometres in Germany and the EU\n"
-                          "24/7 roadside assistance\nA second driver, free of charge\n"
-                          "Winter tyres from October to Easter\n"
-                          "Free cancellation up to 24 hours before"),
+                  default=f"{TBC} insurance — what type, and the excess\n"
+                          f"{TBC} mileage limit, or unlimited\n"
+                          f"{TBC} fuel policy\n"
+                          f"{TBC} extra drivers\n"
+                          f"{TBC} breakdown help\n"
+                          f"{TBC} cancellation terms"),
             Field("about_requirements_heading", "Requirements box — heading",
-                  default="The requirements"),
+                  default="What we need from you"),
             Field("about_requirements_intro", "Requirements box — intro",
-                  default="Not much, but these ones we cannot bend:"),
+                  default="Before you can drive away:"),
             Field("about_requirements_items", "Requirements box — items", type="lines", rows=6,
-                  default="21 or over, licence held for at least a year\n"
-                          "A full licence — non-EU licences need an international permit\n"
-                          "A credit or debit card in the driver's name for the deposit\n"
-                          "Photo ID or passport"),
+                  default=f"{TBC} minimum age, and how long the licence must be held\n"
+                          f"{TBC} which licences you accept, and whether visitors need an "
+                          f"international permit\n"
+                          f"{TBC} the deposit, and how it is paid\n"
+                          f"{TBC} ID or passport"),
             Field("about_hours_heading", "Hours box — heading", default="Opening hours"),
             Field("about_hours_body", "Hours box — text", type="textarea", rows=3,
-                  default="Seven days a week, 7am to 9pm, at all our pick-up points. "
-                          "Out-of-hours collection can be arranged — just ask when you book."),
-            Field("about_cta_heading", "Closing heading", default="Have a look at the fleet"),
+                  default=f"{TBC} add your days and hours, and say whether collection can be "
+                          f"arranged outside them."),
+            Field("about_cta_heading", "Closing heading", default="Have a look at the cars"),
             Field("about_cta_body", "Closing text", type="textarea", rows=2,
-                  default="{fleet_size} cars, from small runarounds to seven-seat vans.",
+                  default="{fleet_size} cars available to hire right now.",
                   help="{fleet_size} is replaced with the number of cars currently listed."),
         ],
     ),
@@ -263,33 +320,41 @@ SCHEMA = [
             Field("contact_eyebrow", "Small label", default="Contact"),
             Field("contact_heading", "Page heading", default="Talk to a person"),
             Field("contact_intro", "Page intro", type="textarea", rows=2,
-                  default="Questions about a booking, a long hire, or something the website "
-                          "does not cover."),
+                  default="Questions about a booking, a longer hire, or anything the site "
+                          "does not answer."),
             Field("contact_form_heading", "Form heading", default="Send us a message"),
             Field("contact_success", "Message shown after sending", type="textarea", rows=2,
-                  default="Thanks — your message is with us. We usually reply the same day."),
+                  default="Thanks — we have your message and will come back to you."),
+            Field("contact_reply_note", "Note under the form", type="textarea", rows=2,
+                  default=f"Messages reach us here on the site rather than by email, so "
+                          f"please leave a phone number if it is urgent. {TBC} say how "
+                          f"quickly you usually reply."),
         ],
     ),
     Group(
-        "vehicle", "Vehicle pages",
+        "vehicle", "Fleet and car pages",
         "The fleet listing header, plus the standard text shown on every car's page.",
         [
-            Field("fleet_page_eyebrow", "Fleet page — small label", default="Our fleet"),
+            Field("fleet_page_eyebrow", "Fleet page — small label", default="Our cars"),
             Field("fleet_page_heading", "Fleet page — heading", default="Cars available to hire"),
             Field("fleet_page_intro", "Fleet page — intro", type="textarea", rows=2,
-                  default="Set your dates to see live availability and the total for your trip."),
+                  default="Set your dates to see what is free and what the hire would come to."),
             Field("vehicle_included_heading", "Included list — heading",
-                  default="Included in every hire"),
+                  default="Good to know"),
             Field("vehicle_included_items", "Included list — items", type="lines", rows=6,
-                  default="Comprehensive insurance\nUnlimited kilometres\n"
-                          "24/7 roadside assistance\nSecond driver at no charge"),
+                  default=f"{TBC} what the insurance covers\n"
+                          f"{TBC} mileage limit, or unlimited\n"
+                          f"{TBC} fuel policy\n"
+                          f"{TBC} extra drivers",
+                  help="Shown on every car page. Replace each line with the real answer."),
             Field("vehicle_terms_note", "Deposit and licence note", type="textarea", rows=4,
-                  default="Refundable deposit of {deposit}, taken when you collect the car and "
-                          "returned once it is back with us. Drivers must be 21 or over and have "
-                          "held a licence for at least a year.",
+                  default=f"A refundable deposit of {{deposit}} is taken when you collect the "
+                          f"car. {TBC} confirm the minimum age, how long a licence must have "
+                          f"been held, and which licences you accept.",
                   help="{deposit} is replaced with that car's deposit."),
             Field("vehicle_booking_note", "Note under the booking button", type="textarea", rows=2,
-                  default="Nothing to pay now. We confirm by email, usually within the hour."),
+                  default="Nothing to pay now — this is a request. We come back to you to "
+                          "confirm it."),
         ],
     ),
     Group(
@@ -297,14 +362,14 @@ SCHEMA = [
         "The bottom of every page.",
         [
             Field("footer_blurb", "Short description", type="textarea", rows=3,
-                  default="Well-kept cars, honest prices and keys in your hand in under ten minutes."),
+                  default=f"Self-drive car hire in The Gambia. {TBC} add a line about your "
+                          f"business."),
             Field("footer_company_heading", "First column heading", default="Company"),
             Field("footer_locations_heading", "Second column heading", default="Pick-up points"),
             Field("footer_contact_heading", "Third column heading", default="Get in touch"),
         ],
     ),
 ]
-
 # Flat lookup by key, built once at import.
 FIELDS = {field.key: field for group in SCHEMA for field in group.fields}
 GROUPS = {group.key: group for group in SCHEMA}
@@ -343,6 +408,19 @@ def current_settings():
     return values
 
 
+def _forget_cache():
+    """Drop the per-request settings cache after a write.
+
+    Without this a save is invisible to anything that reads settings again in
+    the same request or app context — including the page rendered straight after
+    a settings form is submitted.
+    """
+    from flask import g, has_app_context
+
+    if has_app_context() and hasattr(g, "_site_settings"):
+        del g._site_settings
+
+
 def save_settings(submitted, group_key=None):
     """Write submitted values back.
 
@@ -359,7 +437,11 @@ def save_settings(submitted, group_key=None):
     for key in keys:
         field = FIELDS[key]
         if field.type == "boolean":
-            raw = key in submitted
+            # An unticked checkbox is simply absent from a submitted form, so
+            # presence is the signal there. A caller passing a real bool means
+            # it literally, which the presence rule alone would get backwards.
+            supplied = submitted.get(key) if hasattr(submitted, "get") else None
+            raw = supplied if isinstance(supplied, bool) else key in submitted
         elif key not in submitted:
             continue
         else:
@@ -373,6 +455,7 @@ def save_settings(submitted, group_key=None):
             row.value = value
 
     db.session.commit()
+    _forget_cache()
 
 
 def reset_group(group_key):
@@ -382,6 +465,7 @@ def reset_group(group_key):
     keys = [field.key for field in GROUPS[group_key].fields]
     Setting.query.filter(Setting.key.in_(keys)).delete(synchronize_session=False)
     db.session.commit()
+    _forget_cache()
 
 
 def fill_tokens(text, settings, **extra):
@@ -399,10 +483,39 @@ def fill_tokens(text, settings, **extra):
         "company": settings.get("company_name", ""),
         "address": settings.get("company_address", ""),
         "hours": settings.get("opening_hours", ""),
-        "excess": f"{settings.get('currency', '')}{settings.get('default_excess', '')}",
+        "excess": (
+            f"{settings.get('currency', '')}{settings.get('default_excess')}"
+            if settings.get("default_excess")
+            else f"{PLACEHOLDER_MARKER} excess not set"
+        ),
     }
     tokens.update(extra)
 
     for name, value in tokens.items():
         text = text.replace("{" + name + "}", str(value))
     return text
+
+
+def outstanding_items(settings=None):
+    """Every setting still carrying the placeholder marker.
+
+    Drives the setup checklist in the staff area, so it is obvious what has to be
+    filled in before the site is shown to customers.
+    """
+    values = settings if settings is not None else current_settings()
+
+    items = []
+    for group in SCHEMA:
+        for field in group.fields:
+            value = values.get(field.key)
+            text = "\n".join(value) if isinstance(value, list) else str(value or "")
+            if PLACEHOLDER_MARKER in text:
+                items.append({
+                    "group": group,
+                    "field": field,
+                    "lines": [
+                        line for line in text.splitlines()
+                        if PLACEHOLDER_MARKER in line
+                    ] or [text],
+                })
+    return items

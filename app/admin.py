@@ -18,7 +18,10 @@ from .models import (
     CATEGORIES, FUELS, TRANSMISSIONS, AdminUser, Booking, Enquiry, MediaAsset,
     Setting, Vehicle, db
 )
-from .settings import FIELDS, GROUPS, SCHEMA, current_settings, reset_group, save_settings
+from .settings import (
+    FIELDS, GROUPS, PLACEHOLDER_MARKER, SCHEMA, current_settings, outstanding_items,
+    reset_group, save_settings,
+)
 
 bp = Blueprint("admin", __name__)
 
@@ -50,6 +53,7 @@ def inject_admin_counts():
     return {
         "nav_pending": Booking.query.filter_by(status="pending").count(),
         "nav_unread": Enquiry.query.filter_by(is_read=False).count(),
+        "nav_todo": len(outstanding_items()),
         "admin_username": session.get("admin_username"),
     }
 
@@ -381,6 +385,46 @@ def settings_reset(group_key):
     reset_group(group_key)
     flash(f"{GROUPS[group_key].label} reset to the original wording.", "success")
     return redirect(request.referrer or url_for("admin.settings"))
+
+
+@bp.route("/checklist")
+@login_required
+def checklist():
+    """What still has to be filled in before the site is shown to customers."""
+    settings = current_settings()
+    items = outstanding_items(settings)
+
+    # Group them so the page reads as a to-do list per area of the site.
+    by_group = {}
+    for item in items:
+        # Not "items": Jinja would resolve entry.items to the dict method.
+        by_group.setdefault(item["group"].key, {"group": item["group"], "rows": []})
+        by_group[item["group"].key]["rows"].append(item)
+
+    fleet_size = Vehicle.query.count()
+    listed = Vehicle.query.filter_by(is_active=True).count()
+
+    # Things that are not settings but still block going live.
+    blockers = []
+    if fleet_size == 0:
+        blockers.append("No cars have been added yet.")
+    elif listed == 0:
+        blockers.append("Cars exist but none are listed, so the fleet page is empty.")
+    priced = Vehicle.query.filter(Vehicle.daily_rate > 0).count()
+    if fleet_size and priced < fleet_size:
+        blockers.append(f"{fleet_size - priced} car(s) have no daily rate set.")
+    if not settings.get("default_excess"):
+        blockers.append("The insurance excess is still 0, so it is not quoted anywhere.")
+
+    return render_template(
+        "admin/checklist.html",
+        groups=list(by_group.values()),
+        total=len(items),
+        blockers=blockers,
+        marker=PLACEHOLDER_MARKER,
+        fleet_size=fleet_size,
+        listed=listed,
+    )
 
 
 # --- Media ------------------------------------------------------------------

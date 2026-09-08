@@ -2,7 +2,7 @@
 {% from "partials/icons.html" import seat, door, gearbox, fuel, luggage, car, calendar, pin, check, check_circle %}
 
 {% block title %}{{ vehicle.name }} — {{ company_name }}{% endblock %}
-{% block description %}Hire a {{ vehicle.year }} {{ vehicle.name }} from {{ vehicle.daily_rate | money }} a day, insurance and unlimited kilometres included.{% endblock %}
+{% block description %}Hire a {{ vehicle.year }} {{ vehicle.name }} from {{ vehicle.daily_rate | money }} a day with {{ company_name }}.{% endblock %}
 
 {% block content %}
 <section class="section section--tight">
@@ -119,7 +119,7 @@
                   <span>&minus;{{ ((vehicle.daily_rate | float * days) - quote) | money }}</span>
                 </div>
               {% endif %}
-              <div class="quote-line"><span>Insurance &amp; unlimited km</span><span>Included</span></div>
+
               <div class="quote-total">
                 <span style="color:var(--ink);font-weight:600">Total</span>
                 <strong>{{ quote | money }}</strong>

@@ -146,7 +146,11 @@ img { max-width: 100%; display: block; }
 }
 .btn:hover { text-decoration: none; }
 .btn:active { transform: translateY(1px); }
-.btn--primary { background: var(--accent); color: #fff; box-shadow: var(--glow); }
+.btn--primary {
+  background: linear-gradient(96deg, var(--accent) 0%, #f4633a 55%, #ef4a25 100%);
+  color: #fff;
+  box-shadow: var(--glow);
+}
 .btn--primary:hover { background: var(--accent-dark); color: #fff; }
 .btn--dark { background: var(--ink); color: #fff; }
 .btn--dark:hover { background: #232327; color: #fff; }
@@ -216,8 +220,8 @@ textarea { resize: vertical; min-height: 140px; }
 .hero { background: var(--soft); padding: 72px 0 88px; overflow: hidden; }
 .hero .wrap {
   display: grid;
-  grid-template-columns: 1fr 1.05fr;
-  gap: 40px;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 48px;
   align-items: center;
 }
 .hero h1 { max-width: 12ch; }
@@ -225,7 +229,13 @@ textarea { resize: vertical; min-height: 140px; }
 .hero .lede { max-width: 46ch; }
 .hero__actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 34px; }
 .hero__art { position: relative; }
+/* The reference lets the car run past the content column; a little negative
+   margin on wide screens gives it that same presence without a horizontal
+   scrollbar, since the section clips its own overflow. */
 .hero__art img { width: 100%; }
+@media (min-width: 1100px) {
+  .hero__art { margin-right: -6%; }
+}
 
 /* --- Booking search panel ------------------------------------------------- */
 
@@ -237,6 +247,16 @@ textarea { resize: vertical; min-height: 140px; }
   height: 220px;
   background: var(--soft);
 }
+/* Faint route lines, as in the reference. Inline SVG so nothing extra loads. */
+.booking-band::after {
+  content: "";
+  position: absolute;
+  inset: 120px 0 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='320' viewBox='0 0 420 320'%3E%3Cg fill='none' stroke='%23010103' stroke-opacity='0.045' stroke-width='2'%3E%3Cpath d='M-20 250 C 90 250 90 90 200 90 S 310 250 420 250'/%3E%3Cpath d='M-20 150 C 60 150 60 20 150 20 S 250 170 340 170 400 120 440 120'/%3E%3Cpath d='M40 320 L40 210 C40 170 80 150 130 150 L300 150'/%3E%3Ccircle cx='200' cy='90' r='26'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+  pointer-events: none;
+}
+.booking-band .wrap { position: relative; z-index: 1; }
 .booking-panel {
   position: relative;
   background: var(--surface);
@@ -368,7 +388,7 @@ textarea { resize: vertical; min-height: 140px; }
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 40px;
+  padding: 34px;
   display: flex;
   flex-direction: column;
 }
@@ -380,9 +400,10 @@ textarea { resize: vertical; min-height: 140px; }
   line-height: 1.45;
   letter-spacing: -.01em;
 }
-.quote-card__foot { margin-top: auto; display: flex; align-items: center; gap: 16px; }
+.quote-card__foot { margin-top: auto; display: flex; align-items: center; gap: 14px; }
+.quote-card__foot > span:nth-child(2) { min-width: 0; }
 .avatar {
-  width: 56px; height: 56px; flex: none;
+  width: 46px; height: 46px; flex: none;
   border-radius: 50%;
   background: var(--accent-tint);
   color: var(--accent);
@@ -392,7 +413,7 @@ textarea { resize: vertical; min-height: 140px; }
 }
 .quote-card__name { font-weight: 700; color: var(--ink); line-height: 1.3; }
 .quote-card__place { font-size: .9rem; color: var(--body); line-height: 1.3; }
-.quote-mark { margin-left: auto; color: var(--accent); flex: none; }
+.quote-mark { margin-left: auto; color: var(--accent); flex: none; opacity: .9; }
 
 /* --- Fleet layout --------------------------------------------------------- */
 
@@ -433,13 +454,21 @@ textarea { resize: vertical; min-height: 140px; }
 
 .detail-layout { display: grid; gap: 48px; grid-template-columns: 1.25fr 1fr; align-items: start; }
 .detail-media {
-  border-radius: var(--radius);
-  background: var(--accent-tint);
+  position: relative;
   aspect-ratio: 16 / 11;
   display: grid;
   place-items: center;
   padding: 24px;
 }
+/* The tint sits behind the car as a soft shape, as in the reference. */
+.detail-media::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent-tint);
+  border-radius: 42% 58% 54% 46% / 58% 44% 56% 42%;
+}
+.detail-media img { position: relative; }
 .detail-media img { width: 100%; height: 100%; object-fit: contain; }
 
 .price-lead { font-size: 3.1rem; font-weight: 800; color: var(--ink); line-height: 1; letter-spacing: -.03em; }
@@ -577,6 +606,24 @@ td.nowrap, th.nowrap { white-space: nowrap; }
   .fleet-layout, .detail-layout { grid-template-columns: 1fr; }
   .filters { position: static; }
 }
+/* A label/value table has nothing to gain from staying a grid on a phone, and
+   sideways scrolling hides exactly the details a customer came to read. */
+@media (max-width: 620px) {
+  .table--stacked,
+  .table--stacked tbody,
+  .table--stacked tr,
+  .table--stacked th,
+  .table--stacked td { display: block; width: 100%; }
+  .table--stacked tr {
+    border-bottom: 1px solid var(--line);
+    padding: 12px 0;
+  }
+  .table--stacked tr:last-child { border-bottom: none; }
+  .table--stacked tr:hover { background: none; }
+  .table--stacked th { border: none; padding: 0 0 4px; white-space: normal; }
+  .table--stacked td { border: none; padding: 0; }
+}
+
 @media (max-width: 640px) {
   .section { padding: 64px 0; }
   .hero { padding: 40px 0 64px; }
@@ -718,5 +765,16 @@ body.is-editing [data-edit].is-empty::before {
 }
 .edit-popover button:hover { border-color: var(--accent); }
 .edit-popover button[aria-pressed="true"] { background: var(--accent-tint); border-color: var(--accent); }
+
+/* On a phone the bar is sticky, so every wrapped row is screen the page does
+   not get. Drop to the controls that matter while editing; Dashboard and Sign
+   out are a tap away in the staff area. */
+@media (max-width: 640px) {
+  .editbar__inner { padding: 8px 16px; gap: 10px; }
+  .editbar__who { display: none; }
+  .editbar__secondary { display: none; }
+  .editbar__status { font-size: .8rem; }
+  .editbar .btn--sm { padding: 7px 12px; font-size: .8rem; }
+}
 
 @media print { .editbar { display: none; } }

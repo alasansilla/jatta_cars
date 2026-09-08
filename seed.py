@@ -1,13 +1,19 @@
-"""Create the database and fill it with a starting fleet.
+"""Create the database and the staff login.
 
 Run once after cloning:
 
     python seed.py
 
+No vehicles are created. Add your own cars in the staff area — the demo fleet
+below is European and priced in euros, so it is only useful for development:
+
+    python seed.py --demo
+
 It is safe to run again: existing vehicles and the admin account are left alone.
 Set JATTA_ADMIN_PASSWORD beforehand to choose the password yourself, otherwise a
 random one is generated and printed.
 """
+import argparse
 import os
 import secrets
 import string
@@ -15,7 +21,9 @@ import string
 from app import create_app
 from app.models import AdminUser, Vehicle, db
 
-FLEET = [
+# Development-only sample data. Not representative of any real fleet: the cars,
+# the rates and the currency are all European. Loaded only with --demo.
+DEMO_FLEET = [
     {
         "make": "Fiat", "model": "500", "year": 2023, "category": "Economy",
         "transmission": "Manual", "fuel": "Petrol",
@@ -124,18 +132,28 @@ def make_password():
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--demo", action="store_true",
+        help="also load the European sample fleet, for development only",
+    )
+    args = parser.parse_args()
+
     app = create_app()
     with app.app_context():
         db.create_all()
 
         added = 0
-        for spec in FLEET:
-            exists = Vehicle.query.filter_by(make=spec["make"], model=spec["model"]).first()
-            if exists:
-                continue
-            db.session.add(Vehicle(**spec))
-            added += 1
-        db.session.commit()
+        if args.demo:
+            for spec in DEMO_FLEET:
+                exists = Vehicle.query.filter_by(
+                    make=spec["make"], model=spec["model"]
+                ).first()
+                if exists:
+                    continue
+                db.session.add(Vehicle(**spec))
+                added += 1
+            db.session.commit()
 
         username = os.environ.get("JATTA_ADMIN_USER", "admin")
         admin = AdminUser.query.filter_by(username=username).first()
@@ -147,13 +165,22 @@ def main():
             db.session.add(admin)
             db.session.commit()
 
-        print(f"Fleet: {added} vehicle(s) added, {Vehicle.query.count()} in total.")
+        total = Vehicle.query.count()
+        if args.demo:
+            print(f"Demo fleet: {added} vehicle(s) added, {total} in total.")
+        elif total:
+            print(f"Fleet: {total} vehicle(s) already in the database, left alone.")
+        else:
+            print("Fleet: empty. Add your cars under Fleet in the staff area.")
         if created_password:
             print()
             print("  Staff login created")
             print(f"  username: {username}")
             print(f"  password: {created_password}")
             print("  Sign in at /admin/login — store this somewhere safe, it is not shown again.")
+            print()
+            print("  Then open the site and work through Settings -> Setup checklist:")
+            print("  it lists every piece of wording still marked [TBC].")
         else:
             print(f"Staff login '{username}' already exists; password left unchanged.")
 

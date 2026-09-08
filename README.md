@@ -1,7 +1,19 @@
 # Jatta Cars
 
-Car hire website with a public booking flow and a staff area for managing the
-fleet, bookings and enquiries. Flask + SQLite, no build step.
+Self-drive car hire website for The Gambia, with a public booking flow and a
+staff area for managing the fleet, bookings and enquiries. Flask + SQLite, no
+build step.
+
+## This is still a draft
+
+Wording that has not been confirmed with the business is marked `[TBC]` so it
+cannot be mistaken for a real claim. **Settings → Setup** in the staff area
+lists every one of them, and the count is shown in the staff navigation. Work
+through that list before showing the site to customers.
+
+Nothing about insurance, mileage, fuel, deposits, extra drivers, breakdown
+cover or cancellation has been filled in — those are business facts, not
+defaults, so the draft asks the questions rather than answering them.
 
 ## What's in it
 
@@ -15,6 +27,8 @@ fleet, bookings and enquiries. Flask + SQLite, no build step.
   up again with the reference plus their email
 - Contact form; messages are stored and read in the staff area
 - About page
+- A reviews section, off-limits until you have real quotes — the placeholders
+  say so, and it can be switched off entirely under Settings
 
 **Editing the site**
 
@@ -56,8 +70,19 @@ up blank.
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python seed.py      # creates the database and a starting fleet
+.venv/bin/python seed.py      # creates the database and the staff login
 .venv/bin/python run.py
+```
+
+`seed.py` adds **no** vehicles — add your own under Fleet in the staff area.
+For development you can load a European sample fleet with `seed.py --demo`;
+`tools/clear_demo_fleet.py` takes it out again, refusing to touch any car that
+has a booking, an uploaded photo or an edited description.
+
+Run the tests with:
+
+```bash
+.venv/bin/python -m unittest discover -s tests
 ```
 
 Then open http://127.0.0.1:5000.
@@ -118,17 +143,21 @@ app/
     js/editor.js   the inline page editor
     uploads/       uploaded pictures (git-ignored)
 config.py          secrets, database URL, upload limits
-seed.py            database setup and starting fleet
+seed.py            database and staff login; --demo adds a sample fleet
 run.py             development server
+tools/             one-off maintenance scripts
+tests/             unittest suite (no pytest needed)
 ```
 
 ## Not built yet
 
 - **No email is sent.** Booking confirmations and contact form messages are
-  stored in the database and shown in the staff area only. Wire up SMTP (or a
-  service like Postmark) when you want them delivered.
-- **No online payment.** Bookings are requests; payment and the deposit happen
-  at the desk.
+  stored in the database and shown in the staff area only. Nothing on the site
+  promises an email, because none goes out — staff contact the customer. Wire up
+  SMTP (or a service like Postmark) when you want that automated.
+- **No online payment.** Bookings are requests; money changes hands when the car
+  is collected. Cash, mobile money and card are preferences for later, not
+  capabilities this site has — do not advertise them as if they were.
 - One shared staff login rather than per-user accounts. It can be renamed only by
   editing the database; the password is changed under **Account**.
 - No revision history on edits — saving overwrites. "Reset to defaults" in

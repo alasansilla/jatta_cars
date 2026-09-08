@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% from "partials/icons.html" import check_circle, arrow, car, calendar, pin, check, icon_by_name, fleet_icon, building %}
+{% from "partials/icons.html" import check_circle, arrow, car, calendar, pin, check, icon_by_name, fleet_icon, building, quote_mark %}
 
-{% block title %}{{ company_name }} — car hire in Berlin{% endblock %}
+{% block title %}{{ company_name }} — {{ site.company_tagline }}{% endblock %}
 
 {% block content %}
 <section class="hero">
@@ -182,6 +182,33 @@
     </ul>
   </div>
 </section>
+
+{% if site.show_reviews %}
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow" data-edit="home_reviews_eyebrow">{{ site.home_reviews_eyebrow }}</p>
+      <h2 data-edit="home_reviews_heading">{{ site.home_reviews_heading }}</h2>
+      <p data-edit="home_reviews_intro">{{ site.home_reviews_intro }}</p>
+    </div>
+    <div class="grid grid--3">
+      {% for n in [1, 2, 3] %}
+        <figure class="quote-card">
+          <blockquote data-edit="review_{{ n }}_quote">{{ site['review_' ~ n ~ '_quote'] }}</blockquote>
+          <figcaption class="quote-card__foot">
+            <span class="avatar" aria-hidden="true">{{ site['review_' ~ n ~ '_name'] | initial }}</span>
+            <span>
+              <span class="quote-card__name" data-edit="review_{{ n }}_name">{{ site['review_' ~ n ~ '_name'] }}</span>
+              <span class="quote-card__place" data-edit="review_{{ n }}_place">{{ site['review_' ~ n ~ '_place'] }}</span>
+            </span>
+            <span class="quote-mark">{{ quote_mark(34) }}</span>
+          </figcaption>
+        </figure>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
 
 <section class="section section--tight">
   <div class="wrap center">

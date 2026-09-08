@@ -24,7 +24,8 @@
         <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">You're all set</h1>
         <p class="lede">
           Booking <span class="reference">{{ booking.reference }}</span> is confirmed.
-          Bring your driving licence and the card the deposit will go on.
+        </p>
+        <p class="lede" data-edit="booking_collect_note">{{ site.booking_collect_note }}
         </p>
       {% elif booking.status == 'cancelled' %}
         <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">This booking was cancelled</h1>
@@ -40,7 +41,7 @@
       {% endif %}
 
       <div class="table-scroll" style="margin-top:32px">
-        <table>
+        <table class="table--stacked">
           <tbody>
             <tr>
               <th style="width:34%">Car</th>
@@ -59,19 +60,22 @@
             <tr>
               <th>Total</th>
               <td><strong style="font-size:1.3rem;color:var(--ink)">{{ booking.total_price | money }}</strong>
-              <span class="muted">&middot; insurance and unlimited km included</span></td>
+              <span class="muted">&middot; the hire itself; see what is included below</span></td>
             </tr>
-            <tr><th>Deposit at pick-up</th><td>{{ booking.vehicle.deposit | money }}, refundable</td></tr>
+            {% if booking.vehicle.deposit %}
+              <tr><th>Deposit at pick-up</th><td>{{ booking.vehicle.deposit | money }}, refundable</td></tr>
+            {% endif %}
             <tr><th>Status</th><td><span class="tag tag--{{ booking.status }}">{{ booking.status }}</span></td></tr>
           </tbody>
         </table>
       </div>
 
       <p class="small muted" style="margin-top:26px">
-        Need to change or cancel? Call {{ company_phone }} or email
-        <a href="mailto:{{ company_email }}?subject=Booking%20{{ booking.reference }}">{{ company_email }}</a>
-        quoting {{ booking.reference }}. Cancellation is free up to 24 hours before pick-up.
+        Need to change or cancel? Call {{ company_phone }} quoting
+        <span class="reference">{{ booking.reference }}</span>.
       </p>
+      <p class="small muted" data-edit="booking_change_note">{{ site.booking_change_note }}</p>
+      <p class="small muted" data-edit="payment_note">{{ site.payment_note }}</p>
     </div>
 
     <p class="center" style="margin-top:30px">

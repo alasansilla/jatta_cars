@@ -69,6 +69,17 @@ def register_template_helpers(app):
         head, _, tail = str(text).partition(phrase)
         return Markup(f"{escape(head)}<em>{escape(phrase)}</em>{escape(tail)}")
 
+    @app.template_filter("initial")
+    def initial(text):
+        """First letter of a name, ignoring the placeholder marker."""
+        from .settings import PLACEHOLDER_MARKER
+
+        cleaned = str(text or "").replace(PLACEHOLDER_MARKER, "").strip()
+        for char in cleaned:
+            if char.isalnum():
+                return char.upper()
+        return "\u2013"
+
     @app.template_filter("tokens")
     def tokens(text, **extra):
         return fill_tokens(text, current_settings(), **extra)
