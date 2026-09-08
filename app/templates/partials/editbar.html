@@ -8,6 +8,11 @@
       <span class="editbar__who">Editing as {{ session.get('admin_username') }}</span>
     </span>
 
+    {% if not site.site_live %}
+      <a class="editbar__draft" href="{{ url_for('admin.checklist') }}"
+         title="Only you can see this. Click to publish.">Draft — not public</a>
+    {% endif %}
+
     <span class="editbar__status" id="edit-status"></span>
 
     <span class="editbar__actions">

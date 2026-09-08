@@ -12,6 +12,24 @@ from .settings import current_settings
 bp = Blueprint("public", __name__)
 
 
+@bp.before_request
+def hold_until_published():
+    """Keep the public out until someone says the site is ready.
+
+    Staff signed in still see the real site, so the whole thing can be built and
+    checked in place. Everyone else gets a holding page — better than a customer
+    finding [TBC] wording or a car priced at zero.
+    """
+    if current_settings()["site_live"]:
+        return None
+    if session.get("admin_id"):
+        return None
+    response = make_response(render_template("holding.html", minimal=True))
+    # Nothing here should be cached: it changes the moment the site goes live.
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 def _search_filters():
     """Read the fleet filters out of the query string."""
     return {

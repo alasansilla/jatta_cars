@@ -14,7 +14,34 @@
   <a class="btn btn--primary" href="{{ url_for('public.index') }}">Open the site and edit</a>
 </div>
 
-<div class="stat-cards">
+<div class="panel" style="border-color:{{ 'var(--good)' if live else 'var(--warn)' }}">
+  <div class="panel__head" style="margin:0">
+    <div>
+      <h2 style="font-size:1.3rem;margin:0">
+        {% if live %}This site is live{% else %}This site is a draft{% endif %}
+      </h2>
+      <p class="small muted" style="margin:6px 0 0;max-width:60ch">
+        {% if live %}
+          Anyone can see it. {% if total %}<strong style="color:var(--bad)">{{ total }} piece(s)
+          of draft wording are visible to customers right now.</strong>{% endif %}
+        {% else %}
+          Visitors get a short holding page with your contact details. You see the real
+          site because you are signed in, so you can build and check it in place.
+        {% endif %}
+      </p>
+    </div>
+    <form method="post" action="{{ url_for('admin.checklist_publish') }}"
+          {% if not live and total %}onsubmit="return confirm('{{ total }} piece(s) of wording still say {{ marker }}. Customers will see them. Go live anyway?')"{% endif %}>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="live" value="{{ '0' if live else '1' }}">
+      <button class="btn {{ 'btn--ghost' if live else 'btn--primary' }}" type="submit">
+        {{ 'Take it back to draft' if live else 'Put the site live' }}
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="stat-cards" style="margin-top:26px">
   <div class="stat">
     <div class="stat__label">Draft wording left</div>
     <div class="stat__value">{{ total }}</div>

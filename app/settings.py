@@ -108,6 +108,23 @@ SCHEMA = [
         ],
     ),
     Group(
+        "publishing", "Publishing",
+        "Whether the public can see the site yet. A new install starts as a draft, "
+        "so nothing half-written is ever reachable by a customer.",
+        [
+            Field("site_live", "Show the site to the public", type="boolean",
+                  default=False,
+                  help="While this is off, visitors get a short holding page and only "
+                       "signed-in staff see the real site. Turn it on when the setup "
+                       "checklist is clear."),
+            Field("holding_heading", "Holding page — heading",
+                  default="Our website is nearly ready"),
+            Field("holding_body", "Holding page — text", type="textarea", rows=4,
+                  default="We are putting the last details in place. In the meantime, "
+                          "get in touch and we will sort out a car for you."),
+        ],
+    ),
+    Group(
         "booking", "Booking rules",
         "The limits applied when someone requests a car, and what they are told about "
         "paying and collecting.",
@@ -447,26 +464,36 @@ def _forget_cache():
 def save_settings(submitted, group_key=None):
     """Write submitted values back.
 
-    `submitted` is the raw form mapping. Only keys belonging to `group_key` are
-    touched when it is given, so one form cannot clobber another group. A value
-    equal to its default is stored anyway, which keeps the admin form honest
-    about what it will show next time.
+    Two different callers, with genuinely different meanings:
+
+    * A full form for one group (`group_key` given). An unticked checkbox is
+      simply absent from the submission, so for that group's booleans absence
+      means False.
+    * A partial update — the inline editor sends only what changed. Here absence
+      means "not mentioned", so anything missing must be left exactly as it is.
+      Treating it as False would switch off every boolean on the site the moment
+      someone edited a sentence.
     """
     from .models import Setting, db
 
-    keys = FIELDS.keys() if group_key is None else [f.key for f in GROUPS[group_key].fields]
+    partial = group_key is None
+    keys = FIELDS.keys() if partial else [f.key for f in GROUPS[group_key].fields]
     rows = {row.key: row for row in Setting.query.filter(Setting.key.in_(list(keys))).all()}
 
     for key in keys:
         field = FIELDS[key]
-        if field.type == "boolean":
-            # An unticked checkbox is simply absent from a submitted form, so
-            # presence is the signal there. A caller passing a real bool means
-            # it literally, which the presence rule alone would get backwards.
-            supplied = submitted.get(key) if hasattr(submitted, "get") else None
-            raw = supplied if isinstance(supplied, bool) else key in submitted
+
+        if field.type == "boolean" and not partial:
+            raw = key in submitted
         elif key not in submitted:
             continue
+        elif field.type == "boolean":
+            supplied = submitted.get(key)
+            raw = (
+                supplied
+                if isinstance(supplied, bool)
+                else str(supplied).strip().lower() in ("1", "true", "on", "yes")
+            )
         else:
             raw = submitted.get(key)
 

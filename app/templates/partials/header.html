@@ -13,6 +13,7 @@
       </span>
     </a>
 
+    {% if minimal %}{# holding page: nothing to navigate to yet #}{% else %}
     <input type="checkbox" id="nav-toggle" class="nav-toggle">
     <label for="nav-toggle" class="nav-burger" aria-label="Show menu">
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
@@ -29,5 +30,6 @@
       <a href="{{ url_for('public.booking_lookup') }}" class="{{ 'is-active' if here in ['public.booking_lookup', 'public.booking_detail'] }}">My booking</a>
       <a class="btn btn--primary" href="{{ url_for('public.fleet') }}">Book a car</a>
     </nav>
+    {% endif %}
   </div>
 </header>

@@ -418,6 +418,7 @@ def checklist():
 
     return render_template(
         "admin/checklist.html",
+        live=settings["site_live"],
         groups=list(by_group.values()),
         total=len(items),
         blockers=blockers,
@@ -425,6 +426,27 @@ def checklist():
         fleet_size=fleet_size,
         listed=listed,
     )
+
+
+@bp.route("/checklist/publish", methods=["POST"])
+@login_required
+def checklist_publish():
+    """Put the site in front of the public, or take it back down."""
+    wanted = request.form.get("live") == "1"
+    save_settings({"site_live": wanted})
+    if wanted:
+        remaining = len(outstanding_items())
+        if remaining:
+            flash(
+                f"The site is live. {remaining} piece(s) of wording still say "
+                f"{PLACEHOLDER_MARKER} and customers can now see them.",
+                "error",
+            )
+        else:
+            flash("The site is live.", "success")
+    else:
+        flash("The site is a draft again. Only signed-in staff can see it.", "success")
+    return redirect(url_for("admin.checklist"))
 
 
 # --- Media ------------------------------------------------------------------

@@ -830,3 +830,14 @@ body.is-editing [data-edit-choice].is-changed { outline-color: var(--good); }
 }
 .edit-tools p { margin: 0 0 12px; }
 .edit-tools .hint { margin: 12px 0 0; }
+
+.editbar__draft {
+  background: var(--warn-tint);
+  color: var(--warn);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: .8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.editbar__draft:hover { text-decoration: none; background: #fbe9c8; }

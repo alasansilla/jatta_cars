@@ -4,6 +4,14 @@ Self-drive car hire website for The Gambia, with a public booking flow and a
 staff area for managing the fleet, bookings and enquiries. Flask + SQLite, no
 build step.
 
+## The site starts private
+
+A new install is **not visible to the public**. Visitors get a short holding page
+with your contact details; signed in, you see the real site and can build it in
+place. Publish it from **Settings → Setup** when you are ready — the button warns
+you if any `[TBC]` wording is still showing, and you can take it back to draft at
+any time.
+
 ## This is still a draft
 
 Wording that has not been confirmed with the business is marked `[TBC]` so it
