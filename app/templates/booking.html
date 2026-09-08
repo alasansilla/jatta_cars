@@ -16,8 +16,9 @@
         <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">Thanks — we have your request</h1>
         <p class="lede">
           Your booking reference is <span class="reference">{{ booking.reference }}</span>.
-          We check the car over and confirm by email to
-          <strong>{{ booking.email }}</strong>, usually within the hour.
+          Your request is awaiting staff confirmation. Keep this reference and use
+          the booking lookup with your email address to check its status.
+          No online payment has been taken.
         </p>
       {% elif booking.status == 'confirmed' %}
         <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">You're all set</h1>
