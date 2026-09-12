@@ -45,9 +45,11 @@ def create_app(config_object=Config):
 
     from .public import bp as public_bp
     from .admin import bp as admin_bp
+    from .operator import bp as operator_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
+    app.register_blueprint(operator_bp, url_prefix="/operator")
 
     register_template_helpers(app)
     register_error_handlers(app)

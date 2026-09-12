@@ -1,4 +1,4 @@
-"""Database models for the Jatta Cars rental site."""
+"""Database models for the Jatta Cars transport marketplace."""
 import secrets
 import string
 from datetime import date, datetime
@@ -11,9 +11,131 @@ db = SQLAlchemy()
 # Booking states that occupy a vehicle for their date range.
 BLOCKING_STATUSES = ("pending", "confirmed")
 
+# What a booking is for. A rental holds a car for a range of days; a ride and an
+# airport transfer are a single journey at a point in time. They share one table
+# so that privacy, references and commission have exactly one implementation
+# rather than three that drift apart.
+RENTAL = "rental"
+RIDE = "ride"
+TRANSFER = "transfer"
+BOOKING_TYPES = (RENTAL, RIDE, TRANSFER)
+JOURNEY_TYPES = (RIDE, TRANSFER)
+
+# An operator is a separate business. Nothing they own is visible to the public
+# until someone has approved them.
+OPERATOR_STATUSES = ("pending", "approved", "suspended", "rejected")
+
 CATEGORIES = ["Economy", "Compact", "Estate", "SUV", "Van", "Luxury"]
 TRANSMISSIONS = ["Manual", "Automatic"]
 FUELS = ["Petrol", "Diesel", "Hybrid", "Electric"]
+
+
+class Operator(db.Model):
+    """An approved transport business listing on the marketplace.
+
+    Rates and terms belong to the operator, not to the marketplace, so nothing
+    here carries a price the site invented.
+    """
+
+    __tablename__ = "operators"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    slug = db.Column(db.String(120), nullable=False, unique=True, index=True)
+
+    contact_name = db.Column(db.String(120), nullable=True)
+    email = db.Column(db.String(160), nullable=False, unique=True, index=True)
+    phone = db.Column(db.String(40), nullable=True)
+
+    # Set when the operator is approved and given a sign-in. Null means they
+    # applied but cannot sign in yet.
+    password_hash = db.Column(db.String(255), nullable=True)
+
+    status = db.Column(db.String(20), nullable=False, default="pending", index=True)
+
+    # Overrides the marketplace-wide rate for this operator when set. Null means
+    # "use the configured default", so changing the default moves everyone who
+    # has not been given their own deal.
+    commission_rate = db.Column(db.Numeric(5, 2), nullable=True)
+
+    service_area = db.Column(db.String(200), nullable=True)
+    terms = db.Column(db.Text, nullable=True)
+    notes = db.Column(db.Text, nullable=True)  # staff-only, never shown publicly
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    approved_at = db.Column(db.DateTime, nullable=True)
+
+    vehicles = db.relationship("Vehicle", back_populates="operator")
+    bookings = db.relationship("Booking", back_populates="operator")
+    fares = db.relationship("OperatorFare", back_populates="operator",
+                            cascade="all, delete-orphan")
+
+    @property
+    def is_approved(self):
+        return self.status == "approved"
+
+    @property
+    def can_sign_in(self):
+        return self.is_approved and bool(self.password_hash)
+
+    def set_password(self, password):
+        # pbkdf2 rather than Werkzeug's scrypt default: some Python builds are
+        # compiled without the OpenSSL support that hashlib.scrypt needs.
+        self.password_hash = generate_password_hash(password, method="pbkdf2:sha256")
+
+    def check_password(self, password):
+        if not self.password_hash:
+            return False
+        return check_password_hash(self.password_hash, password)
+
+    @staticmethod
+    def make_slug(name, existing=None):
+        base = "".join(c.lower() if c.isalnum() else "-" for c in (name or "operator"))
+        base = "-".join(part for part in base.split("-") if part)[:100] or "operator"
+        candidate, suffix = base, 2
+        taken = existing if existing is not None else set()
+        while candidate in taken or Operator.query.filter_by(slug=candidate).first():
+            candidate = f"{base}-{suffix}"
+            suffix += 1
+        return candidate
+
+    def __repr__(self):
+        return f"<Operator {self.slug} {self.status}>"
+
+
+class OperatorFare(db.Model):
+    """A price an operator publishes for a journey.
+
+    The marketplace never sets these. An empty table means the site shows an
+    empty state, not a made-up price.
+    """
+
+    __tablename__ = "operator_fares"
+
+    id = db.Column(db.Integer, primary_key=True)
+    operator_id = db.Column(db.Integer, db.ForeignKey("operators.id"), nullable=False,
+                            index=True)
+    operator = db.relationship("Operator", back_populates="fares")
+
+    kind = db.Column(db.String(20), nullable=False, default=RIDE, index=True)
+    title = db.Column(db.String(160), nullable=False)
+    from_location = db.Column(db.String(120), nullable=False)
+    to_location = db.Column(db.String(120), nullable=False)
+
+    vehicle_class = db.Column(db.String(60), nullable=True)
+    seats = db.Column(db.Integer, nullable=True)
+    price = db.Column(db.Numeric(10, 2), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    @property
+    def is_bookable(self):
+        return bool(self.is_active and self.operator and self.operator.is_approved)
+
+    def __repr__(self):
+        return f"<OperatorFare {self.id} {self.title}>"
 
 
 class Vehicle(db.Model):
@@ -41,6 +163,11 @@ class Vehicle(db.Model):
 
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    # Null means the marketplace's own car, from before operators existed.
+    operator_id = db.Column(db.Integer, db.ForeignKey("operators.id"), nullable=True,
+                            index=True)
+    operator = db.relationship("Operator", back_populates="vehicles")
 
     bookings = db.relationship("Booking", back_populates="vehicle", cascade="all, delete-orphan")
 
@@ -82,6 +209,7 @@ class Vehicle(db.Model):
         """
         query = Booking.query.filter(
             Booking.vehicle_id == self.id,
+            Booking.booking_type == RENTAL,
             Booking.status.in_(BLOCKING_STATUSES),
             Booking.start_date < end,
             Booking.end_date > start,
@@ -89,6 +217,19 @@ class Vehicle(db.Model):
         if ignore_booking_id is not None:
             query = query.filter(Booking.id != ignore_booking_id)
         return query.first() is None
+
+    @property
+    def is_bookable(self):
+        """Listed, and belonging to nobody or to an approved operator.
+
+        Suspending an operator takes their cars off the site immediately,
+        without anyone having to remember to unlist each one.
+        """
+        if not self.is_active:
+            return False
+        if self.operator_id is None:
+            return True
+        return bool(self.operator and self.operator.is_approved)
 
     def __repr__(self):
         return f"<Vehicle {self.id} {self.name}>"
@@ -100,8 +241,23 @@ class Booking(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     reference = db.Column(db.String(12), nullable=False, unique=True, index=True)
 
-    vehicle_id = db.Column(db.Integer, db.ForeignKey("vehicles.id"), nullable=False)
+    # What was booked. A rental holds a car for a range of days; a ride or an
+    # airport transfer is one journey at a point in time.
+    booking_type = db.Column(db.String(20), nullable=False, default=RENTAL, index=True)
+
+    # Null for a journey the operator has not yet put a car against. A rental
+    # always names one.
+    vehicle_id = db.Column(db.Integer, db.ForeignKey("vehicles.id"), nullable=True)
     vehicle = db.relationship("Vehicle", back_populates="bookings")
+
+    # Who fulfils it. Null on the marketplace's own rentals from before
+    # operators existed.
+    operator_id = db.Column(db.Integer, db.ForeignKey("operators.id"), nullable=True,
+                            index=True)
+    operator = db.relationship("Operator", back_populates="bookings")
+
+    fare_id = db.Column(db.Integer, db.ForeignKey("operator_fares.id"), nullable=True)
+    fare = db.relationship("OperatorFare")
 
     customer_name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(160), nullable=False)
@@ -112,14 +268,47 @@ class Booking(db.Model):
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
 
+    # Journey details. Unused by a rental, which works in whole days.
+    pickup_at = db.Column(db.DateTime, nullable=True)
+    pickup_address = db.Column(db.String(240), nullable=True)
+    dropoff_address = db.Column(db.String(240), nullable=True)
+    passengers = db.Column(db.Integer, nullable=True)
+    luggage_count = db.Column(db.Integer, nullable=True)
+    flight_number = db.Column(db.String(20), nullable=True)
+
+    # The fare. This is what commission is charged on.
     total_price = db.Column(db.Numeric(10, 2), nullable=False)
+
+    # The refundable deposit as it stood when the booking was made, kept
+    # separately so commission can exclude it even if the car's deposit is
+    # edited afterwards. It is never part of total_price.
+    deposit_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+
     status = db.Column(db.String(20), nullable=False, default="pending", index=True)
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    commission = db.relationship("CommissionEntry", back_populates="booking",
+                                 uselist=False, cascade="all, delete-orphan")
+
+    @property
+    def is_journey(self):
+        """A scheduled ride or an airport transfer, rather than a hire."""
+        return self.booking_type in JOURNEY_TYPES
 
     @property
     def days(self):
         return (self.end_date - self.start_date).days
+
+    @property
+    def commissionable_amount(self):
+        """What commission is charged on: the fare, never the deposit.
+
+        The deposit is the customer's money held against damage and handed back,
+        so taking a cut of it would be charging for something nobody earned.
+        """
+        return float(self.total_price or 0)
 
     @property
     def is_past(self):
@@ -135,7 +324,39 @@ class Booking(db.Model):
                 return ref
 
     def __repr__(self):
-        return f"<Booking {self.reference} {self.status}>"
+        return f"<Booking {self.reference} {self.booking_type} {self.status}>"
+
+
+class CommissionEntry(db.Model):
+    """What the marketplace earned on one completed booking.
+
+    Written once, when a booking is marked completed, and then left alone. The
+    rate is copied in rather than looked up later, so changing the commission
+    setting never rewrites what was already earned.
+    """
+
+    __tablename__ = "commission_entries"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # One entry per booking, enforced by the database rather than by whoever
+    # remembers to check first.
+    booking_id = db.Column(db.Integer, db.ForeignKey("bookings.id"), nullable=False,
+                           unique=True, index=True)
+    booking = db.relationship("Booking", back_populates="commission")
+
+    operator_id = db.Column(db.Integer, db.ForeignKey("operators.id"), nullable=True,
+                            index=True)
+    operator = db.relationship("Operator")
+
+    rate_percent = db.Column(db.Numeric(5, 2), nullable=False)
+    base_amount = db.Column(db.Numeric(10, 2), nullable=False)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+
+    recorded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<CommissionEntry booking={self.booking_id} {self.amount}>"
 
 
 class AdminUser(db.Model):

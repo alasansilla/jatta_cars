@@ -409,6 +409,83 @@ SCHEMA = [
         ],
     ),
     Group(
+        "marketplace", "Marketplace",
+        "How the marketplace charges. Commission is taken on the fare of a "
+        "completed booking only, and never on a refundable deposit.",
+        [
+            Field("commission_rate", "Commission rate (%)", type="number", default=5,
+                  help="Percentage of the fare on a completed ride or rental. "
+                       "Refundable deposits are excluded. An individual operator can "
+                       "be given their own rate, which overrides this one. Changing "
+                       "this moves future bookings only — commission already earned "
+                       "keeps the rate it was recorded at."),
+            Field("operator_payout_note", "How operators are paid", type="textarea", rows=3,
+                  default=f"{TBC} say how and when operators are paid, and who covers "
+                          f"any transfer charges.",
+                  help="Shown to operators in their dashboard."),
+        ],
+    ),
+    Group(
+        "rides", "Rides and transfers page",
+        "The page where customers book a scheduled ride or an airport transfer.",
+        [
+            Field("rides_eyebrow", "Small label", default="Rides and transfers"),
+            Field("rides_heading", "Page heading",
+                  default="Scheduled rides and airport transfers"),
+            Field("rides_intro", "Page intro", type="textarea", rows=3,
+                  default="Book a car and driver for a single journey. Fares are set by "
+                          "the operator who drives it, and shown in full before you "
+                          "request — there is nothing to pay on this website."),
+            Field("rides_empty", "Shown when no fares are published yet",
+                  type="textarea", rows=3,
+                  default="No operators have published fares yet. Once an approved "
+                          "operator adds a route it will appear here.",
+                  help="Customers see this instead of an empty page. Do not replace it "
+                       "with example prices."),
+            Field("rides_request_note", "What happens after a request",
+                  type="textarea", rows=3,
+                  default=f"Your request goes to the operator, who confirms it with you "
+                          f"directly. {TBC} say how quickly a customer should expect to "
+                          f"hear back."),
+            Field("transfers_heading", "Airport transfers heading",
+                  default="Airport transfers"),
+            Field("transfers_intro", "Airport transfers intro", type="textarea", rows=3,
+                  default=f"{TBC} describe how airport pick-ups work — where the driver "
+                          f"meets you, and what happens if a flight is late."),
+        ],
+    ),
+    Group(
+        "operators", "Operators page",
+        "The page transport businesses read before applying to list with you.",
+        [
+            Field("operators_eyebrow", "Small label", default="For operators"),
+            Field("operators_heading", "Page heading", default="List your vehicles with us"),
+            Field("operators_intro", "Page intro", type="textarea", rows=4,
+                  default=f"We pass you booking requests from customers looking for rides, "
+                          f"transfers and car hire. You set your own fares and terms.\n\n"
+                          f"{TBC} add a sentence about who you are looking for."),
+            Field("operators_requirements", "What an operator needs", type="lines", rows=7,
+                  default=f"{TBC} vehicle documents you require\n"
+                          f"{TBC} driver licence and permit requirements\n"
+                          f"{TBC} insurance you require an operator to hold\n"
+                          f"{TBC} vehicle age or condition standards",
+                  help="One per line. These are your rules, so nothing is filled in for "
+                       "you."),
+            Field("operators_commission_note", "How commission is explained",
+                  type="textarea", rows=3,
+                  default="We take a commission on the fare of each completed booking. "
+                          "Refundable deposits are never included. The current rate is "
+                          "shown when you apply."),
+            Field("operators_apply_note", "Note on the application form",
+                  type="textarea", rows=3,
+                  default=f"Applying does not list you straight away — we review every "
+                          f"application first. {TBC} say how long a review usually takes."),
+            Field("operators_empty", "Shown when no operators are approved yet",
+                  type="textarea", rows=2,
+                  default="No operators are listed yet."),
+        ],
+    ),
+    Group(
         "footer", "Footer",
         "The bottom of every page.",
         [

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import check %}
+{% block title %}{{ site.operators_heading }} — {{ company_name }}{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div class="wrap">
+    <p class="eyebrow" data-edit="operators_eyebrow">{{ site.operators_eyebrow }}</p>
+    <h1 data-edit="operators_heading">{{ site.operators_heading }}</h1>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap split">
+    <div>
+      <div data-edit="operators_intro" data-edit-multiline>{{ site.operators_intro | paragraphs }}</div>
+
+      <h3 style="margin-top:30px">What we need from you</h3>
+      <ul class="feature-list" data-edit-list="operators_requirements" style="grid-template-columns:1fr">
+        {% for item in site.operators_requirements %}
+          <li data-edit-item>{{ check(18) }} <span>{{ item }}</span></li>
+        {% endfor %}
+      </ul>
+
+      <h3 style="margin-top:30px">Commission</h3>
+      <p data-edit="operators_commission_note">{{ site.operators_commission_note }}</p>
+      <p class="small muted">
+        The rate today is <strong>{{ commission_rate }}%</strong> of the fare on a
+        completed booking. Refundable deposits are never included, and nothing is
+        charged on a booking that is cancelled or never completed.
+      </p>
+
+      {% if approved %}
+        <h3 style="margin-top:30px">Already listed</h3>
+        <ul class="feature-list" style="grid-template-columns:1fr">
+          {% for operator in approved %}
+            <li>{{ check(18) }} <span>{{ operator.name }}{% if operator.service_area %} — {{ operator.service_area }}{% endif %}</span></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="small muted" style="margin-top:30px" data-edit="operators_empty">{{ site.operators_empty }}</p>
+      {% endif %}
+    </div>
+
+    <div>
+      <div class="panel" id="apply">
+        <h3>Apply to list</h3>
+        <p class="small muted" data-edit="operators_apply_note">{{ site.operators_apply_note }}</p>
+
+        <form method="post" action="{{ url_for('public.operator_apply') }}" style="margin-top:20px">
+          <div class="field">
+            <label for="name">Business name</label>
+            <input type="text" id="name" name="name" required>
+          </div>
+          <div class="field">
+            <label for="contact_name">Your name</label>
+            <input type="text" id="contact_name" name="contact_name" autocomplete="name">
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" required autocomplete="email">
+            </div>
+            <div class="field">
+              <label for="phone">Phone</label>
+              <input type="tel" id="phone" name="phone" autocomplete="tel">
+            </div>
+          </div>
+          <div class="field">
+            <label for="service_area">Where you work</label>
+            <input type="text" id="service_area" name="service_area" placeholder="Kololi, Banjul, airport runs">
+          </div>
+          <div class="field">
+            <label for="about">What you run</label>
+            <textarea id="about" name="about" rows="4" placeholder="How many vehicles, what kind, how long you have been going"></textarea>
+          </div>
+          <button class="btn btn--primary btn--block" type="submit" style="margin-top:22px">Send application</button>
+          <p class="hint center" style="margin-top:12px">
+            Already approved? <a href="{{ url_for('operator.login') }}">Sign in</a>.
+          </p>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

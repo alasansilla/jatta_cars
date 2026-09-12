@@ -43,18 +43,48 @@
       <div class="table-scroll" style="margin-top:32px">
         <table class="table--stacked">
           <tbody>
-            <tr>
-              <th style="width:34%">Car</th>
-              <td>
-                <a href="{{ url_for('public.vehicle_detail', vehicle_id=booking.vehicle.id) }}">
-                  <strong>{{ booking.vehicle.name }}</strong>
-                </a>
-                <span class="muted">&middot; {{ booking.vehicle.year }} &middot; {{ booking.vehicle.transmission }}</span>
-              </td>
-            </tr>
-            <tr><th>Pick-up</th><td>{{ booking.start_date | nice_date }} &middot; {{ booking.pickup_location }}</td></tr>
-            <tr><th>Return</th><td>{{ booking.end_date | nice_date }} &middot; {{ booking.dropoff_location }}</td></tr>
-            <tr><th>Length</th><td>{{ booking.days }} day{{ 's' if booking.days != 1 }}</td></tr>
+            {% if booking.is_journey %}
+              <tr>
+                <th style="width:34%">Journey</th>
+                <td>
+                  <strong>{{ booking.pickup_address or booking.pickup_location }}</strong>
+                  → <strong>{{ booking.dropoff_address or booking.dropoff_location }}</strong>
+                  {% if booking.fare %}<br><span class="muted">{{ booking.fare.title }}</span>{% endif %}
+                </td>
+              </tr>
+              <tr>
+                <th>Operator</th>
+                <td>{{ booking.operator.name if booking.operator else 'To be assigned' }}</td>
+              </tr>
+            {% elif booking.vehicle %}
+              <tr>
+                <th style="width:34%">Car</th>
+                <td>
+                  <a href="{{ url_for('public.vehicle_detail', vehicle_id=booking.vehicle.id) }}">
+                    <strong>{{ booking.vehicle.name }}</strong>
+                  </a>
+                  <span class="muted">&middot; {{ booking.vehicle.year }} &middot; {{ booking.vehicle.transmission }}</span>
+                </td>
+              </tr>
+            {% endif %}
+            {% if booking.is_journey %}
+              <tr>
+                <th>When</th>
+                <td>{{ booking.pickup_at.strftime('%A %d %B %Y, %H:%M') if booking.pickup_at else booking.start_date | nice_date }}</td>
+              </tr>
+              <tr>
+                <th>Travelling</th>
+                <td>
+                  {{ booking.passengers or 1 }} passenger{{ 's' if (booking.passengers or 1) != 1 }}
+                  {%- if booking.luggage_count %} &middot; {{ booking.luggage_count }} bag(s){% endif %}
+                  {%- if booking.flight_number %} &middot; flight {{ booking.flight_number }}{% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><th>Pick-up</th><td>{{ booking.start_date | nice_date }} &middot; {{ booking.pickup_location }}</td></tr>
+              <tr><th>Return</th><td>{{ booking.end_date | nice_date }} &middot; {{ booking.dropoff_location }}</td></tr>
+              <tr><th>Length</th><td>{{ booking.days }} day{{ 's' if booking.days != 1 }}</td></tr>
+            {% endif %}
             <tr><th>Booked by</th><td>{{ booking.customer_name }} &middot; {{ booking.email }}{% if booking.phone %} &middot; {{ booking.phone }}{% endif %}</td></tr>
             {% if booking.notes %}<tr><th>Your notes</th><td>{{ booking.notes }}</td></tr>{% endif %}
             <tr>
@@ -62,8 +92,11 @@
               <td><strong style="font-size:1.3rem;color:var(--ink)">{{ booking.total_price | money }}</strong>
               <span class="muted">&middot; the hire itself; see what is included below</span></td>
             </tr>
-            {% if booking.vehicle.deposit %}
-              <tr><th>Deposit at pick-up</th><td>{{ booking.vehicle.deposit | money }}, refundable</td></tr>
+            {% if booking.deposit_amount %}
+              <tr>
+                <th>Deposit at pick-up</th>
+                <td>{{ booking.deposit_amount | money }}, refundable — not part of the fare</td>
+              </tr>
             {% endif %}
             <tr><th>Status</th><td><span class="tag tag--{{ booking.status }}">{{ booking.status }}</span></td></tr>
           </tbody>

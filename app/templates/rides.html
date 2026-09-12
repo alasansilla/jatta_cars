@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import arrow, pin, seat, luggage %}
+{% block title %}{{ site.rides_heading }} — {{ company_name }}{% endblock %}
+
+{% macro fare_card(fare) %}
+  <article class="card">
+    <div class="card__body">
+      <h3 class="card__title">{{ fare.title }}</h3>
+      <p class="card__year">{{ fare.from_location }} → {{ fare.to_location }}</p>
+      <ul class="card__specs">
+        {% if fare.vehicle_class %}<li>{{ fare.vehicle_class }}</li>{% endif %}
+        {% if fare.seats %}<li>{{ fare.seats }} seats</li>{% endif %}
+        <li>{{ fare.operator.name }}</li>
+      </ul>
+      {% if fare.notes %}<p class="small muted">{{ fare.notes }}</p>{% endif %}
+      <div class="card__footer">
+        <div>
+          <div class="price">{{ fare.price | money }}</div>
+          <span class="small muted">set by {{ fare.operator.name }}</span>
+          {% if approx_prices %}<div class="small muted approx">{{ fare.price | approx }}</div>{% endif %}
+        </div>
+        <a class="btn btn--primary btn--sm" href="{{ url_for('public.ride_detail', fare_id=fare.id) }}">Request</a>
+      </div>
+    </div>
+  </article>
+{% endmacro %}
+
+{% block content %}
+<section class="page-head">
+  <div class="wrap">
+    <p class="eyebrow" data-edit="rides_eyebrow">{{ site.rides_eyebrow }}</p>
+    <h1 data-edit="rides_heading">{{ site.rides_heading }}</h1>
+    <p data-edit="rides_intro">{{ site.rides_intro }}</p>
+  </div>
+</section>
+
+{% if total == 0 %}
+  <section class="section">
+    <div class="wrap">
+      <div class="empty panel">
+        <h3>Nothing listed yet</h3>
+        <p data-edit="rides_empty">{{ site.rides_empty }}</p>
+        <a class="btn btn--ghost" href="{{ url_for('public.operators') }}">Are you an operator?</a>
+      </div>
+    </div>
+  </section>
+{% else %}
+  {% if rides %}
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head"><h2>Scheduled rides</h2></div>
+        <div class="grid grid--3">{% for fare in rides %}{{ fare_card(fare) }}{% endfor %}</div>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if transfers %}
+    <section class="section section--soft">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 data-edit="transfers_heading">{{ site.transfers_heading }}</h2>
+          <p data-edit="transfers_intro">{{ site.transfers_intro }}</p>
+        </div>
+        <div class="grid grid--3">{% for fare in transfers %}{{ fare_card(fare) }}{% endfor %}</div>
+      </div>
+    </section>
+  {% endif %}
+{% endif %}
+
+<section class="section section--tight">
+  <div class="wrap center">
+    <p class="lede" style="margin:0 auto" data-edit="rides_request_note">{{ site.rides_request_note }}</p>
+  </div>
+</section>
+{% endblock %}

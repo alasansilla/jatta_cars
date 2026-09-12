@@ -1,0 +1,104 @@
+{% extends "operator/base.html" %}
+{% block title %}Fares — {{ operator.name }}{% endblock %}
+
+{% block operator_content %}
+<div class="panel__head">
+  <div>
+    <h1 style="font-size:2rem;margin:0">Your fares</h1>
+    <p class="small muted" style="margin:4px 0 0">
+      You set these. Nothing is listed publicly until it is active and your account
+      is approved.
+    </p>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 style="font-size:1.2rem">Add a route</h2>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field-row">
+      <div class="field">
+        <label for="title">Route name</label>
+        <input type="text" id="title" name="title" required placeholder="Airport to Kololi">
+      </div>
+      <div class="field">
+        <label for="kind">Type</label>
+        <select id="kind" name="kind" required>
+          {% for value in kinds %}<option value="{{ value }}">{{ value | capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="from_location">From</label>
+        <input type="text" id="from_location" name="from_location" required>
+      </div>
+      <div class="field">
+        <label for="to_location">To</label>
+        <input type="text" id="to_location" name="to_location" required>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="price">Fare ({{ site.currency }})</label>
+        <input type="number" id="price" name="price" min="0" step="0.01" required>
+      </div>
+      <div class="field">
+        <label for="seats">Seats <span class="muted" style="font-weight:400">(optional)</span></label>
+        <input type="number" id="seats" name="seats" min="1" max="25">
+      </div>
+      <div class="field">
+        <label for="vehicle_class">Vehicle <span class="muted" style="font-weight:400">(optional)</span></label>
+        <input type="text" id="vehicle_class" name="vehicle_class" placeholder="Saloon">
+      </div>
+    </div>
+    <div class="field">
+      <label for="notes">Notes <span class="muted" style="font-weight:400">(optional)</span></label>
+      <textarea id="notes" name="notes" rows="2" placeholder="What the fare includes, waiting time, luggage limits"></textarea>
+    </div>
+    <button class="btn btn--primary" type="submit" style="margin-top:20px">Add route</button>
+  </form>
+</div>
+
+<div class="panel">
+  <h2 style="font-size:1.2rem">Listed routes</h2>
+  {% if fares %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Route</th><th>Type</th><th>Fare</th><th>Listed</th><th></th></tr></thead>
+        <tbody>
+          {% for fare in fares %}
+            <tr>
+              <td>
+                <strong style="color:var(--ink)">{{ fare.title }}</strong><br>
+                <span class="small muted">{{ fare.from_location }} → {{ fare.to_location }}</span>
+              </td>
+              <td>{{ fare.kind | capitalize }}</td>
+              <td class="nowrap">{{ fare.price | money }}</td>
+              <td><span class="tag tag--{{ 'on' if fare.is_active else 'off' }}">{{ 'Listed' if fare.is_active else 'Hidden' }}</span></td>
+              <td>
+                <div class="actions">
+                  <form method="post" action="{{ url_for('operator.toggle_fare', fare_id=fare.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn--ghost btn--sm" type="submit">{{ 'Hide' if fare.is_active else 'List' }}</button>
+                  </form>
+                  <form method="post" action="{{ url_for('operator.delete_fare', fare_id=fare.id) }}"
+                        onsubmit="return confirm('Remove {{ fare.title }}?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn--danger btn--sm" type="submit">Remove</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">
+      <h3>No routes yet</h3>
+      <p>Add the journeys you run and the fare you charge for each.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

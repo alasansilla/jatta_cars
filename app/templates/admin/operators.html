@@ -1,0 +1,118 @@
+{% extends "admin/base.html" %}
+{% block title %}Operators — {{ company_name }} staff{% endblock %}
+
+{% block admin_content %}
+<div class="panel__head">
+  <div>
+    <h1 style="font-size:2rem;margin:0">Operators</h1>
+    <p class="small muted" style="margin:4px 0 0;max-width:64ch">
+      Nothing an operator enters reaches customers until you approve them.
+      Approving lists their vehicles and fares; suspending takes them down again
+      straight away and signs them out.
+    </p>
+  </div>
+  <span class="small muted">Default commission: <strong>{{ default_rate }}%</strong></span>
+</div>
+
+<div class="panel__head" style="margin-bottom:18px">
+  <div class="actions">
+    <a class="btn btn--sm {{ 'btn--primary' if not status else 'btn--ghost' }}"
+       href="{{ url_for('admin.operators') }}">All</a>
+    {% for item in statuses %}
+      <a class="btn btn--sm {{ 'btn--primary' if status == item else 'btn--ghost' }}"
+         href="{{ url_for('admin.operators', status=item) }}">
+        {{ item | capitalize }}{% if counts[item] %} ({{ counts[item] }}){% endif %}
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="panel">
+  {% if operators %}
+    {% for operator in operators %}
+      <div style="padding:20px 0;border-bottom:1px solid var(--line)">
+        <div class="panel__head" style="margin-bottom:12px">
+          <div>
+            <h2 style="font-size:1.25rem;margin:0">{{ operator.name }}</h2>
+            <p class="small muted" style="margin:4px 0 0">
+              {{ operator.email }}{% if operator.phone %} · {{ operator.phone }}{% endif %}
+              {% if operator.contact_name %} · {{ operator.contact_name }}{% endif %}
+            </p>
+            {% if operator.service_area %}
+              <p class="small muted" style="margin:2px 0 0">Works in: {{ operator.service_area }}</p>
+            {% endif %}
+          </div>
+          <div style="text-align:right">
+            <span class="tag tag--{{ 'confirmed' if operator.status == 'approved' else ('cancelled' if operator.status in ['rejected','suspended'] else 'pending') }}">
+              {{ operator.status }}
+            </span>
+            <p class="small muted" style="margin:6px 0 0">
+              {{ operator.vehicles | length }} vehicle(s) · {{ operator.fares | length }} fare(s)<br>
+              Commission charged: {{ earned.get(operator.id, 0) | money }}
+            </p>
+          </div>
+        </div>
+
+        {% if operator.terms %}
+          <p class="small muted" style="margin:0 0 12px">Their terms: {{ operator.terms }}</p>
+        {% endif %}
+
+        <div class="actions" style="align-items:flex-end">
+          {% set moves = {'pending': [('approved','Approve'),('rejected','Reject')],
+                          'approved': [('suspended','Suspend')],
+                          'suspended': [('approved','Reinstate')],
+                          'rejected': [('pending','Reopen')]}.get(operator.status, []) %}
+          {% for value, label in moves %}
+            <form method="post" action="{{ url_for('admin.operator_decision', operator_id=operator.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="status" value="{{ value }}">
+              <button class="btn btn--sm {{ 'btn--primary' if loop.first and value == 'approved' else 'btn--ghost' }}"
+                      type="submit">{{ label }}</button>
+            </form>
+          {% endfor %}
+
+          <form method="post" action="{{ url_for('admin.operator_rate', operator_id=operator.id) }}"
+                class="actions" style="align-items:flex-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div>
+              <label class="small" for="rate-{{ operator.id }}" style="margin-bottom:4px">
+                Their rate (%)
+              </label>
+              <input type="number" id="rate-{{ operator.id }}" name="commission_rate"
+                     step="0.01" min="0" max="100" style="width:110px;padding:7px 10px"
+                     value="{{ operator.commission_rate if operator.commission_rate is not none else '' }}"
+                     placeholder="{{ default_rate }}">
+            </div>
+            <button class="btn btn--ghost btn--sm" type="submit">Save rate</button>
+          </form>
+
+          {% if operator.is_approved %}
+            <form method="post" action="{{ url_for('admin.operator_access', operator_id=operator.id) }}"
+                  onsubmit="return confirm('Issue a new password for {{ operator.name }}? Any existing one stops working.')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn--ghost btn--sm" type="submit">
+                {{ 'Reset sign-in' if operator.password_hash else 'Issue sign-in' }}
+              </button>
+            </form>
+          {% endif %}
+        </div>
+
+        {% if operator.is_approved and not operator.password_hash %}
+          <p class="small" style="color:var(--warn);margin:12px 0 0">
+            Approved but cannot sign in yet — issue a sign-in above and pass it to
+            them directly.
+          </p>
+        {% endif %}
+        {% if operator.notes %}
+          <p class="small muted" style="margin:12px 0 0">Staff note: {{ operator.notes }}</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      <h3>No operators{{ ' with that status' if status }}</h3>
+      <p>Applications from the <a href="{{ url_for('public.operators') }}">operators page</a> arrive here.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

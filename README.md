@@ -1,8 +1,23 @@
 # Jatta Cars
 
-Self-drive car hire website for The Gambia, with a public booking flow and a
-staff area for managing the fleet, bookings and enquiries. Flask + SQLite, no
-build step.
+A transport marketplace for The Gambia: scheduled rides, airport transfers and
+multi-day car hire, from operators you approve. Flask + SQLite locally, Postgres
+and Supabase Storage in production, no build step.
+
+Three kinds of booking share one table, one reference format, one privacy model
+and one commission path:
+
+| Type | What it is | Holds a car? |
+| --- | --- | --- |
+| `rental` | Multi-day self-drive hire | Yes, for the date range |
+| `ride` | A scheduled journey with a driver | No |
+| `transfer` | An airport pick-up or drop-off | No |
+
+**Commission** is a configurable percentage of the fare — 5% to start — recorded
+*only* when a booking is completed, and never taken on a refundable deposit. The
+rate is copied onto each entry when it is written, so changing it later moves
+future bookings and leaves history alone. An operator can be given their own
+rate.
 
 ## Taking the site private
 
@@ -60,12 +75,25 @@ Wording lives in `app/settings.py` as defaults, and edits are stored in the
 database. Anything never edited falls back to the default, so a page cannot end
 up blank.
 
+**Operators** (`/operators`, `/operator`)
+
+- Transport businesses apply from the public operators page
+- Nothing they enter reaches customers until an admin approves them; suspending
+  an operator takes their fares and vehicles down immediately and signs them out
+- Operators set their own fares and terms — the marketplace never invents a price
+- An operator's dashboard shows only their own bookings. Customer contact details
+  appear once they accept a booking, not before
+- They can accept, decline and complete their own work, but cannot reopen a
+  completed booking, because that would take back recorded commission
+
 **Staff area** (`/admin`)
 
 - Dashboard: pending and confirmed bookings, cars out today, 30-day booked value
 - Fleet management: add, edit, hide and delete vehicles, with photo upload
 - Bookings: filter by status, confirm / complete / cancel
 - Enquiries from the contact form
+- Operators: approve, reject, suspend, set a per-operator commission rate, and
+  issue a sign-in password (generated, shown once, never emailed)
 - Pictures: everything uploaded to the site, with deletion blocked while an image
   is still in use
 - Settings: the things with no visible place on a page — currency, pick-up points,
@@ -157,6 +185,8 @@ it is site data, not source. Back it up along with `instance/jatta.db`.
 ```
 app/
   __init__.py      application factory, template filters, globals
+  operator.py      the signed-in operator area, scoped to one operator
+  commission.py    what the marketplace earns, and when it may earn it
   models.py        Vehicle, Booking, Enquiry, AdminUser, Setting, MediaAsset
   settings.py      the editable-settings schema and its defaults
   media.py         image uploads and where each one is used
@@ -205,6 +235,8 @@ database.
   stored in the database and shown in the staff area only. Nothing on the site
   promises an email, because none goes out — staff contact the customer. Wire up
   SMTP (or a service like Postmark) when you want that automated.
+- **No payouts.** Commission is recorded, not collected. Settling up with
+  operators happens outside the site.
 - **No online payment.** Bookings are requests; money changes hands when the car
   is collected. Cash, mobile money and card are preferences for later, not
   capabilities this site has — do not advertise them as if they were.

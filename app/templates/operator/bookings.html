@@ -1,0 +1,46 @@
+{% extends "operator/base.html" %}
+{% block title %}Bookings — {{ operator.name }}{% endblock %}
+
+{% block operator_content %}
+<div class="panel__head">
+  <h1 style="font-size:2rem;margin:0">Your bookings</h1>
+  <div class="actions">
+    <a class="btn btn--sm {{ 'btn--primary' if not status else 'btn--ghost' }}" href="{{ url_for('operator.bookings') }}">All</a>
+    {% for item in ['pending', 'confirmed', 'completed', 'cancelled'] %}
+      <a class="btn btn--sm {{ 'btn--primary' if status == item else 'btn--ghost' }}"
+         href="{{ url_for('operator.bookings', status=item) }}">{{ item | capitalize }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="panel">
+  {% if bookings %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Ref</th><th>What</th><th class="nowrap">When</th><th>Fare</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for booking in bookings %}
+            <tr>
+              <td class="reference nowrap">{{ booking.reference }}</td>
+              <td>
+                {% if booking.is_journey %}{{ booking.pickup_address or booking.pickup_location }}
+                  → {{ booking.dropoff_address or booking.dropoff_location }}
+                {% else %}{{ booking.vehicle.name if booking.vehicle else 'Car hire' }}{% endif %}
+              </td>
+              <td class="nowrap">
+                {% if booking.pickup_at %}{{ booking.pickup_at.strftime('%a %d %b, %H:%M') }}
+                {% else %}{{ booking.start_date | nice_date }} → {{ booking.end_date | nice_date }}{% endif %}
+              </td>
+              <td class="nowrap">{{ booking.total_price | money }}</td>
+              <td><span class="tag tag--{{ booking.status }}">{{ booking.status }}</span></td>
+              <td class="nowrap"><a class="btn btn--ghost btn--sm" href="{{ url_for('operator.booking_detail', booking_id=booking.id) }}">Open</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty"><h3>No bookings{{ ' with that status' if status }}</h3></div>
+  {% endif %}
+</div>
+{% endblock %}

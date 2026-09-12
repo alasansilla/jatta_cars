@@ -8,6 +8,7 @@ Nothing secret belongs in this file. `.env` is git-ignored; `.env.example`
 lists the names without the values.
 """
 import os
+from urllib.parse import quote, unquote
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -51,6 +52,36 @@ def _postgres_driver():
         return "psycopg2"
 
 
+def _normalise_credentials(url):
+    """Percent-encode the user and password in a database URL.
+
+    Supabase generates passwords containing characters that mean something in a
+    URL — `@`, `/`, `?`, `#`, `:` — and the dashboard shows the password raw. A
+    raw `@` makes the host look like part of the password and the connection
+    string fails to parse, which is the "malformed database URL" a deployment
+    dies on.
+
+    Splitting on the *last* `@` finds the real host separator even when the
+    password contains one. Each part is then decoded and re-encoded, so a
+    password that was already percent-encoded is left as it is rather than being
+    double-encoded, and a raw one is fixed.
+    """
+    scheme, separator, rest = url.partition("://")
+    if not separator or "@" not in rest:
+        return url
+
+    userinfo, _, hostpart = rest.rpartition("@")
+    user, colon, password = userinfo.partition(":")
+
+    safe_user = quote(unquote(user), safe="")
+    if colon:
+        userinfo = f"{safe_user}:{quote(unquote(password), safe='')}"
+    else:
+        userinfo = safe_user
+
+    return f"{scheme}://{userinfo}@{hostpart}"
+
+
 def _database_uri():
     """Normalise whatever the host hands us into a SQLAlchemy URL.
 
@@ -61,9 +92,12 @@ def _database_uri():
     url = os.environ.get("JATTA_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not url:
         return "sqlite:///" + os.path.join(BASE_DIR, "instance", "jatta.db")
+
+    url = url.strip().strip('"').strip("'")
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://"):]
     if url.startswith("postgresql://"):
+        url = _normalise_credentials(url)
         url = f"postgresql+{_postgres_driver()}://" + url[len("postgresql://"):]
     return url
 

@@ -206,6 +206,25 @@ step 5.
 it. `--status` lists them. Step 1's SQL and the migration runner produce the
 same schema and agree on what has been applied, so either route works.
 
+### Marketplace schema
+
+The marketplace added migration `0004`, which creates the operator, fare and
+commission tables, widens bookings to carry a journey, and narrows the
+overlap constraint so it applies to hires only — two taxi rides on one car in a
+day are ordinary. On an existing database:
+
+```bash
+python -m migrations          # apply
+python -m migrations --status # confirm
+```
+
+A brand-new Supabase project should instead run the regenerated
+`supabase/bootstrap.sql`, which already contains the marketplace schema.
+
+**Operator sign-ins are issued by hand.** Approving an operator does not let
+them in; use **Issue sign-in** on the admin operators page, which generates a
+password and shows it once. Pass it to them directly — the site sends no email.
+
 **Backups. The free Supabase plan has no automated backups at all.** Supabase's
 documentation says free projects should "regularly export their data using the
 Supabase CLI `db dump` command and maintain off-site backups". Daily backups
@@ -228,3 +247,30 @@ Nothing in the repository or the database stores it.
 
 **If the site will not start**, the logs name the missing variable. That is the
 fail-closed check in step 3, not a crash.
+
+
+## The Render deployment that failed
+
+The last deployment died on a malformed database URL. The cause was not Render:
+Supabase shows the database password raw, and its generated passwords routinely
+contain `@`, `/`, `?` and `#` — characters that mean something inside a URL. A
+raw `@` makes the host look like part of the password, and the connection string
+fails to parse before anything can connect.
+
+The application now percent-encodes the user and password itself, splitting on
+the *last* `@` so a password containing one is still read correctly. A password
+that was already encoded is left alone rather than double-encoded. Both forms
+work, so the value can be pasted straight from the Supabase dashboard.
+
+To check what a host actually holds, without printing it:
+
+```bash
+python tools/check_database_url.py
+```
+
+It reports only the *shape* — scheme, user prefix, host, port, password length,
+whether it is already encoded, and whether SQLAlchemy can parse it. No part of
+the value is printed, so the output is safe to paste into a chat. Nothing in the
+application logs the connection string either; the health check reports the
+exception class, never its message.
+

@@ -13,6 +13,9 @@
       Enquiries{% if nav_unread %}<span class="pill-count">{{ nav_unread }}</span>{% endif %}
     </a>
     <a href="{{ url_for('admin.media') }}" class="{{ 'is-active' if here == 'admin.media' }}">Pictures</a>
+    <a href="{{ url_for('admin.operators') }}" class="{{ 'is-active' if here == 'admin.operators' }}">
+      Operators{% if nav_operators %}<span class="pill-count">{{ nav_operators }}</span>{% endif %}
+    </a>
     <a href="{{ url_for('admin.settings') }}" class="{{ 'is-active' if here == 'admin.settings' }}">Settings</a>
     <a href="{{ url_for('admin.checklist') }}" class="{{ 'is-active' if here == 'admin.checklist' }}">
       Setup{% if nav_todo %}<span class="pill-count">{{ nav_todo }}</span>{% endif %}

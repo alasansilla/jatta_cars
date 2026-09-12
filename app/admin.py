@@ -3,7 +3,8 @@
 Access is guarded by a simple session login. That is enough for a single-office
 operation; move to Flask-Login and per-user accounts if the team grows.
 """
-from datetime import date, timedelta
+import secrets
+from datetime import date, datetime, timedelta
 from functools import wraps
 
 import math
@@ -15,10 +16,12 @@ from flask import (
     request, session, url_for
 )
 
+from . import commission
 from .media import delete_asset, save_upload
 from .storage import media_url
 from .models import (
-    CATEGORIES, FUELS, TRANSMISSIONS, AdminUser, Booking, Enquiry, MediaAsset,
+    CATEGORIES, FUELS, OPERATOR_STATUSES, RENTAL, TRANSMISSIONS, AdminUser,
+    Booking, CommissionEntry, Enquiry, MediaAsset, Operator, OperatorFare,
     Setting, Vehicle, db
 )
 from .settings import (
@@ -57,6 +60,7 @@ def inject_admin_counts():
         "nav_pending": Booking.query.filter_by(status="pending").count(),
         "nav_unread": Enquiry.query.filter_by(is_read=False).count(),
         "nav_todo": len(outstanding_items()),
+        "nav_operators": Operator.query.filter_by(status="pending").count(),
         "admin_username": session.get("admin_username"),
     }
 
@@ -318,8 +322,15 @@ def update_booking_status(booking_id):
     if new_status not in BOOKING_STATUSES:
         abort(400)
 
-    # Confirming must not double-book a vehicle that was freed up and re-let.
-    if new_status in ("pending", "confirmed") and not booking.vehicle.is_available(
+    # Only a hire holds a car for a range of days. A ride or transfer may not
+    # have a car against it at all, so there is nothing here to double-book —
+    # and reaching through a null vehicle would just crash.
+    holds_a_car = (
+        booking.booking_type == RENTAL
+        and booking.vehicle is not None
+        and new_status in ("pending", "confirmed")
+    )
+    if holds_a_car and not booking.vehicle.is_available(
         booking.start_date, booking.end_date, ignore_booking_id=booking.id
     ):
         flash(
@@ -330,19 +341,30 @@ def update_booking_status(booking_id):
         return redirect(url_for("admin.bookings"))
 
     booking.status = new_status
+    # Commission is earned by completing a booking and given back if that is
+    # undone. sync_for does both, so this caller cannot get it half right.
+    entry = commission.sync_for(booking)
     try:
         db.session.commit()
     except IntegrityError:
         # Confirming a booking can collide with another confirmed one the same
         # way a customer request can; the database has the final say.
         db.session.rollback()
+        subject = booking.vehicle.name if booking.vehicle else "That vehicle"
         flash(
-            f"{booking.vehicle.name} is already committed to another booking "
-            "for those dates.",
+            f"{subject} is already committed to another booking for those dates.",
             "error",
         )
         return redirect(request.referrer or url_for("admin.bookings"))
-    flash(f"Booking {booking.reference} is now {new_status}.", "success")
+
+    if entry is not None:
+        flash(
+            f"Booking {booking.reference} is now {new_status}. Commission of "
+            f"{entry.amount} recorded at {entry.rate_percent}% of the fare.",
+            "success",
+        )
+    else:
+        flash(f"Booking {booking.reference} is now {new_status}.", "success")
     return redirect(request.referrer or url_for("admin.bookings"))
 
 
@@ -368,7 +390,7 @@ def toggle_enquiry(enquiry_id):
 
 # Groups whose fields are all edited inline on the live pages; the settings
 # screen only carries what has no visible place on the site.
-INLINE_ONLY_GROUPS = {"home", "about", "contact", "footer"}
+INLINE_ONLY_GROUPS = {"home", "about", "contact", "footer", "rides", "operators"}
 
 
 @bp.route("/settings", methods=["GET", "POST"])
@@ -746,3 +768,122 @@ def api_vehicle_listed(vehicle_id):
 def api_choices():
     """Valid values for the fields the inline editor offers as a picker."""
     return jsonify(VEHICLE_CHOICES)
+
+
+
+# --- Operators --------------------------------------------------------------
+
+@bp.route("/operators")
+@login_required
+def operators():
+    status = (request.args.get("status") or "").strip()
+    query = Operator.query
+    if status in OPERATOR_STATUSES:
+        query = query.filter(Operator.status == status)
+
+    listed = query.order_by(Operator.status, Operator.name).all()
+    earned = {
+        row[0]: row[1] for row in
+        db.session.query(CommissionEntry.operator_id, db.func.sum(CommissionEntry.amount))
+        .group_by(CommissionEntry.operator_id).all()
+    }
+    return render_template(
+        "admin/operators.html",
+        operators=listed,
+        status=status,
+        statuses=OPERATOR_STATUSES,
+        earned=earned,
+        default_rate=commission.default_rate(),
+        counts={name: Operator.query.filter_by(status=name).count()
+                for name in OPERATOR_STATUSES},
+    )
+
+
+@bp.route("/operators/<int:operator_id>/decision", methods=["POST"])
+@login_required
+def operator_decision(operator_id):
+    """Approve, reject, suspend or reopen an application.
+
+    Approving is the only thing that puts an operator's vehicles and fares in
+    front of customers, so nothing they have entered is public until a person
+    has looked at it.
+    """
+    operator = db.session.get(Operator, operator_id) or abort(404)
+    decision = request.form.get("status")
+    if decision not in OPERATOR_STATUSES:
+        abort(400)
+
+    operator.status = decision
+    if decision == "approved" and operator.approved_at is None:
+        operator.approved_at = datetime.utcnow()
+    if decision != "approved":
+        # Suspending must actually take effect: the session check reads status,
+        # so their next request signs them out.
+        operator.approved_at = operator.approved_at if decision == "suspended" else None
+
+    db.session.commit()
+
+    if decision == "approved" and not operator.password_hash:
+        flash(
+            f"{operator.name} is approved. They cannot sign in until you issue a "
+            f"password below.",
+            "success",
+        )
+    else:
+        flash(f"{operator.name} is now {decision}.", "success")
+    return redirect(request.referrer or url_for("admin.operators"))
+
+
+@bp.route("/operators/<int:operator_id>/rate", methods=["POST"])
+@login_required
+def operator_rate(operator_id):
+    """Give one operator their own commission rate, or put them back on the default."""
+    operator = db.session.get(Operator, operator_id) or abort(404)
+    raw = (request.form.get("commission_rate") or "").strip()
+
+    if not raw:
+        operator.commission_rate = None
+        db.session.commit()
+        flash(f"{operator.name} now uses the default rate.", "success")
+        return redirect(request.referrer or url_for("admin.operators"))
+
+    try:
+        rate = float(raw.replace(",", "").rstrip("%"))
+    except ValueError:
+        flash("Enter the rate as a number, for example 5.", "error")
+        return redirect(request.referrer or url_for("admin.operators"))
+
+    if not 0 <= rate <= 100:
+        flash("A commission rate has to be between 0 and 100.", "error")
+        return redirect(request.referrer or url_for("admin.operators"))
+
+    operator.commission_rate = rate
+    db.session.commit()
+    flash(f"{operator.name} is now on {rate}%. Commission already recorded is "
+          f"unchanged.", "success")
+    return redirect(request.referrer or url_for("admin.operators"))
+
+
+@bp.route("/operators/<int:operator_id>/access", methods=["POST"])
+@login_required
+def operator_access(operator_id):
+    """Issue a one-off sign-in password for an approved operator.
+
+    Generated here and shown once rather than chosen by staff, so a weak shared
+    password never gets set. Pass it to the operator yourself; nothing is
+    emailed, because the site sends no email.
+    """
+    operator = db.session.get(Operator, operator_id) or abort(404)
+    if not operator.is_approved:
+        flash("Approve the operator before giving them a sign-in.", "error")
+        return redirect(request.referrer or url_for("admin.operators"))
+
+    password = secrets.token_urlsafe(12)
+    operator.set_password(password)
+    db.session.commit()
+    flash(
+        f"Sign-in for {operator.name} — email {operator.email}, password "
+        f"{password} — shown once. Give it to them directly.",
+        "success",
+    )
+    return redirect(request.referrer or url_for("admin.operators"))

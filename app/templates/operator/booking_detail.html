@@ -1,0 +1,82 @@
+{% extends "operator/base.html" %}
+{% block title %}{{ booking.reference }} — {{ operator.name }}{% endblock %}
+
+{% block operator_content %}
+<div class="panel__head">
+  <div>
+    <p class="eyebrow" style="margin:0">{{ booking.booking_type | capitalize }}</p>
+    <h1 style="font-size:2rem;margin:0" class="reference">{{ booking.reference }}</h1>
+  </div>
+  <span class="tag tag--{{ booking.status }}">{{ booking.status }}</span>
+</div>
+
+<div class="panel">
+  <div class="table-scroll">
+    <table class="table--stacked">
+      <tbody>
+        {% if booking.is_journey %}
+          <tr><th style="width:32%">Pick up</th><td>{{ booking.pickup_address or booking.pickup_location }}</td></tr>
+          <tr><th>Drop off</th><td>{{ booking.dropoff_address or booking.dropoff_location }}</td></tr>
+          <tr><th>When</th><td>{{ booking.pickup_at.strftime('%A %d %B %Y, %H:%M') if booking.pickup_at else '—' }}</td></tr>
+          <tr><th>Passengers</th><td>{{ booking.passengers or '—' }}{% if booking.luggage_count %} · {{ booking.luggage_count }} bag(s){% endif %}</td></tr>
+          {% if booking.flight_number %}<tr><th>Flight</th><td>{{ booking.flight_number }}</td></tr>{% endif %}
+        {% else %}
+          <tr><th style="width:32%">Vehicle</th><td>{{ booking.vehicle.name if booking.vehicle else 'Not assigned' }}</td></tr>
+          <tr><th>Collect</th><td>{{ booking.start_date | nice_date }} · {{ booking.pickup_location }}</td></tr>
+          <tr><th>Return</th><td>{{ booking.end_date | nice_date }} · {{ booking.dropoff_location }}</td></tr>
+          <tr><th>Length</th><td>{{ booking.days }} day(s)</td></tr>
+        {% endif %}
+        <tr><th>Fare</th><td><strong style="color:var(--ink)">{{ booking.total_price | money }}</strong></td></tr>
+        {% if booking.deposit_amount %}
+          <tr><th>Refundable deposit</th><td>{{ booking.deposit_amount | money }} — not part of the fare, and no commission is taken on it</td></tr>
+        {% endif %}
+        {% if booking.notes %}<tr><th>Customer notes</th><td>{{ booking.notes }}</td></tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 style="font-size:1.2rem">Customer</h2>
+  {% if show_contact %}
+    <div class="table-scroll">
+      <table class="table--stacked">
+        <tbody>
+          <tr><th style="width:32%">Name</th><td>{{ booking.customer_name }}</td></tr>
+          <tr><th>Email</th><td><a href="mailto:{{ booking.email }}">{{ booking.email }}</a></td></tr>
+          <tr><th>Phone</th><td>{{ booking.phone or '—' }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="small muted" style="margin:0">
+      Contact details are shown once you accept this booking. Until then you can see
+      the journey and the fare, which is what you need to decide.
+    </p>
+  {% endif %}
+</div>
+
+{% set next_steps = {'pending': [('confirmed', 'Accept this booking'), ('cancelled', 'Decline')], 'confirmed': [('completed', 'Mark as completed'), ('cancelled', 'Cancel')]}.get(booking.status, []) %}
+{% if next_steps %}
+  <div class="panel">
+    <h2 style="font-size:1.2rem">What next</h2>
+    {% if booking.status == 'confirmed' %}
+      <p class="small muted">
+        Completing this booking records our commission of {{ operator_rate }}% of the
+        fare. It cannot be undone from here.
+      </p>
+    {% endif %}
+    <div class="actions">
+      {% for value, label in next_steps %}
+        <form method="post" action="{{ url_for('operator.update_status', booking_id=booking.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="status" value="{{ value }}">
+          <button class="btn btn--sm {{ 'btn--primary' if loop.first else 'btn--ghost' }}" type="submit">{{ label }}</button>
+        </form>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+<p style="margin-top:22px"><a href="{{ url_for('operator.bookings') }}">Back to bookings</a></p>
+{% endblock %}

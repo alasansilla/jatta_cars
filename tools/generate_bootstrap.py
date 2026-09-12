@@ -33,6 +33,10 @@ TARGET = os.path.join(ROOT, "supabase", "bootstrap.sql")
 PRIVATE_TABLES = [
     "vehicles", "bookings", "enquiries", "settings", "media_assets",
     "admin_users", "schema_migrations",
+    # Marketplace tables. operators and commission_entries carry business and
+    # personal data; operator_fares is public information but is still served
+    # by the application rather than by PostgREST.
+    "operators", "operator_fares", "commission_entries",
 ]
 
 HEADER = """\
@@ -51,8 +55,8 @@ HEADER = """\
 --   1. Creates the application tables and every index the models declare —
 --      including the unique index on bookings.reference, which is what stops
 --      two bookings sharing a reference and one customer seeing another's.
---   2. Adds the booking overlap constraint (migration 0002) and the query
---      indexes (0003).
+--   2. Adds the booking overlap constraint (migrations 0002 and 0004) and the
+--      query indexes (0003).
 --   3. Locks the tables away from the PostgREST roles.
 --   4. Sets up the media bucket: public to read, server-only to write.
 --   5. Records the migrations as applied.
@@ -157,8 +161,9 @@ commit;
 --   -- must include ix_bookings_reference (unique), ix_bookings_status,
 --   -- ix_enquiries_is_read
 --
---   select conname from pg_constraint where conname = 'bookings_no_overlap';
---   -- one row
+--   select conname, pg_get_constraintdef(oid) from pg_constraint
+--    where conname = 'bookings_no_overlap';
+--   -- one row, and its WHERE clause must mention booking_type = 'rental' 
 --
 --   select id, public, file_size_limit from storage.buckets where id = 'media';
 --   -- public = true, limit 8388608
@@ -166,7 +171,7 @@ commit;
 
 CONSTRAINTS = """
 -- ---------------------------------------------------------------------------
--- 2. Booking integrity (migrations 0002 and 0003)
+-- 2. Booking integrity (migrations 0002, 0003 and 0004)
 -- ---------------------------------------------------------------------------
 
 -- Needed to mix an equality test with a range overlap in one exclusion
@@ -177,6 +182,10 @@ create extension if not exists btree_gist;
 -- This is what actually stops one car being let twice: the range matches the
 -- application's rule exactly — pick-up day inclusive, return day exclusive —
 -- and only pending and confirmed bookings hold a car.
+--
+-- Only a hire holds a car for a range of days (migration 0004). Two taxi rides
+-- on the same car on the same day are ordinary, so journeys are excluded or the
+-- constraint would refuse a perfectly normal day's work.
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'bookings_no_overlap') then
@@ -186,7 +195,7 @@ begin
         vehicle_id with =,
         daterange(start_date, end_date, '[)') with &&
       )
-      where (status in ('pending', 'confirmed'));
+      where (status in ('pending', 'confirmed') and booking_type = 'rental');
   end if;
 end
 $$;
