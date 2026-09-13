@@ -29,8 +29,8 @@
       <a href="{{ url_for('public.about') }}" class="{{ 'is-active' if here == 'public.about' }}">About</a>
       <a href="{{ url_for('public.contact') }}" class="{{ 'is-active' if here == 'public.contact' }}">Contact</a>
       <a href="{{ url_for('public.booking_lookup') }}" class="{{ 'is-active' if here in ['public.booking_lookup', 'public.booking_detail'] }}">My booking</a>
-      <a href="{{ url_for('public.operators') }}" class="{{ 'is-active' if here == 'public.operators' }}">Drive with Jatta</a>
-      <a href="{{ url_for('operator.login') }}" class="{{ 'is-active' if here == 'operator.login' }}">Partner sign in</a>
+      <a href="{{ url_for('public.operators') }}" class="{{ 'is-active' if here == 'public.operators' }}">List your service</a>
+      <a href="{{ url_for('operator.login') }}" class="{{ 'is-active' if here == 'operator.login' }}">Provider login</a>
       <a class="btn btn--primary" href="{{ url_for('dispatch.ride') }}">Request a ride</a>
     </nav>
     {% endif %}

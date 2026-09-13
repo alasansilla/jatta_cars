@@ -7,7 +7,7 @@
     <a href="{{ url_for('operator.dashboard') }}" class="{{ 'is-active' if here == 'operator.dashboard' }}">Dashboard</a>
     <a href="{{ url_for('operator.bookings') }}" class="{{ 'is-active' if here in ['operator.bookings', 'operator.booking_detail'] }}">Bookings</a>
     <a href="{{ url_for('operator.fares') }}" class="{{ 'is-active' if here == 'operator.fares' }}">Fares</a>
-    <a href="{{ url_for('dispatch.drive') }}">Driver mode</a>
+    <a href="{{ url_for('dispatch.drive') }}">Start driving</a>
     <span class="spacer"></span>
     <a href="{{ url_for('public.index') }}">View site</a>
     <a href="{{ url_for('operator.logout') }}">Sign out{% if operator %} ({{ operator.name }}){% endif %}</a>
