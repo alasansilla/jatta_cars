@@ -5,13 +5,13 @@
 <section class="section"><div class="wrap"><p class="eyebrow">Ride • The Gambia</p><h1>Where are you going?</h1>
 <p>Choose your pickup and destination. Check the estimated fare before requesting a driver.</p>
 <div class="grid grid--2"><form id="ride-form" class="booking-panel">
-<label for="pickup_address">Pickup</label><input id="pickup_address" required placeholder="Hotel, address or landmark" autocomplete="off"><div id="pickup-results"></div>
-<label for="dropoff_address">Destination</label><input id="dropoff_address" required placeholder="Where to?" autocomplete="off"><div id="dropoff-results"></div>
+<label for="pickup_address">Pickup</label><input type="text" id="pickup_address" required placeholder="Hotel, address or landmark" autocomplete="off"><div id="pickup-results"></div>
+<label for="dropoff_address">Destination</label><input type="text" id="dropoff_address" required placeholder="Where to?" autocomplete="off"><div id="dropoff-results"></div>
 <label for="passengers">Passengers</label><input type="number" id="passengers" min="1" max="8" value="1">
 <button class="btn btn--primary" type="button" id="estimate">See estimated fare</button>
 <p id="ride-message" role="status" aria-live="polite">Select addresses from the search results.</p>
 <div id="contact-fields" hidden>
-<label for="customer_name">Your name</label><input id="customer_name" autocomplete="name">
+<label for="customer_name">Your name</label><input type="text" id="customer_name" autocomplete="name">
 <label for="email">Email</label><input id="email" type="email" autocomplete="email">
 <label for="phone">Phone number</label><input id="phone" type="tel" autocomplete="tel">
 <button class="btn btn--primary" id="request">Request ride</button>
