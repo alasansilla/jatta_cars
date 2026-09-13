@@ -182,6 +182,18 @@ CREATE INDEX IF NOT EXISTS ix_bookings_operator_id ON bookings (operator_id);
 CREATE UNIQUE INDEX IF NOT EXISTS ix_bookings_reference ON bookings (reference);
 CREATE INDEX IF NOT EXISTS ix_bookings_status ON bookings (status);
 
+CREATE TABLE IF NOT EXISTS booking_reviews (
+	id SERIAL NOT NULL,
+	booking_id INTEGER NOT NULL,
+	rating INTEGER NOT NULL,
+	comment TEXT NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT review_rating_range CHECK (rating >= 1 AND rating <= 5),
+	UNIQUE (booking_id),
+	FOREIGN KEY(booking_id) REFERENCES bookings (id)
+);
+
 CREATE TABLE IF NOT EXISTS commission_entries (
 	id SERIAL NOT NULL,
 	booking_id INTEGER NOT NULL,
@@ -266,7 +278,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['vehicles', 'bookings', 'enquiries', 'settings', 'media_assets', 'admin_users', 'schema_migrations', 'operators', 'operator_fares', 'commission_entries', 'driver_states'] loop
+  foreach t in array array['vehicles', 'bookings', 'enquiries', 'settings', 'media_assets', 'admin_users', 'schema_migrations', 'operators', 'operator_fares', 'commission_entries', 'driver_states', 'booking_reviews'] loop
     if exists (select 1 from pg_tables where schemaname = 'public' and tablename = t) then
       execute format('alter table public.%I enable row level security', t);
       execute format('revoke all on table public.%I from anon, authenticated', t);
@@ -327,7 +339,8 @@ insert into public.schema_migrations (version, name, applied_at) values
   ('0003', 'booking lookup indexes', now()),
   ('0004', 'marketplace: operators, journeys and commission', now()),
   ('0005', 'route planning: coordinates, distance and distance-based fares', now()),
-  ('0006', 'driver availability and dispatch', now())
+  ('0006', 'driver availability and dispatch', now()),
+  ('0007', 'verified completed booking reviews', now())
 on conflict (version) do nothing;
 
 alter table public.schema_migrations enable row level security;

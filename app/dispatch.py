@@ -4,7 +4,8 @@ from decimal import Decimal
 import secrets
 from flask import Blueprint, abort, jsonify, render_template, request, session, redirect, url_for
 from sqlalchemy import update
-from .models import db, Booking, DriverState, OperatorFare, Operator, Vehicle
+from .models import db, Booking, DriverState, OperatorFare, Operator, Vehicle, BookingReview
+from sqlalchemy.exc import IntegrityError
 from .operator import _current, login_required
 from .public import hold_until_published, _coordinate, _within_rate_limit
 from .forms import validate_customer
@@ -88,13 +89,23 @@ def estimate():
         return jsonify(route=leg.as_dict() if leg else None, quote=None,
             error='No priced ride is available right now. Try a scheduled journey.' if leg else
             'Route estimates are unavailable. You can request a scheduled quote instead.')
-    amount, fare, state = choices[0]
     token = secrets.token_urlsafe(24)
-    session['ride_quote'] = dict(token=token, fare_id=fare.id, vehicle_id=state.vehicle_id,
-        amount=str(amount), points=points, distance=leg.distance_m, duration=leg.duration_s,
+    # Keep only route context in the signed session. Every chosen fare and driver
+    # is priced and checked again on submission; the customer supplies no price.
+    session['ride_quote'] = dict(token=token, points=points, distance=leg.distance_m, duration=leg.duration_s,
         provider=leg.provider, passengers=passengers, expires=(datetime.utcnow()+timedelta(minutes=2)).timestamp())
-    return jsonify(route=leg.as_dict(), quote=float(amount), token=token,
-                   currency='GMD', message='Estimated fare. Driver availability is checked when you request.')
+    cards=[]
+    for amount, fare, state in choices:
+        car=db.session.get(Vehicle,state.vehicle_id)
+        cards.append(dict(fare_id=fare.id, vehicle_id=car.id, price=float(amount),
+            driver=fare.operator.contact_name or fare.operator.name,
+            operator=fare.operator.name, vehicle=car.name, seats=car.seats,
+            image=url_for('static',filename=car.image_url) if car.image_url.startswith('img/') else None,
+            profile=url_for('dispatch.driver_profile',operator_id=fare.operator_id),
+            car_profile=url_for('public.vehicle_detail',vehicle_id=car.id),
+            **review_summary(operator_id=fare.operator_id)))
+    return jsonify(route=leg.as_dict(), choices=cards, quote=(cards[0]['price'] if cards else None), token=token,
+                   currency='GMD', message='Choose your driver. Availability is checked when you request.')
 
 
 @bp.post('/ride/request')
@@ -108,16 +119,33 @@ def request_ride():
     dropoff=str(data.get('dropoff_address','')).strip()[:240]
     if len(pickup)<3 or len(dropoff)<3: errors.append('Enter pickup and destination.')
     if errors: return jsonify(error=' '.join(errors)),400
-    fare=db.session.get(OperatorFare,quote['fare_id'])
+    eligible_offers=offers(quote['distance'],quote['passengers'])
+    try:
+        fare_id=int(data.get('fare_id'))
+        vehicle_id=int(data.get('vehicle_id'))
+        expected=Decimal(str(data.get('expected_price')))
+        if not expected.is_finite(): raise ValueError()
+        eligible=next((row for row in eligible_offers
+                       if row[1].id==fare_id and row[2].vehicle_id==vehicle_id),None)
+    except (TypeError, ValueError, ArithmeticError):
+        # Keep older clients working while the public UI uses explicit choice cards.
+        # New requests should always send the selected fare and vehicle.
+        if not eligible_offers:
+            return jsonify(error='Your selected driver is no longer available. Refresh the choices.'),409
+        expected, fare, state = eligible_offers[0]
+        fare_id, vehicle_id, eligible = fare.id, state.vehicle_id, (expected, fare, state)
+    if eligible is None:
+        return jsonify(error='Your selected driver is no longer available. Refresh the choices.'),409
+    fare=db.session.get(OperatorFare,fare_id)
     if not fare or not fare.is_bookable: return jsonify(error='This ride is no longer available.'),409
     state=db.session.get(DriverState,fare.operator_id)
-    vehicle=db.session.get(Vehicle, quote['vehicle_id'])
+    vehicle=db.session.get(Vehicle, vehicle_id)
     if not state or not vehicle or not vehicle.is_active or vehicle.operator_id != fare.operator_id:
         return jsonify(error='Driver unavailable. Get another estimate.'),409
     now=datetime.utcnow()
     # Price is taken only from the signed server session; recheck the published rate.
     amount,_=fare.quote(quote['distance'])
-    if amount is None or amount != Decimal(quote['amount']):
+    if amount is None or amount != expected:
         return jsonify(error='The fare changed. Get another estimate.'),409
     b=Booking(reference=Booking.new_reference(),booking_type='ride',operator_id=fare.operator_id,
         fare_id=fare.id,vehicle_id=vehicle.id, customer_name=customer['customer_name'],
@@ -138,6 +166,65 @@ def request_ride():
     db.session.commit()
     session.pop('ride_quote',None);session['booking_reference']=b.reference
     return jsonify(url=url_for('dispatch.track',reference=b.reference)),201
+
+
+def reviews_for(operator_id=None, vehicle_id=None):
+    query=BookingReview.query.join(Booking).filter(Booking.status=='completed')
+    if vehicle_id is not None:
+        query=query.filter(Booking.vehicle_id==vehicle_id,Booking.booking_type=='rental')
+    elif operator_id is not None:
+        query=query.filter(Booking.operator_id==operator_id)
+    return query
+
+
+def review_summary(operator_id=None, vehicle_id=None):
+    rows=reviews_for(operator_id,vehicle_id).all()
+    return dict(review_count=len(rows), rating=round(sum(r.rating for r in rows)/len(rows),1) if rows else None)
+
+
+@bp.app_context_processor
+def profile_helpers():
+    return dict(review_summary=review_summary, reviews_for=reviews_for)
+
+
+@bp.get('/drivers')
+def drivers():
+    query=(request.args.get('q') or '').strip()[:120]
+    operators=Operator.query.filter_by(status='approved').order_by(Operator.name).all()
+    if query:
+        operators=[op for op in operators if query.casefold() in
+                   (op.name+' '+(op.contact_name or '')).casefold()]
+    return render_template('dispatch/drivers.html',operators=operators,query=query)
+
+
+@bp.get('/drivers/<int:operator_id>')
+def driver_profile(operator_id):
+    op=Operator.query.filter_by(id=operator_id,status='approved').first_or_404()
+    return render_template('dispatch/profile.html',profile=op,
+        cars=Vehicle.query.filter_by(operator_id=op.id,is_active=True).all())
+
+
+@bp.route('/booking/<reference>/review',methods=['GET','POST'])
+def review(reference):
+    if session.get('booking_reference') != reference: abort(404)
+    booking=Booking.query.filter_by(reference=reference).first_or_404()
+    if booking.status != 'completed': abort(403)
+    existing=BookingReview.query.filter_by(booking_id=booking.id).first()
+    error=None
+    if request.method=='POST' and existing is None:
+        try:
+            rating=int(request.form.get('rating',''))
+            if not 1<=rating<=5: raise ValueError()
+        except ValueError:
+            rating=None;error='Choose a rating from 1 to 5.'
+        comment=(request.form.get('comment') or '').strip()
+        if not 3<=len(comment)<=2000: error='Write a review between 3 and 2,000 characters.'
+        if error is None:
+            db.session.add(BookingReview(booking_id=booking.id,rating=rating,comment=comment))
+            try: db.session.commit()
+            except IntegrityError: db.session.rollback()
+            return redirect(url_for('dispatch.review',reference=reference))
+    return render_template('dispatch/review.html',booking=booking,existing=existing,error=error)
 
 
 def customer_booking(reference):

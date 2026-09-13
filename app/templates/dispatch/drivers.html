@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}Drivers on Jatta{% endblock %}
+{% block content %}
+<section class="section"><div class="wrap">
+  <p class="eyebrow">Ride with confidence</p><h1>Choose a driver</h1>
+  <p>Browse approved Jatta partners, compare reviews and choose someone you know.</p>
+  <form method="get" class="field-row" style="max-width:620px;margin:26px 0"><div class="field" style="flex:1"><label for="q">Search drivers or companies</label><input id="q" name="q" value="{{ query }}" placeholder="Name or company"></div><button class="btn btn--primary" type="submit" style="align-self:end">Search</button></form>
+  <div class="grid grid--2">{% for profile in operators %}<article class="panel"><p class="eyebrow">Jatta partner</p><h2 style="margin:0 0 8px">{{ profile.contact_name or profile.name }}</h2><p class="small muted">{{ profile.name }}{% if profile.service_area %} · {{ profile.service_area }}{% endif %}</p>{% set summary=review_summary(operator_id=profile.id) %}<p>{{ summary.rating or 'New' }}{% if summary.rating %} / 5{% endif %} · {{ summary.review_count }} review{{ 's' if summary.review_count != 1 }}</p><a class="btn btn--ghost" href="{{ url_for('dispatch.driver_profile',operator_id=profile.id) }}">View profile</a></article>{% else %}<p>No approved drivers match that search yet.</p>{% endfor %}</div>
+</div></section>
+{% endblock %}

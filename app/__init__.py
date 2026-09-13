@@ -54,11 +54,35 @@ def create_app(config_object=Config):
     app.register_blueprint(operator_bp, url_prefix="/operator")
 
     register_template_helpers(app)
+    register_marketplace_helpers(app)
     register_error_handlers(app)
     register_health(app)
     register_cli(app)
 
     return app
+
+
+def register_marketplace_helpers(app):
+    """Make public driver and car review summaries available to every page."""
+    @app.context_processor
+    def marketplace_helpers():
+        from .models import Booking, BookingReview
+
+        def review_summary(operator_id=None, vehicle_id=None):
+            query = BookingReview.query.join(Booking).filter(Booking.status == "completed")
+            if vehicle_id is not None:
+                query = query.filter(Booking.vehicle_id == vehicle_id,
+                                      Booking.booking_type == "rental")
+            elif operator_id is not None:
+                query = query.filter(Booking.operator_id == operator_id)
+            rows = query.all()
+            return {
+                "review_count": len(rows),
+                "rating": round(sum(row.rating for row in rows) / len(rows), 1)
+                if rows else None,
+            }
+
+        return {"review_summary": review_summary}
 
 
 def register_health(app):

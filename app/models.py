@@ -547,6 +547,17 @@ class MediaAsset(db.Model):
         return f"<MediaAsset {self.filename}>"
 
 
+class BookingReview(db.Model):
+    __tablename__ = 'booking_reviews'
+    id = db.Column(db.Integer, primary_key=True)
+    booking_id = db.Column(db.Integer, db.ForeignKey('bookings.id'), nullable=False, unique=True)
+    rating = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    booking = db.relationship('Booking')
+    __table_args__ = (db.CheckConstraint('rating >= 1 AND rating <= 5', name='review_rating_range'),)
+
+
 class DriverState(db.Model):
     """One dispatch vehicle per signed-in operator, with expiring GPS updates."""
     __tablename__ = "driver_states"

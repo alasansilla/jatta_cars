@@ -3,11 +3,12 @@
 {% block content %}
 <div class="wrap">
   <div class="panel auth-card">
-    <p class="eyebrow">For operators</p>
-    <h1 style="font-size:1.8rem">Sign in</h1>
+    <p class="eyebrow">Jatta partners</p>
+    <h1 style="font-size:1.8rem">Partner sign in</h1>
     <p class="small muted">
-      Only approved operators can sign in. If you have applied and not heard back,
-      your application is still being reviewed.
+      One account covers both roles: the operator manages cars, fares and bookings;
+      the driver uses the Driver mode screen to go online and accept trips. Only
+      approved partners can sign in.
     </p>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -22,7 +23,7 @@
       <button class="btn btn--primary btn--block" type="submit" style="margin-top:24px">Sign in</button>
     </form>
     <p class="small muted center" style="margin:22px 0 0">
-      Not listed yet? <a href="{{ url_for('public.operators') }}">Apply to join</a>.
+      Not a Jatta partner yet? <a href="{{ url_for('public.operators') }}">Apply to join</a>.
     </p>
   </div>
 </div>

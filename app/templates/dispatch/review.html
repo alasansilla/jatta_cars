@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}Review your ride{% endblock %}
+{% block content %}
+<section class="section"><div class="wrap"><div class="panel" style="max-width:620px"><p class="eyebrow">Ride completed</p><h1>How was your trip?</h1><p>Reference {{ booking.reference }}. Your review helps tourists choose reliable drivers.</p>{% if existing %}<p class="lede">You rated this trip {{ existing.rating }} / 5.</p><p>{{ existing.comment }}</p>{% else %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="field"><label for="rating">Rating</label><select id="rating" name="rating" required><option value="">Choose a rating</option>{% for n in range(5,0,-1) %}<option value="{{ n }}">{{ n }} / 5</option>{% endfor %}</select></div><div class="field"><label for="comment">Review</label><textarea id="comment" name="comment" rows="5" minlength="3" maxlength="2000" required></textarea></div>{% if error %}<p role="alert">{{ error }}</p>{% endif %}<button class="btn btn--primary" type="submit">Submit review</button></form>{% endif %}</div></div></section>
+{% endblock %}

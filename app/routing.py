@@ -56,6 +56,11 @@ class Route:
     def duration_minutes(self):
         return int(round(self.duration_s / 60))
 
+    @property
+    def geometry_known(self):
+        """True when the provider actually told us which roads the trip uses."""
+        return len(self.geometry) >= 2
+
     def as_dict(self):
         return {
             "distance_m": self.distance_m,
@@ -64,11 +69,21 @@ class Route:
             "duration_minutes": self.duration_minutes,
             "provider": self.provider,
             "geometry": self.geometry,
+            "geometry_known": self.geometry_known,
         }
 
 
 def _config(key, default=None):
     return current_app.config.get(key, default)
+
+
+def _finite(value):
+    """A real number, or None. Rejects NaN and infinity as well as rubbish."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 def geocoding_available():
@@ -222,22 +237,31 @@ def _as_route(payload, provider):
     if distance_m <= 0 or duration_s < 0:
         raise RoutingUnavailable("the provider gave an impossible distance")
 
-    geometry = candidate.get("geometry") or {}
+    # A bad shape must not cost us a good distance and duration. Anything
+    # unreadable here leaves the route without geometry, and the page then says
+    # the road is unknown rather than drawing a line and calling it the route.
+    geometry = candidate.get("geometry")
     points = []
     if isinstance(geometry, dict):
-        coordinates = geometry.get("coordinates", [])
+        coordinates = geometry.get("coordinates") or []
         if geometry.get("type") == "MultiLineString":
-            coordinates = [point for line in coordinates for point in line]
-        if geometry.get("type") in ("LineString", "MultiLineString"):
-            for point in coordinates[:20000]:
-                try:
-                    lng, lat = float(point[0]), float(point[1])
-                    if not (math.isfinite(lat) and math.isfinite(lng) and abs(lat) <= 90 and abs(lng) <= 180):
-                        raise ValueError()
-                    points.append([lat, lng])
-                except (TypeError, ValueError, IndexError):
-                    raise RoutingUnavailable("invalid route geometry")
-    return Route(distance_m=distance_m, duration_s=duration_s, provider=provider, geometry=points)
+            coordinates = [point for line in coordinates
+                           if isinstance(line, (list, tuple)) for point in line]
+        elif geometry.get("type") != "LineString":
+            coordinates = []
+        for point in coordinates[:20000]:
+            if not isinstance(point, (list, tuple)) or len(point) < 2:
+                points = []
+                break
+            # GeoJSON orders coordinates lon, lat.
+            lng, lat = _finite(point[0]), _finite(point[1])
+            if lat is None or lng is None or abs(lat) > 90 or abs(lng) > 180:
+                points = []
+                break
+            points.append([lat, lng])
+
+    return Route(distance_m=distance_m, duration_s=duration_s, provider=provider,
+                 geometry=points)
 
 
 def route(origin, destination):

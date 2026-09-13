@@ -307,11 +307,18 @@
           line = L.polyline(data.route.geometry, {weight: 5}).addTo(map);
           map.fitBounds(line.getBounds().pad(0.15));
         }
+        var shapeKnown = data.route.geometry_known;
         summary.innerHTML =
           "<strong>" + data.route.distance_km + " km</strong> · about <strong>" +
           data.route.duration_minutes + " min</strong> by road" +
           "<span class=\"route-summary__source\"> (estimate from " +
-          data.route.provider + ")</span>";
+          data.route.provider + ")</span>" +
+          /* The distance is the provider's road distance either way. Only the
+             drawn shape is missing, and saying so is better than leaving a bare
+             map that looks broken. */
+          (shapeKnown ? "" :
+            "<span class=\"route-summary__source\"><br>The exact roads are not " +
+            "available to draw, so only the two points are shown.</span>");
 
         if (data.quote !== null && data.quote !== undefined) {
           fareAmount.textContent = money(data.quote);

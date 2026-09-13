@@ -34,6 +34,8 @@
         </h1>
         <p class="lede" data-edit="vehicle:{{ vehicle.id }}:description"
            data-edit-placeholder="Describe this car — who is it for, what is it like to drive?">{{ vehicle.description or '' }}</p>
+        {% set summary=review_summary(vehicle_id=vehicle.id) %}
+        <p class="small muted">{% if summary.rating %}{{ summary.rating }} / 5{% else %}New listing{% endif %} · {{ summary.review_count }} rental review{{ 's' if summary.review_count != 1 }}</p>
       </div>
 
       {% if vehicle.feature_list or show_editbar %}

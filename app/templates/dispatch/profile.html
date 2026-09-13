@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}{{ profile.contact_name or profile.name }} — Jatta driver{% endblock %}
+{% block content %}
+<section class="section"><div class="wrap"><p class="eyebrow">Driver profile</p><h1>{{ profile.contact_name or profile.name }}</h1><p>{{ profile.name }}{% if profile.service_area %} · {{ profile.service_area }}{% endif %}</p>{% set summary=review_summary(operator_id=profile.id) %}<p class="lede">{{ summary.rating or 'New partner' }}{% if summary.rating %} / 5{% endif %} from {{ summary.review_count }} review{{ 's' if summary.review_count != 1 }}</p><h2>Cars available</h2><div class="grid grid--2">{% for vehicle in cars %}{% include 'partials/vehicle_card.html' %}{% else %}<p>No cars are listed yet.</p>{% endfor %}</div><p style="margin-top:26px"><a href="{{ url_for('dispatch.ride') }}">Request a ride</a> · <a href="{{ url_for('dispatch.drivers') }}">Back to drivers</a></p></div></section>
+{% endblock %}

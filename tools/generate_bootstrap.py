@@ -36,7 +36,7 @@ PRIVATE_TABLES = [
     # Marketplace tables. operators and commission_entries carry business and
     # personal data; operator_fares is public information but is still served
     # by the application rather than by PostgREST.
-    "operators", "operator_fares", "commission_entries", "driver_states",
+    "operators", "operator_fares", "commission_entries", "driver_states", "booking_reviews",
 ]
 
 HEADER = """\
