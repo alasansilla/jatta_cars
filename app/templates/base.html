@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
 </head>
 <body>
 {% if show_editbar %}{% include "partials/editbar.html" %}{% endif %}
@@ -31,5 +32,6 @@
 
 {% include "partials/footer.html" %}
 {% if show_editbar %}<script src="{{ url_for('static', filename='js/editor.js') }}" defer></script>{% endif %}
+{% block scripts %}{% endblock %}
 </body>
 </html>

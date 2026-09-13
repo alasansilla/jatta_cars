@@ -340,6 +340,17 @@ def update_booking_status(booking_id):
         )
         return redirect(url_for("admin.bookings"))
 
+    if new_status == "completed" and booking.needs_quote:
+        # The same rule the operator area enforces: completing is what earns
+        # commission, and there is nothing to take a share of until somebody has
+        # agreed a fare.
+        flash(
+            f"Booking {booking.reference} has no fare yet. Set one before "
+            f"completing it.",
+            "error",
+        )
+        return redirect(request.referrer or url_for("admin.bookings"))
+
     booking.status = new_status
     # Commission is earned by completing a booking and given back if that is
     # undone. sync_for does both, so this caller cannot get it half right.

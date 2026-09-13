@@ -15,9 +15,9 @@
       {% if fare.notes %}<p class="small muted">{{ fare.notes }}</p>{% endif %}
       <div class="card__footer">
         <div>
-          <div class="price">{{ fare.price | money }}</div>
+          <div class="price">{% if fare.pricing_model == "distance" %}Distance-based fare{% else %}{{ fare.price | money }}{% endif %}</div>
           <span class="small muted">set by {{ fare.operator.name }}</span>
-          {% if approx_prices %}<div class="small muted approx">{{ fare.price | approx }}</div>{% endif %}
+          {% if approx_prices and fare.price is not none %}<div class="small muted approx">{{ fare.price | approx }}</div>{% endif %}
         </div>
         <a class="btn btn--primary btn--sm" href="{{ url_for('public.ride_detail', fare_id=fare.id) }}">Request</a>
       </div>
@@ -58,7 +58,7 @@
     <section class="section section--soft">
       <div class="wrap">
         <div class="section-head">
-          <h2 data-edit="transfers_heading">{{ site.transfers_heading }}</h2>
+          <h2 id="airport" data-edit="transfers_heading">{{ site.transfers_heading }}</h2>
           <p data-edit="transfers_intro">{{ site.transfers_intro }}</p>
         </div>
         <div class="grid grid--3">{% for fare in transfers %}{{ fare_card(fare) }}{% endfor %}</div>

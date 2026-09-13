@@ -36,7 +36,7 @@ PRIVATE_TABLES = [
     # Marketplace tables. operators and commission_entries carry business and
     # personal data; operator_fares is public information but is still served
     # by the application rather than by PostgREST.
-    "operators", "operator_fares", "commission_entries",
+    "operators", "operator_fares", "commission_entries", "driver_states",
 ]
 
 HEADER = """\
@@ -241,7 +241,7 @@ def render():
             private_tables=", ".join(f"'{name}'" for name in PRIVATE_TABLES),
             migration_rows=migration_rows,
         ))
-        return "".join(parts)
+        return "\n".join(line.rstrip() for line in "".join(parts).splitlines()) + "\n"
 
 
 def main():

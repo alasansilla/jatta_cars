@@ -47,6 +47,8 @@ def create_app(config_object=Config):
     from .admin import bp as admin_bp
     from .operator import bp as operator_bp
 
+    from .dispatch import bp as dispatch_bp
+    app.register_blueprint(dispatch_bp)
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(operator_bp, url_prefix="/operator")

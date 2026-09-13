@@ -1,4 +1,5 @@
 """The marketplace: operators, journeys, commission and who may see what."""
+import logging
 import unittest
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -12,6 +13,10 @@ from config import Config
 
 
 class TestConfig(Config):
+    GEOCODER_URL = ''
+    ROUTER_URL = ''
+    GEOCODER_API_KEY = ''
+    ROUTER_API_KEY = ''
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     SQLALCHEMY_ENGINE_OPTIONS = {}
@@ -399,3 +404,299 @@ class RentalStillWorksTests(MarketplaceCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --- maps, route planning and what they may reveal --------------------------
+
+class RouteLookupTests(MarketplaceCase):
+    """The lookup endpoints are a proxy, so they must not leak or be abusable."""
+
+    def setUp(self):
+        super().setUp()
+        self.distance_fare = OperatorFare(
+            operator_id=self.operator.id, kind="ride", title="Metered ride",
+            from_location="Kololi", to_location="Anywhere",
+            pricing_model="distance", base_price=Decimal("500"),
+            per_km=Decimal("60"), minimum_price=Decimal("1000"), is_active=True)
+        db.session.add(self.distance_fare)
+        db.session.commit()
+
+    def test_lookups_are_quiet_when_no_provider_is_configured(self):
+        """Unset is the default, and must degrade rather than error."""
+        response = self.client.get("/api/geocode?q=Kololi")
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertFalse(body["available"])
+        self.assertEqual(body["places"], [])
+
+    def test_routing_unconfigured_leaves_a_distance_fare_unpriced(self):
+        response = self.client.get(
+            f"/api/route?fare_id={self.distance_fare.id}"
+            "&from_lat=13.44&from_lng=-16.70&to_lat=13.45&to_lng=-16.58")
+        body = response.get_json()
+        self.assertFalse(body["available"])
+        self.assertIsNone(body["quote"], "an unmeasured distance fare must not be priced")
+        self.assertEqual(body["basis"], "manual")
+
+    def test_a_fixed_fare_still_prices_without_any_routing(self):
+        response = self.client.get(
+            f"/api/route?fare_id={self.fare.id}"
+            "&from_lat=13.44&from_lng=-16.70&to_lat=13.45&to_lng=-16.58")
+        body = response.get_json()
+        self.assertEqual(Decimal(str(body["quote"])), Decimal("2500.00"))
+        self.assertEqual(body["basis"], "fixed")
+
+    def test_nonsense_coordinates_are_refused(self):
+        for query in ("from_lat=999&from_lng=0&to_lat=1&to_lng=1",
+                      "from_lat=13&from_lng=-16&to_lat=abc&to_lng=1",
+                      "from_lat=13&from_lng=-16&to_lat=1"):
+            response = self.client.get(f"/api/route?fare_id={self.fare.id}&{query}")
+            self.assertEqual(response.status_code, 400, query)
+
+    def test_a_hidden_fare_cannot_be_probed_through_the_route_endpoint(self):
+        """The endpoint must not confirm an unlisted operator's routes exist."""
+        self.operator.status = "suspended"
+        db.session.commit()
+        response = self.client.get(
+            f"/api/route?fare_id={self.fare.id}"
+            "&from_lat=13.44&from_lng=-16.70&to_lat=13.45&to_lng=-16.58")
+        self.assertEqual(response.status_code, 404)
+
+    def test_the_page_carries_no_api_key(self):
+        """Keys live on the server. A page is public by definition."""
+        class Keyed(TestConfig):
+            GEOCODER_URL = "https://example.invalid/search?q={query}&key={key}"
+            GEOCODER_API_KEY = "SECRET-GEOCODER-KEY"
+            ROUTER_URL = "https://example.invalid/route/{coords}?key={key}"
+            ROUTER_API_KEY = "SECRET-ROUTER-KEY"
+
+        app = create_app(Keyed)
+        with app.app_context():
+            db.create_all()
+            save_settings({"site_live": True})
+            operator = Operator(name="K", slug="k", email="k@example.com",
+                                status="approved")
+            db.session.add(operator)
+            db.session.commit()
+            fare = OperatorFare(operator_id=operator.id, kind="ride", title="R",
+                                from_location="A", to_location="B",
+                                pricing_model="fixed", price=Decimal("100"),
+                                is_active=True)
+            db.session.add(fare)
+            db.session.commit()
+            page = app.test_client().get(f"/rides/{fare.id}").get_data(as_text=True)
+            self.assertNotIn("SECRET-GEOCODER-KEY", page)
+            self.assertNotIn("SECRET-ROUTER-KEY", page)
+            self.assertNotIn("Bearer", page)
+            db.session.remove()
+            db.drop_all()
+
+    def test_map_settings_handed_to_the_page_contain_no_secret(self):
+        from app.routing import map_settings
+
+        with self.app.test_request_context():
+            settings = map_settings()
+        self.assertNotIn("key", " ".join(settings).lower())
+        self.assertIn("tile_url", settings)
+
+    def test_a_customers_address_is_never_written_to_a_log(self):
+        """Failures are logged; the address the customer typed is not."""
+        class Broken(TestConfig):
+            GEOCODER_URL = "https://example.invalid/search?q={query}"
+
+        app = create_app(Broken)
+        records = []
+        with app.app_context():
+            db.create_all()
+            save_settings({"site_live": True})
+            handler = logging.Handler()
+            handler.emit = lambda record: records.append(record.getMessage())
+            app.logger.addHandler(handler)
+            app.logger.propagate = False      # capture it, do not print it
+            app.test_client().get("/api/geocode?q=12 Hidden Lane, Kololi")
+            app.logger.removeHandler(handler)
+            db.session.remove()
+            db.drop_all()
+
+        joined = " ".join(records)
+        self.assertNotIn("Hidden Lane", joined, "the typed address reached a log")
+
+    def test_the_lookup_endpoints_are_rate_limited(self):
+        """Otherwise this is a free open proxy onto somebody's paid quota."""
+        class Configured(TestConfig):
+            GEOCODER_URL = "https://example.invalid/search?q={query}"
+
+        app = create_app(Configured)
+        with app.app_context():
+            db.create_all()
+            save_settings({"site_live": True})
+            client = app.test_client()
+            # Each call tries an unreachable host and logs a warning. That is the
+            # behaviour under test elsewhere; here it is just noise that would
+            # bury a real failure.
+            logging.disable(logging.CRITICAL)
+            try:
+                statuses = {client.get("/api/geocode?q=Kololi beach").status_code
+                            for _ in range(60)}
+            finally:
+                logging.disable(logging.NOTSET)
+            db.session.remove()
+            db.drop_all()
+        self.assertIn(429, statuses, "no rate limit on the geocoding proxy")
+
+
+class RoutePricingTests(MarketplaceCase):
+    """Distance fares are priced from a measured route, never from the form."""
+
+    def setUp(self):
+        super().setUp()
+        self.distance_fare = OperatorFare(
+            operator_id=self.operator.id, kind="ride", title="Metered ride",
+            from_location="Kololi", to_location="Anywhere",
+            pricing_model="distance", base_price=Decimal("500"),
+            per_km=Decimal("60"), minimum_price=Decimal("1000"), is_active=True)
+        db.session.add(self.distance_fare)
+        db.session.commit()
+
+    def _request(self, fare, **extra):
+        data = {
+            "pickup_date": (date.today() + timedelta(days=4)).isoformat(),
+            "pickup_time": "09:30",
+            "pickup_address": "Senegambia strip",
+            "dropoff_address": "Banjul airport",
+            "passengers": "2",
+            "customer_name": "Awa Ceesay", "email": "awa@example.com",
+            "phone": "+220700111",
+        }
+        data.update(extra)
+        return self.client.post(f"/rides/{fare.id}/request", data=data)
+
+    def test_an_unmeasurable_distance_fare_is_stored_unpriced(self):
+        """Null, never zero: zero would read as free and earn nothing."""
+        self._request(self.distance_fare)
+        booking = Booking.query.one()
+        self.assertIsNone(booking.total_price)
+        self.assertTrue(booking.needs_quote)
+        self.assertEqual(booking.quote_basis, "manual")
+
+    def test_a_posted_distance_cannot_talk_the_fare_down(self):
+        """The server measures; it does not take the browser's word for it."""
+        self._request(self.distance_fare, route_distance_m="10",
+                      total_price="1", quote_basis="distance")
+        booking = Booking.query.one()
+        self.assertIsNone(booking.route_distance_m)
+        self.assertIsNone(booking.total_price)
+
+    def test_coordinates_are_kept_when_the_page_supplies_them(self):
+        self._request(self.fare, pickup_lat="13.4400", pickup_lng="-16.7000",
+                      dropoff_lat="13.3380", dropoff_lng="-16.6520")
+        booking = Booking.query.one()
+        self.assertEqual(float(booking.pickup_lat), 13.44)
+        self.assertEqual(float(booking.dropoff_lng), -16.652)
+        # Typed text is kept too; it is what the customer actually wrote.
+        self.assertEqual(booking.pickup_address, "Senegambia strip")
+
+    def test_rubbish_coordinates_are_dropped_not_stored(self):
+        self._request(self.fare, pickup_lat="999", pickup_lng="abc")
+        booking = Booking.query.one()
+        self.assertIsNone(booking.pickup_lat)
+        self.assertIsNone(booking.pickup_lng)
+
+    def test_a_fixed_fare_is_unaffected_by_having_no_route(self):
+        self._request(self.fare)
+        booking = Booking.query.one()
+        self.assertEqual(Decimal(str(booking.total_price)), Decimal("2500.00"))
+        self.assertEqual(booking.quote_basis, "fixed")
+
+    def test_an_operator_cannot_complete_an_unpriced_job(self):
+        self._request(self.distance_fare)
+        booking = Booking.query.one()
+        booking.status = "confirmed"
+        db.session.commit()
+
+        client = self._sign_in_operator()
+        token = self._csrf(client)
+        client.post(f"/operator/bookings/{booking.id}/status",
+                    data={"csrf_token": token, "status": "completed"})
+
+        refreshed = db.session.get(Booking, booking.id)
+        self.assertEqual(refreshed.status, "confirmed")
+        self.assertIsNone(refreshed.commission)
+
+    def test_an_operator_sets_a_fare_and_can_then_complete(self):
+        self._request(self.distance_fare)
+        booking = Booking.query.one()
+        booking.status = "confirmed"
+        db.session.commit()
+
+        client = self._sign_in_operator()
+        token = self._csrf(client)
+        client.post(f"/operator/bookings/{booking.id}/fare",
+                    data={"csrf_token": token, "total_price": "1800"})
+        self.assertEqual(Decimal(str(db.session.get(Booking, booking.id).total_price)),
+                         Decimal("1800.00"))
+
+        client.post(f"/operator/bookings/{booking.id}/status",
+                    data={"csrf_token": token, "status": "completed"})
+        refreshed = db.session.get(Booking, booking.id)
+        self.assertEqual(refreshed.status, "completed")
+        self.assertEqual(Decimal(str(refreshed.commission.amount)), Decimal("90.00"))
+
+    def test_an_operator_cannot_price_another_operators_job(self):
+        rival_booking = self._journey(operator=self.rival)
+        client = self._sign_in_operator()
+        token = self._csrf(client)
+        response = client.post(f"/operator/bookings/{rival_booking.id}/fare",
+                               data={"csrf_token": token, "total_price": "1"})
+        self.assertEqual(response.status_code, 404)
+
+    def test_an_admin_cannot_complete_an_unpriced_job_either(self):
+        self._request(self.distance_fare)
+        booking = Booking.query.one()
+        booking.status = "confirmed"
+        db.session.commit()
+
+        admin = self.app.test_client()
+        admin.post("/admin/login", data={"username": "admin",
+                                         "password": "admin-password-long"})
+        admin.get("/admin/bookings")
+        with admin.session_transaction() as session:
+            token = session["_csrf_token"]
+        admin.post(f"/admin/bookings/{booking.id}/status",
+                   data={"csrf_token": token, "status": "completed"})
+
+        self.assertEqual(db.session.get(Booking, booking.id).status, "confirmed")
+
+
+class DistanceFareFormTests(MarketplaceCase):
+    def test_an_operator_can_publish_a_distance_fare(self):
+        client = self._sign_in_operator()
+        token = self._csrf(client)
+        client.post("/operator/fares", data={
+            "csrf_token": token, "title": "Metered ride", "kind": "ride",
+            "from_location": "Kololi", "to_location": "Anywhere",
+            "pricing_model": "distance", "base_price": "500",
+            "per_km": "60", "minimum_price": "1000"})
+
+        fare = OperatorFare.query.filter_by(title="Metered ride").one()
+        self.assertTrue(fare.is_distance_based)
+        self.assertIsNone(fare.price)
+        self.assertIsNone(fare.display_price, "a distance fare has no single price")
+        self.assertEqual(fare.quote(12500), (Decimal("1250.00"), "distance"))
+
+    def test_a_distance_fare_needs_a_rate(self):
+        client = self._sign_in_operator()
+        token = self._csrf(client)
+        client.post("/operator/fares", data={
+            "csrf_token": token, "title": "Broken", "kind": "ride",
+            "from_location": "A", "to_location": "B",
+            "pricing_model": "distance", "base_price": "500"})
+        self.assertIsNone(OperatorFare.query.filter_by(title="Broken").first())
+
+    def test_a_fixed_fare_still_needs_its_price(self):
+        client = self._sign_in_operator()
+        token = self._csrf(client)
+        client.post("/operator/fares", data={
+            "csrf_token": token, "title": "No price", "kind": "ride",
+            "from_location": "A", "to_location": "B", "pricing_model": "fixed"})
+        self.assertIsNone(OperatorFare.query.filter_by(title="No price").first())

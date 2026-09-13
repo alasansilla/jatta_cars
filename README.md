@@ -19,6 +19,40 @@ rate is copied onto each entry when it is written, so changing it later moves
 future bookings and leaves history alone. An operator can be given their own
 rate.
 
+## Maps and route planning
+
+A customer booking a ride or an airport transfer types where they are being
+collected from and where they are going. When a geocoder is configured, each
+address resolves to a real place, both points are drawn on a map, and the road
+distance and estimated journey time appear **before** they submit. A
+distance-based fare is then worked out and shown.
+
+Nothing about this is tied to one company. The geocoder and the router are URL
+templates supplied by configuration, so changing provider is an environment
+change rather than a code change.
+
+**Lookups go through this application, never straight from the page.** The
+browser asks `/api/geocode` and `/api/route`; the server asks the provider. That
+keeps any API key off the page and keeps the visitor's IP address away from a
+third party. Both endpoints are rate-limited per session so the site cannot be
+used as a free proxy onto somebody's paid quota.
+
+**Geocoding and routing are switched off until you configure them**, and the
+site is fully usable that way. The map is hidden, the typed addresses are
+submitted as written, and the page says plainly that the operator will confirm
+the fare. A fare is never invented: a distance-based route with no measured
+distance is stored with **no price at all** rather than zero, and neither an
+operator nor an admin can complete a job until someone has agreed one.
+
+Operators choose per route:
+
+| Pricing | What it means |
+| --- | --- |
+| Fixed | One price for the journey, whatever the road distance |
+| Base plus distance | A base fare plus a rate per kilometre, with an optional minimum |
+
+See DEPLOYMENT.md for the variables and how to pick a provider.
+
 ## Taking the site private
 
 The site is visible by default, which is what you want while building it locally.

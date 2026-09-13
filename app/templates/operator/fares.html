@@ -38,11 +38,44 @@
         <input type="text" id="to_location" name="to_location" required>
       </div>
     </div>
-    <div class="field-row">
+    <div class="field">
+      <label for="pricing_model">How this route is priced</label>
+      <select id="pricing_model" name="pricing_model" required>
+        <option value="fixed">One fixed fare for the journey</option>
+        <option value="distance">A base fare plus a rate per kilometre</option>
+      </select>
+      {% if not routing_on %}
+        <p class="hint">
+          Route measuring is not switched on for this site, so a distance fare
+          cannot be worked out automatically. You will be asked to confirm the
+          fare on each request instead.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="field-row" data-pricing="fixed">
       <div class="field">
         <label for="price">Fare ({{ site.currency }})</label>
-        <input type="number" id="price" name="price" min="0" step="0.01" required>
+        <input type="number" id="price" name="price" min="0" step="0.01">
       </div>
+    </div>
+
+    <div class="field-row" data-pricing="distance" hidden>
+      <div class="field">
+        <label for="base_price">Base fare ({{ site.currency }})</label>
+        <input type="number" id="base_price" name="base_price" min="0" step="0.01">
+      </div>
+      <div class="field">
+        <label for="per_km">Per kilometre ({{ site.currency }})</label>
+        <input type="number" id="per_km" name="per_km" min="0" step="0.01">
+      </div>
+      <div class="field">
+        <label for="minimum_price">Minimum <span class="muted" style="font-weight:400">(optional)</span></label>
+        <input type="number" id="minimum_price" name="minimum_price" min="0" step="0.01">
+      </div>
+    </div>
+
+    <div class="field-row">
       <div class="field">
         <label for="seats">Seats <span class="muted" style="font-weight:400">(optional)</span></label>
         <input type="number" id="seats" name="seats" min="1" max="25">
@@ -74,7 +107,14 @@
                 <span class="small muted">{{ fare.from_location }} → {{ fare.to_location }}</span>
               </td>
               <td>{{ fare.kind | capitalize }}</td>
-              <td class="nowrap">{{ fare.price | money }}</td>
+              <td class="nowrap">
+                {% if fare.is_distance_based %}
+                  {{ fare.base_price | money }} + {{ fare.per_km | money }}/km
+                  {%- if fare.minimum_price %}<br><span class="small muted">min {{ fare.minimum_price | money }}</span>{% endif %}
+                {% else %}
+                  {{ fare.price | money }}
+                {% endif %}
+              </td>
               <td><span class="tag tag--{{ 'on' if fare.is_active else 'off' }}">{{ 'Listed' if fare.is_active else 'Hidden' }}</span></td>
               <td>
                 <div class="actions">
@@ -101,4 +141,23 @@
     </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* Show only the fields that belong to the chosen pricing model. Both groups are
+   in the page, so this works as progressive enhancement: with JavaScript off
+   everything is visible and the server validates whichever model was picked. */
+(function () {
+  var select = document.getElementById("pricing_model");
+  if (!select) return;
+  function sync() {
+    document.querySelectorAll("[data-pricing]").forEach(function (group) {
+      group.hidden = group.dataset.pricing !== select.value;
+    });
+  }
+  select.addEventListener("change", sync);
+  sync();
+})();
+</script>
 {% endblock %}

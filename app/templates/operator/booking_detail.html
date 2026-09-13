@@ -20,13 +20,39 @@
           <tr><th>When</th><td>{{ booking.pickup_at.strftime('%A %d %B %Y, %H:%M') if booking.pickup_at else '—' }}</td></tr>
           <tr><th>Passengers</th><td>{{ booking.passengers or '—' }}{% if booking.luggage_count %} · {{ booking.luggage_count }} bag(s){% endif %}</td></tr>
           {% if booking.flight_number %}<tr><th>Flight</th><td>{{ booking.flight_number }}</td></tr>{% endif %}
+          {% if booking.has_route %}
+            <tr>
+              <th>Measured route</th>
+              <td>
+                {{ booking.route_distance_km }} km · about {{ booking.route_duration_label }} by road
+                {% if booking.route_provider %}
+                  <br><span class="small muted">estimate from {{ booking.route_provider }}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endif %}
         {% else %}
           <tr><th style="width:32%">Vehicle</th><td>{{ booking.vehicle.name if booking.vehicle else 'Not assigned' }}</td></tr>
           <tr><th>Collect</th><td>{{ booking.start_date | nice_date }} · {{ booking.pickup_location }}</td></tr>
           <tr><th>Return</th><td>{{ booking.end_date | nice_date }} · {{ booking.dropoff_location }}</td></tr>
           <tr><th>Length</th><td>{{ booking.days }} day(s)</td></tr>
         {% endif %}
-        <tr><th>Fare</th><td><strong style="color:var(--ink)">{{ booking.total_price | money }}</strong></td></tr>
+        <tr>
+          <th>Fare</th>
+          <td>
+            {% if booking.needs_quote %}
+              <strong style="color:var(--warn)">Not priced yet</strong>
+              <br><span class="small muted">Set a fare below before completing this job.</span>
+            {% else %}
+              <strong style="color:var(--ink)">{{ booking.total_price | money }}</strong>
+              {% if booking.quote_basis == 'distance' %}
+                <br><span class="small muted">worked out from the measured distance</span>
+              {% elif booking.quote_basis == 'manual' %}
+                <br><span class="small muted">agreed by you</span>
+              {% endif %}
+            {% endif %}
+          </td>
+        </tr>
         {% if booking.deposit_amount %}
           <tr><th>Refundable deposit</th><td>{{ booking.deposit_amount | money }} — not part of the fare, and no commission is taken on it</td></tr>
         {% endif %}
@@ -56,6 +82,37 @@
   {% endif %}
 </div>
 
+{% if booking.status not in ['completed', 'cancelled'] %}
+  <div class="panel">
+    <h2 style="font-size:1.2rem">
+      {% if booking.needs_quote %}Set the fare{% else %}Change the fare{% endif %}
+    </h2>
+    <p class="small muted">
+      {% if booking.needs_quote %}
+        This journey could not be priced automatically, so nothing has been quoted
+        to the customer. Agree a fare with them and record it here.
+      {% else %}
+        The customer has been shown {{ booking.total_price | money }}. Only change
+        this if you have agreed something different with them.
+      {% endif %}
+    </p>
+    <form method="post" action="{{ url_for('operator.set_fare', booking_id=booking.id) }}"
+          class="actions" style="align-items:flex-end;margin-top:14px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div>
+        <label class="small" for="total_price" style="margin-bottom:4px">
+          Fare ({{ site.currency }})
+        </label>
+        <input type="number" id="total_price" name="total_price" min="0" step="0.01"
+               style="width:150px;padding:8px 11px"
+               value="{{ '%.2f' | format(booking.total_price | float) if booking.total_price is not none else '' }}"
+               required>
+      </div>
+      <button class="btn btn--primary btn--sm" type="submit">Save fare</button>
+    </form>
+  </div>
+{% endif %}
+
 {% set next_steps = {'pending': [('confirmed', 'Accept this booking'), ('cancelled', 'Decline')], 'confirmed': [('completed', 'Mark as completed'), ('cancelled', 'Cancel')]}.get(booking.status, []) %}
 {% if next_steps %}
   <div class="panel">
@@ -64,6 +121,10 @@
       <p class="small muted">
         Completing this booking records our commission of {{ operator_rate }}% of the
         fare. It cannot be undone from here.
+        {% if booking.needs_quote %}
+          <br><strong style="color:var(--warn)">Set a fare first — a job with no
+          agreed price cannot be completed.</strong>
+        {% endif %}
       </p>
     {% endif %}
     <div class="actions">

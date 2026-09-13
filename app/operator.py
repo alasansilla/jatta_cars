@@ -9,6 +9,7 @@ Customer contact details are shown only once a booking is confirmed. Before
 that the operator sees the journey and the fare, which is what they need to
 decide, but not the person's email and phone.
 """
+import math
 from datetime import datetime
 from functools import wraps
 
@@ -17,10 +18,10 @@ from flask import (
     url_for,
 )
 
-from . import commission
+from . import commission, routing
 from .models import (
-    BOOKING_TYPES, JOURNEY_TYPES, RIDE, TRANSFER, Booking, Operator, OperatorFare,
-    Vehicle, db,
+    BOOKING_TYPES, DISTANCE_PRICE, FIXED_PRICE, JOURNEY_TYPES, PRICING_MODELS,
+    RIDE, TRANSFER, Booking, Operator, OperatorFare, Vehicle, db,
 )
 from .settings import current_settings
 
@@ -184,6 +185,9 @@ def booking_detail(booking_id):
 @login_required
 def update_status(booking_id):
     booking = owned(Booking.query).filter(Booking.id == booking_id).first_or_404()
+    from .models import DriverState
+    if DriverState.query.filter_by(active_booking_id=booking.id).first():
+        return redirect(url_for('dispatch.drive'))
     new_status = request.form.get("status")
 
     # An operator may accept, decline or finish their own work. They may not
@@ -195,6 +199,13 @@ def update_status(booking_id):
     }.get(booking.status, ())
     if new_status not in allowed:
         flash("That is not a change you can make to this booking.", "error")
+        return redirect(url_for("operator.booking_detail", booking_id=booking.id))
+
+    if new_status == "completed" and booking.needs_quote:
+        # Completing is what earns commission. With no fare agreed there is
+        # nothing to take a share of, and recording zero would file the job as
+        # worth nothing rather than as unpriced.
+        flash("Set the fare for this journey before completing it.", "error")
         return redirect(url_for("operator.booking_detail", booking_id=booking.id))
 
     booking.status = new_status
@@ -215,7 +226,7 @@ def fares():
         from_location = (request.form.get("from_location") or "").strip()
         to_location = (request.form.get("to_location") or "").strip()
         kind = request.form.get("kind")
-        raw_price = (request.form.get("price") or "").strip()
+        pricing_model = request.form.get("pricing_model") or FIXED_PRICE
 
         if len(title) < 3:
             errors.append("Give the route a name.")
@@ -223,12 +234,38 @@ def fares():
             errors.append("Enter where the journey starts and ends.")
         if kind not in FARE_KINDS:
             errors.append("Choose whether this is a ride or an airport transfer.")
-        try:
-            price = float(raw_price.replace(",", ""))
-        except ValueError:
-            price = -1
-        if price <= 0:
+        if pricing_model not in PRICING_MODELS:
+            errors.append("Choose how this route is priced.")
+
+        def money(field, label, required):
+            raw = (request.form.get(field) or "").strip().replace(",", "")
+            if not raw:
+                if required:
+                    errors.append(f"Enter {label}.")
+                return None
+            try:
+                value = float(raw)
+            except ValueError:
+                errors.append(f"{label.capitalize()} has to be a number.")
+                return None
+            if not math.isfinite(value) or value < 0:
+                errors.append(f"{label.capitalize()} cannot be negative.")
+                return None
+            return value
+
+        # A fixed route needs one price; a distance route needs a rate. Only the
+        # fields belonging to the chosen model are required, so switching does
+        # not demand numbers that make no sense for it.
+        fixed = pricing_model == FIXED_PRICE
+        price = money("price", "the fare for this journey", fixed) if fixed else None
+        base_price = None if fixed else money("base_price", "the base fare", True)
+        per_km = None if fixed else money("per_km", "the rate per kilometre", True)
+        minimum_price = None if fixed else money("minimum_price", "a minimum fare", False)
+
+        if fixed and price is not None and price <= 0:
             errors.append("Enter the fare you charge for this journey.")
+        if not fixed and per_km is not None and per_km <= 0:
+            errors.append("A distance fare needs a rate per kilometre above zero.")
 
         seats = (request.form.get("seats") or "").strip()
         seat_count = int(seats) if seats.isdigit() else None
@@ -245,7 +282,11 @@ def fares():
                 to_location=to_location,
                 vehicle_class=(request.form.get("vehicle_class") or "").strip() or None,
                 seats=seat_count,
+                pricing_model=pricing_model,
                 price=price,
+                base_price=base_price,
+                per_km=per_km,
+                minimum_price=minimum_price,
                 notes=(request.form.get("notes") or "").strip() or None,
                 is_active=True,
             ))
@@ -258,6 +299,8 @@ def fares():
         fares=OperatorFare.query.filter_by(operator_id=operator.id)
         .order_by(OperatorFare.kind, OperatorFare.title).all(),
         kinds=FARE_KINDS,
+        pricing_models=PRICING_MODELS,
+        routing_on=routing.routing_available(),
     )
 
 
@@ -285,3 +328,30 @@ def delete_fare(fare_id):
     db.session.commit()
     flash(f"Removed “{title}”.", "success")
     return redirect(url_for("operator.fares"))
+
+
+
+@bp.route("/bookings/<int:booking_id>/fare", methods=["POST"])
+@login_required
+def set_fare(booking_id):
+    """Agree a fare on a journey the site could not price automatically."""
+    booking = owned(Booking.query).filter(Booking.id == booking_id).first_or_404()
+
+    if booking.status in ("completed", "cancelled"):
+        flash("That booking is closed.", "error")
+        return redirect(url_for("operator.booking_detail", booking_id=booking.id))
+
+    raw = (request.form.get("total_price") or "").strip().replace(",", "")
+    try:
+        amount = float(raw)
+    except ValueError:
+        amount = -1
+    if amount < 0:
+        flash("Enter the fare as a number.", "error")
+        return redirect(url_for("operator.booking_detail", booking_id=booking.id))
+
+    booking.total_price = amount
+    booking.quote_basis = "manual"
+    db.session.commit()
+    flash(f"Fare for {booking.reference} set to {amount}.", "success")
+    return redirect(url_for("operator.booking_detail", booking_id=booking.id))

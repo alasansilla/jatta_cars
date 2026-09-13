@@ -413,6 +413,11 @@ SCHEMA = [
         "How the marketplace charges. Commission is taken on the fare of a "
         "completed booking only, and never on a refundable deposit.",
         [
+            Field("market_footer_blurb", "Marketplace footer", default="Rides, airport transfers and car rentals in The Gambia."),
+            Field("market_home_eyebrow", "Marketplace home eyebrow", default="Across The Gambia"),
+            Field("market_home_heading", "Marketplace home heading", default="Your journey starts here."),
+            Field("market_home_intro", "Marketplace home introduction", type="textarea", default="Find a ride, arrange an airport transfer or rent a car for your stay. Choose the journey that fits your plans."),
+            Field("market_steps_heading", "Marketplace steps heading", default="From pickup to arrival"),
             Field("commission_rate", "Commission rate (%)", type="number", default=5,
                   help="Percentage of the fare on a completed ride or rental. "
                        "Refundable deposits are excluded. An individual operator can "

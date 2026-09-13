@@ -8,6 +8,7 @@ Nothing secret belongs in this file. `.env` is git-ignored; `.env.example`
 lists the names without the values.
 """
 import os
+import json
 from urllib.parse import quote, unquote
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -34,6 +35,18 @@ def _load_dotenv(path=None):
 
 
 _load_dotenv()
+
+def _geoapify_key():
+    key = os.environ.get('GEOAPIFY_API_KEY', '')
+    if key or os.environ.get('JATTA_ENV', '').lower() in ('production', 'prod'):
+        return key
+    try:
+        with open(os.path.join(BASE_DIR, 'instance', 'geoapify.json')) as handle:
+            return json.load(handle).get('key', '')
+    except (OSError, ValueError):
+        return ''
+
+GEOAPIFY_KEY = _geoapify_key()
 
 DEV_SECRET = "dev-only-not-for-production"
 
@@ -170,6 +183,51 @@ class Config:
     # Browsers and the CDN may hold an uploaded image this long. Filenames carry
     # a random suffix, so a changed picture is a new URL and never a stale one.
     UPLOAD_CACHE_SECONDS = int(os.environ.get("JATTA_UPLOAD_CACHE_SECONDS", "31536000"))
+
+    # --- Maps and route planning --------------------------------------------
+    #
+    # Every endpoint is configurable, so the site is not tied to any one
+    # provider and can move without a code change.
+    #
+    # Tiles default to OpenStreetMap's public raster service. It needs no key,
+    # but it does have a usage policy: point JATTA_MAP_TILE_URL at your own or a
+    # paid provider before this carries real traffic. A key embedded in a tile
+    # URL is fetched by the browser and is therefore public by nature — put
+    # keyed tile services behind your own proxy rather than in this variable.
+    MAP_ENABLED = os.environ.get("JATTA_MAP_ENABLED", "1").strip().lower() \
+        not in ("0", "false", "no", "off")
+    MAP_TILE_URL = os.environ.get(
+        "JATTA_MAP_TILE_URL", "https://tile.openstreetmap.org/{z}/{x}/{y}.png").strip()
+    MAP_ATTRIBUTION = os.environ.get(
+        "JATTA_MAP_ATTRIBUTION", "&copy; OpenStreetMap contributors").strip()
+    MAP_MAX_ZOOM = int(os.environ.get("JATTA_MAP_MAX_ZOOM", "19"))
+    # Roughly the middle of The Gambia; used only until a point is known.
+    MAP_CENTRE_LAT = float(os.environ.get("JATTA_MAP_CENTRE_LAT", "13.4432"))
+    MAP_CENTRE_LNG = float(os.environ.get("JATTA_MAP_CENTRE_LNG", "-15.3101"))
+    MAP_ZOOM = int(os.environ.get("JATTA_MAP_ZOOM", "8"))
+
+    # Geocoding and routing are deliberately UNSET by default.
+    #
+    # The public Nominatim and OSRM demo servers forbid this sort of use, so
+    # defaulting to them would both breach someone's policy and post a
+    # customer's pickup address to a third party nobody chose. Unset means the
+    # site shows its manual-quote fallback, which is honest rather than broken.
+    #
+    # Both are URL templates. The geocoder gets {query}, and may use {limit} and
+    # {country}; the router gets {lat1} {lon1} {lat2} {lon2}, or {coords} for the
+    # OSRM-style "lon,lat;lon,lat" pair. A {key} placeholder is filled from the
+    # matching API key variable, which never reaches the browser.
+    GEOCODER_URL = os.environ.get("JATTA_GEOCODER_URL", (
+        "https://api.geoapify.com/v1/geocode/search?text={query}&filter=countrycode:{country}&limit={limit}&apiKey={key}"
+        if GEOAPIFY_KEY else "")).strip()
+    GEOCODER_API_KEY = os.environ.get("JATTA_GEOCODER_API_KEY", GEOAPIFY_KEY)
+    GEOCODER_COUNTRY = os.environ.get("JATTA_GEOCODER_COUNTRY", "gm").strip()
+    ROUTER_URL = os.environ.get("JATTA_ROUTER_URL", (
+        "https://api.geoapify.com/v1/routing?waypoints={lat1},{lon1}|{lat2},{lon2}&mode=drive&apiKey={key}"
+        if GEOAPIFY_KEY else "")).strip()
+    ROUTER_API_KEY = os.environ.get("JATTA_ROUTER_API_KEY", GEOAPIFY_KEY)
+    ROUTING_TIMEOUT = int(os.environ.get("JATTA_ROUTING_TIMEOUT", "8"))
+    ROUTING_USER_AGENT = os.environ.get("JATTA_ROUTING_USER_AGENT", "jatta-cars")
 
     @property
     def is_production(self):

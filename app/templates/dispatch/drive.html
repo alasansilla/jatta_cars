@@ -1,0 +1,17 @@
+{% extends 'operator/base.html' %}
+{% block operator_content %}<h1>Driver console</h1><p>Keep this screen open during your shift. Location sharing stops when you close it; availability expires after two minutes without updates.</p>
+<label for="vehicle">Your vehicle</label><select id="vehicle">{% for car in vehicles %}<option value="{{ car.id }}" {% if state and state.vehicle_id==car.id %}selected{% endif %}>{{ car.name }}</option>{% endfor %}</select>
+<button class="btn btn--primary" id="online">Go online and share location</button><button class="btn" id="offline">Go offline</button><p id="message" role="status"></p>
+{% if job %}<h2>Ride {{ job.reference }}</h2><p>{{ job.pickup_address }} → {{ job.dropoff_address }}</p><p>Status: {{ job.status }} · Fare: GMD {{ job.total_price }}</p>{% if job.status != 'pending' %}<p>{{ job.customer_name }} · {{ job.phone }}</p>{% endif %}
+{% for status,label in [('confirmed','Accept ride'),('arriving','On my way'),('in_progress','Start trip'),('completed','Finish trip'),('cancelled','Decline / cancel')] %}<button class="btn trip-action" data-status="{{ status }}">{{ label }}</button>{% endfor %}{% else %}<p>No active ride. Go online to receive requests.</p>{% endif %}
+{% endblock %}
+{% block scripts %}<script>
+const csrf={{ csrf_token|tojson }},currentJob={{ (job.id if job else none)|tojson }};let watch=null,online=false,last=null,lastSent=0,fixTime=0;
+const msg=document.getElementById('message');async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(data)});return r.json();}
+async function send(){if(!last||Date.now()-fixTime>45000)return;const d=await post('/operator/drive/location',{lat:last.latitude,lng:last.longitude,vehicle_id:document.getElementById('vehicle').value,available:online});msg.textContent=d.error||(online?'Online — location updated.':'Offline');if(d.active_booking_id!==undefined&&d.active_booking_id!==currentJob)location.reload();}
+document.getElementById('online').onclick=()=>{if(!navigator.geolocation){msg.textContent='Location sharing is unavailable in this browser.';return;}online=true;sessionStorage.setItem('jatta-sharing','1');if(watch!==null)navigator.geolocation.clearWatch(watch);watch=navigator.geolocation.watchPosition(p=>{last=p.coords;fixTime=p.timestamp;if(Date.now()-lastSent>5000){lastSent=Date.now();send().catch(()=>msg.textContent='Connection lost.');}},()=>{msg.textContent='Allow location access in your browser to go online.';},{enableHighAccuracy:true,maximumAge:5000});};
+document.getElementById('offline').onclick=()=>{online=false;sessionStorage.removeItem('jatta-sharing');post('/operator/drive/offline',{}).then(()=>msg.textContent='Offline').catch(()=>msg.textContent='Could not update availability.');if(watch!==null)navigator.geolocation.clearWatch(watch);watch=null;};
+setInterval(()=>{if(watch!==null)send().catch(()=>msg.textContent='Connection lost.');},15000);
+if(sessionStorage.getItem('jatta-sharing')==='1')document.getElementById('online').click();
+document.querySelectorAll('.trip-action').forEach(b=>b.onclick=async()=>{const d=await post('/operator/drive/status',{status:b.dataset.status});if(d.error)msg.textContent=d.error;else location.reload();});
+</script>{% endblock %}

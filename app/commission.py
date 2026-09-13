@@ -79,6 +79,11 @@ def record_for(booking, settings=None):
         return None
     if booking.commission is not None:
         return booking.commission
+    if booking.total_price is None:
+        # Nobody has priced this journey yet. Recording zero here would file
+        # "earned nothing" as a fact, when the truth is that the fare is still
+        # open. The entry waits until someone sets one.
+        return None
 
     figures = preview(booking, settings)
     entry = CommissionEntry(
@@ -110,6 +115,10 @@ def sync_for(booking, settings=None):
     Called whenever a status changes, so completing and un-completing a booking
     both do the right thing without the caller having to remember which.
     """
+    if booking.status in (COMPLETED, 'cancelled'):
+        from .models import DriverState
+        DriverState.query.filter_by(active_booking_id=booking.id).update(
+            {'active_booking_id': None, 'available': False})
     if booking.status == COMPLETED:
         return record_for(booking, settings)
     reverse_for(booking)

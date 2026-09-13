@@ -1,5 +1,30 @@
 # Deploying Jatta Cars
 
+## Current local checkpoint — 13 September 2026
+
+The local preview runs at `http://127.0.0.1:5001/` (port 5000 may be used by
+macOS AirPlay). The marketplace home links to `/ride`, scheduled journeys and
+rentals. `/operator/drive` provides a single active vehicle per operator with
+availability, driver acceptance, trip stages and authenticated GPS sharing.
+Migration 0006 adds driver state; run pending migrations on the hosting database
+before deploying this code. The local migration is applied; remote migration
+and a successful production deployment have not been verified.
+
+Geoapify is connected locally. Its key is in `instance/geoapify.json`, an ignored
+file with owner-only permissions. Do not commit or copy it into frontend assets.
+For hosting, set `GEOAPIFY_API_KEY` as a secret environment variable; production
+does not read the local credential file. This automatically selects Geoapify's
+geocoding and driving-route endpoints; explicit `JATTA_GEOCODER_*` and
+`JATTA_ROUTER_*` settings still take precedence. A real Kololi–Bakau lookup and
+road route were verified on 13 September. Tests use independent credentials and
+mocked provider data.
+
+Real bookings still require approved operators, assigned active vehicles,
+distance fares and drivers online. Do not seed invented operators into the live
+database. Commission is recorded, not collected: online payment, payouts and
+email delivery are not implemented. This checkpoint is not a completed Uber
+replacement or a verified production launch.
+
 The app is Flask talking directly to Postgres. Supabase provides the database
 and the image storage; the host runs the Flask app. Local development keeps
 working on SQLite with files on disk — nothing here changes that.
@@ -274,3 +299,80 @@ the value is printed, so the output is safe to paste into a chat. Nothing in the
 application logs the connection string either; the health check reports the
 exception class, never its message.
 
+
+## Maps, geocoding and routing
+
+Three separate things, configured separately, each optional.
+
+### Choosing a provider
+
+**Geocoding and routing are deliberately unset by default.** The public
+Nominatim and OSRM demo servers forbid production use, and pointing at them
+would both breach that and post customers' pickup addresses to a service nobody
+chose. With them unset the site works: no map, addresses submitted as typed, and
+a plain "the operator will confirm the fare" message.
+
+Realistic options, cheapest first:
+
+| Option | Notes |
+| --- | --- |
+| Leave unset | Free, honest, works today. Operators quote each journey by hand. |
+| Self-host Nominatim + OSRM | No per-request cost; needs a server and a regional extract. Point the two URLs at it. |
+| A commercial geocoding/routing API | Pick any that returns JSON. Put the key in the API-key variable, never in the URL you expose. |
+
+Nothing here has been bought, and no account has been created.
+
+### Tiles
+
+`JATTA_MAP_TILE_URL` is fetched **by the browser**, so anything in it is public.
+A tile provider that authenticates with a key in the URL cannot be kept secret
+this way — put such a provider behind your own proxy and point this at the proxy.
+The default is OpenStreetMap's public raster service, which needs no key but has
+a usage policy: move to your own or a paid provider before this carries real
+traffic, and keep the attribution.
+
+### The variables
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `JATTA_MAP_ENABLED` | `1` | Set to `0` to drop maps entirely |
+| `JATTA_MAP_TILE_URL` | OSM raster | `{z}/{x}/{y}` template; fetched by the browser |
+| `JATTA_MAP_ATTRIBUTION` | OSM credit | Shown on the map; most providers require it |
+| `JATTA_MAP_MAX_ZOOM` | `19` | |
+| `JATTA_MAP_CENTRE_LAT` | `13.4432` | Where the map sits before a point is known |
+| `JATTA_MAP_CENTRE_LNG` | `-15.3101` | |
+| `JATTA_MAP_ZOOM` | `8` | |
+| `JATTA_GEOCODER_URL` | *(unset)* | Address lookup. Placeholders: `{query}` `{limit}` `{country}` `{key}` |
+| `JATTA_GEOCODER_API_KEY` | *(unset)* | Server-side only. Sent as `Authorization: Bearer` unless the URL uses `{key}` |
+| `JATTA_GEOCODER_COUNTRY` | `gm` | Biases results, so "Kololi" finds the right one |
+| `JATTA_ROUTER_URL` | *(unset)* | Distance and duration. Placeholders: `{lat1}` `{lon1}` `{lat2}` `{lon2}`, or `{coords}` for OSRM's `lon,lat;lon,lat` |
+| `JATTA_ROUTER_API_KEY` | *(unset)* | Server-side only |
+| `JATTA_ROUTING_TIMEOUT` | `8` | Seconds before giving up and falling back |
+| `JATTA_ROUTING_USER_AGENT` | `jatta-cars` | Some providers reject requests without one |
+
+Example shapes, with your own hosts:
+
+```bash
+# Nominatim-compatible geocoder
+JATTA_GEOCODER_URL='https://geocode.example.org/search?q={query}&format=json&limit={limit}&countrycodes={country}'
+
+# OSRM-compatible router
+JATTA_ROUTER_URL='https://router.example.org/route/v1/driving/{coords}?overview=false'
+```
+
+The response parsing is deliberately tolerant: it reads Nominatim-style lists,
+GeoJSON `FeatureCollection`s and `{"results": [...]}` envelopes for geocoding,
+and OSRM-style `routes[0].distance` / `.duration` plus common variants for
+routing. If a provider returns something unrecognisable the site falls back to a
+manual quote rather than guessing.
+
+### What is stored on a booking
+
+The typed addresses are always kept, because they are what the customer actually
+wrote. When a lookup succeeds, the coordinates, road distance, estimated
+duration and the provider's host name are stored alongside them, so a fare can
+be explained later and a change of provider is visible in the record.
+
+The fare is always recomputed on the server from the stored distance. A distance
+posted by the browser is ignored, so the form cannot be edited to talk the price
+down.

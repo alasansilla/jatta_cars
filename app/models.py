@@ -2,6 +2,7 @@
 import secrets
 import string
 from datetime import date, datetime
+from decimal import ROUND_HALF_UP, Decimal
 
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -24,6 +25,12 @@ JOURNEY_TYPES = (RIDE, TRANSFER)
 # An operator is a separate business. Nothing they own is visible to the public
 # until someone has approved them.
 OPERATOR_STATUSES = ("pending", "approved", "suspended", "rejected")
+
+# How an operator prices a route, and how a booking ended up with its number.
+FIXED_PRICE = "fixed"
+DISTANCE_PRICE = "distance"
+MANUAL_QUOTE = "manual"
+PRICING_MODELS = (FIXED_PRICE, DISTANCE_PRICE)
 
 CATEGORIES = ["Economy", "Compact", "Estate", "SUV", "Van", "Luxury"]
 TRANSMISSIONS = ["Manual", "Automatic"]
@@ -124,7 +131,18 @@ class OperatorFare(db.Model):
 
     vehicle_class = db.Column(db.String(60), nullable=True)
     seats = db.Column(db.Integer, nullable=True)
-    price = db.Column(db.Numeric(10, 2), nullable=False)
+
+    # How this route is priced. "fixed" is one price for the journey; "distance"
+    # is a base plus a rate per kilometre, which needs a measured route.
+    pricing_model = db.Column(db.String(20), nullable=False, default=FIXED_PRICE)
+
+    # The fixed price. Null on a distance fare, which has no single number.
+    price = db.Column(db.Numeric(10, 2), nullable=True)
+
+    base_price = db.Column(db.Numeric(10, 2), nullable=True)
+    per_km = db.Column(db.Numeric(10, 2), nullable=True)
+    minimum_price = db.Column(db.Numeric(10, 2), nullable=True)
+
     notes = db.Column(db.Text, nullable=True)
 
     is_active = db.Column(db.Boolean, nullable=False, default=True)
@@ -133,6 +151,45 @@ class OperatorFare(db.Model):
     @property
     def is_bookable(self):
         return bool(self.is_active and self.operator and self.operator.is_approved)
+
+    @property
+    def is_distance_based(self):
+        return self.pricing_model == DISTANCE_PRICE
+
+    @property
+    def display_price(self):
+        """What to show on a card before any route is known.
+
+        A distance fare has no single number, so it says so rather than
+        inventing one.
+        """
+        if self.is_distance_based:
+            return None
+        return self.price
+
+    def quote(self, distance_m=None):
+        """Price this journey. Returns (amount, basis).
+
+        `amount` is None when the fare cannot be worked out — a distance fare
+        with no measured route. The caller must then ask the operator rather
+        than guess, which is why this returns None instead of zero.
+        """
+        if not self.is_distance_based:
+            if self.price is None:
+                return None, MANUAL_QUOTE
+            return Decimal(str(self.price)), FIXED_PRICE
+
+        if distance_m is None:
+            return None, MANUAL_QUOTE
+
+        base = Decimal(str(self.base_price or 0))
+        rate = Decimal(str(self.per_km or 0))
+        kilometres = Decimal(str(distance_m)) / Decimal("1000")
+        amount = (base + rate * kilometres).quantize(Decimal("0.01"),
+                                                     rounding=ROUND_HALF_UP)
+        if self.minimum_price is not None:
+            amount = max(amount, Decimal(str(self.minimum_price)))
+        return amount, DISTANCE_PRICE
 
     def __repr__(self):
         return f"<OperatorFare {self.id} {self.title}>"
@@ -276,8 +333,32 @@ class Booking(db.Model):
     luggage_count = db.Column(db.Integer, nullable=True)
     flight_number = db.Column(db.String(20), nullable=True)
 
-    # The fare. This is what commission is charged on.
-    total_price = db.Column(db.Numeric(10, 2), nullable=False)
+    # Where the journey runs, when a geocoder could place it. The typed
+    # addresses above are always kept: they are what the customer actually
+    # wrote, and they stand on their own when no coordinates were found.
+    pickup_lat = db.Column(db.Numeric(9, 6), nullable=True)
+    pickup_lng = db.Column(db.Numeric(9, 6), nullable=True)
+    dropoff_lat = db.Column(db.Numeric(9, 6), nullable=True)
+    dropoff_lng = db.Column(db.Numeric(9, 6), nullable=True)
+
+    # The measured route, and who measured it. Recorded so a fare can be
+    # explained later, and so a provider change is visible in the history.
+    route_distance_m = db.Column(db.Integer, nullable=True)
+    route_duration_s = db.Column(db.Integer, nullable=True)
+    route_provider = db.Column(db.String(80), nullable=True)
+    route_meta = db.Column(db.Text, nullable=True)
+
+    # How total_price was arrived at: a fixed fare, a distance calculation, or
+    # not yet priced at all.
+    quote_basis = db.Column(db.String(20), nullable=True)
+
+    # The fare, and what commission is charged on.
+    #
+    # Null means nobody has been able to price it yet — a distance fare with no
+    # measured route. Storing zero instead would read as "free" to a customer
+    # and would quietly earn the marketplace nothing, so the column allows null
+    # and the pages say the operator will confirm.
+    total_price = db.Column(db.Numeric(10, 2), nullable=True)
 
     # The refundable deposit as it stood when the booking was made, kept
     # separately so commission can exclude it even if the car's deposit is
@@ -300,6 +381,31 @@ class Booking(db.Model):
     @property
     def days(self):
         return (self.end_date - self.start_date).days
+
+    @property
+    def has_route(self):
+        return self.route_distance_m is not None and self.route_duration_s is not None
+
+    @property
+    def route_distance_km(self):
+        if self.route_distance_m is None:
+            return None
+        return round(self.route_distance_m / 1000, 1)
+
+    @property
+    def route_duration_label(self):
+        if self.route_duration_s is None:
+            return None
+        minutes = int(round(self.route_duration_s / 60))
+        if minutes < 60:
+            return f"{minutes} min"
+        hours, rest = divmod(minutes, 60)
+        return f"{hours}h {rest:02d}m"
+
+    @property
+    def needs_quote(self):
+        """True when the operator still has to say what this costs."""
+        return self.total_price is None
 
     @property
     def commissionable_amount(self):
@@ -439,3 +545,15 @@ class MediaAsset(db.Model):
 
     def __repr__(self):
         return f"<MediaAsset {self.filename}>"
+
+
+class DriverState(db.Model):
+    """One dispatch vehicle per signed-in operator, with expiring GPS updates."""
+    __tablename__ = "driver_states"
+    operator_id = db.Column(db.Integer, db.ForeignKey("operators.id"), primary_key=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey("vehicles.id"), nullable=True)
+    available = db.Column(db.Boolean, nullable=False, default=False)
+    active_booking_id = db.Column(db.Integer, db.ForeignKey("bookings.id"), nullable=True, unique=True)
+    lat = db.Column(db.Float, nullable=True)
+    lng = db.Column(db.Float, nullable=True)
+    updated_at = db.Column(db.DateTime, nullable=True)

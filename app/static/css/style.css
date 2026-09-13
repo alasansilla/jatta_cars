@@ -841,3 +841,46 @@ body.is-editing [data-edit-choice].is-changed { outline-color: var(--good); }
   white-space: nowrap;
 }
 .editbar__draft:hover { text-decoration: none; background: #fbe9c8; }
+
+/* --- Journey map and route summary ---------------------------------------- */
+
+.journey-map {
+  height: 280px;
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  z-index: 0;                 /* keep Leaflet panes under the sticky header */
+}
+
+.place-list {
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  max-height: 200px;
+  overflow-y: auto;
+  background: #fff;
+}
+.place-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 13px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: .9rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+.place-option:hover { background: var(--soft); }
+.place-option + .place-option { border-top: 1px solid var(--line); }
+
+.route-summary {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-size: .95rem;
+}
+.route-summary__source { color: var(--body); font-size: .85rem; }

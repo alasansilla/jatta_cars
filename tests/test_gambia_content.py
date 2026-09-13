@@ -196,7 +196,9 @@ class GambiaContentTests(unittest.TestCase):
         def shown():
             return "quote-card" in self.client.get("/").get_data(as_text=True)
 
-        self.assertTrue(shown(), "reviews should render by default")
+        self.assertFalse(shown(), "placeholder reviews must not reach customers")
+        save_settings({"review_1_quote": "Our test review", "review_1_name": "Test customer"})
+        self.assertTrue(shown(), "a supplied review should render")
         save_settings({"show_reviews": False})
         self.assertFalse(shown(), "reviews should disappear once switched off")
 
@@ -460,7 +462,7 @@ class DraftModeTests(unittest.TestCase):
             body = self.client.get(path).get_data(as_text=True)
             self.assertTrue("nearly ready" in body, f"{path} did not show the holding page")
             # The booking panel and the fleet are the real site.
-            self.assertFalse('id="pickup"' in body, f"{path} leaked the booking form")
+            self.assertFalse('href="/ride"' in body, f"{path} leaked the booking form")
             self.assertFalse("Sample Car" in body, f"{path} leaked the fleet")
 
     def test_the_holding_page_offers_nothing_to_navigate_to(self):
@@ -484,14 +486,14 @@ class DraftModeTests(unittest.TestCase):
         self._go_private()
         self._sign_in()
         body = self.client.get("/").get_data(as_text=True)
-        self.assertTrue('id="pickup"' in body, "staff did not get the real site")
+        self.assertTrue('href="/ride"' in body, "staff did not get the real site")
         self.assertTrue("Draft — not public" in body, "no draft badge for staff")
 
     def test_publishing_opens_the_site_to_everyone(self):
         self._go_private()
         save_settings({"site_live": True}, group_key="publishing")
         body = self.client.get("/").get_data(as_text=True)
-        self.assertTrue('id="pickup"' in body, "booking panel missing once live")
+        self.assertTrue('href="/ride"' in body, "booking panel missing once live")
         self.assertTrue("Sample Car" in body, "fleet missing once live")
 
     def test_editing_a_sentence_does_not_take_the_site_offline(self):

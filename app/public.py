@@ -1,19 +1,23 @@
 """Customer-facing pages: fleet, vehicle details, booking and contact."""
-from datetime import date, timedelta
+import json
+import time
+from datetime import date, datetime, timedelta
 
 from flask import (
-    Blueprint, abort, current_app, flash, redirect, render_template, request, session, make_response, url_for
+    Blueprint, abort, current_app, flash, jsonify, make_response, redirect,
+    render_template, request, session, url_for,
 )
 
 from sqlalchemy.exc import IntegrityError
 
+from . import routing
 from .forms import (
     parse_date, validate_customer, validate_journey, validate_journey_party,
     validate_rental_dates,
 )
 from .models import (
-    CATEGORIES, RIDE, TRANSFER, TRANSMISSIONS, Booking, Enquiry, Operator,
-    OperatorFare, Vehicle, db,
+    CATEGORIES, MANUAL_QUOTE, RIDE, TRANSFER, TRANSMISSIONS, Booking, Enquiry,
+    Operator, OperatorFare, Vehicle, db,
 )
 from .settings import current_settings
 
@@ -272,6 +276,8 @@ def booking_detail(reference):
     if session.get("booking_reference") != reference:
         return redirect(url_for("public.booking_lookup"))
     booking = Booking.query.filter_by(reference=reference).first_or_404()
+    if booking.booking_type == "ride" and booking.quote_basis == "distance" and booking.vehicle_id:
+        return redirect(url_for("dispatch.track", reference=reference))
     response = make_response(render_template("booking.html", booking=booking))
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -369,7 +375,12 @@ def ride_detail(fare_id):
     if not fare.is_bookable:
         abort(404)
     tomorrow = date.today() + timedelta(days=1)
-    return render_template("ride.html", fare=fare, default_date=tomorrow.isoformat())
+    return render_template(
+        "ride.html",
+        fare=fare,
+        default_date=tomorrow.isoformat(),
+        map_settings=routing.map_settings(),
+    )
 
 
 @bp.route("/rides/<int:fare_id>/request", methods=["POST"])
@@ -396,6 +407,29 @@ def request_ride(fare_id):
             flash(message, "error")
         return redirect(url_for("public.ride_detail", fare_id=fare.id))
 
+    # Coordinates and route come from the page, which got them from this
+    # application's own lookup endpoints. They are treated as a convenience, not
+    # as truth: the fare is recomputed here from the stored distance, so editing
+    # the form cannot talk the price down.
+    pickup_lat = _coordinate(request.form.get("pickup_lat"), 90)
+    pickup_lng = _coordinate(request.form.get("pickup_lng"), 180)
+    dropoff_lat = _coordinate(request.form.get("dropoff_lat"), 90)
+    dropoff_lng = _coordinate(request.form.get("dropoff_lng"), 180)
+
+    distance_m = duration_s = route_provider = None
+    if None not in (pickup_lat, pickup_lng, dropoff_lat, dropoff_lng) \
+            and routing.routing_available():
+        try:
+            leg = routing.route((pickup_lat, pickup_lng), (dropoff_lat, dropoff_lng))
+        except routing.RoutingUnavailable as error:
+            current_app.logger.warning("Routing unavailable at submit: %s", error)
+            leg = None
+        if leg is not None:
+            distance_m, duration_s = leg.distance_m, leg.duration_s
+            route_provider = leg.provider
+
+    amount, basis = fare.quote(distance_m)
+
     day = pickup_at.date()
     booking = Booking(
         reference=Booking.new_reference(),
@@ -418,7 +452,21 @@ def request_ride(fare_id):
         # never block another ride on the same car.
         start_date=day,
         end_date=day,
-        total_price=fare.price,
+        pickup_lat=pickup_lat,
+        pickup_lng=pickup_lng,
+        dropoff_lat=dropoff_lat,
+        dropoff_lng=dropoff_lng,
+        route_distance_m=distance_m,
+        route_duration_s=duration_s,
+        route_provider=route_provider,
+        route_meta=json.dumps({
+            "measured_at": datetime.utcnow().isoformat(timespec="seconds"),
+            "pricing_model": fare.pricing_model,
+        }) if distance_m is not None else None,
+        # None when nothing could price it. The pages then say the operator
+        # will confirm, rather than showing a number nobody stands behind.
+        total_price=amount,
+        quote_basis=basis,
         # The marketplace does not set a deposit on a journey, and will not
         # invent one. If an operator takes one it is their arrangement.
         deposit_amount=0,
@@ -485,3 +533,103 @@ def operator_apply():
     flash("Thanks — your application is with us. We review every one before "
           "listing anybody, and will be in touch.", "success")
     return redirect(url_for("public.operators"))
+
+
+
+# --- Map lookups ------------------------------------------------------------
+#
+# The browser asks this application, and this application asks the provider.
+# That keeps any API key on the server, keeps the visitor's IP address away from
+# a third party, and means the provider can be swapped without touching a page.
+
+def _within_rate_limit(bucket, limit=40, window=60):
+    """A light per-session cap, so this cannot be used as a free open proxy.
+
+    Without it, a public geocoding endpoint is an invitation to burn through
+    somebody's quota — or get their provider account suspended.
+    """
+    now = time.time()
+    recent = [stamp for stamp in session.get(bucket, []) if now - stamp < window]
+    if len(recent) >= limit:
+        return False
+    recent.append(now)
+    session[bucket] = recent
+    return True
+
+
+@bp.route("/api/geocode")
+def api_geocode():
+    """Suggest places for typed text. Never fails the page; just returns none."""
+    query = (request.args.get("q") or "").strip()[:200]
+    available = routing.geocoding_available()
+
+    if not available or len(query) < 3:
+        return jsonify({"available": available, "places": []})
+    if not _within_rate_limit("_geocode_hits"):
+        return jsonify({"available": True, "places": [], "error": "too_many"}), 429
+
+    try:
+        places = routing.geocode(query)
+    except routing.RoutingUnavailable as error:
+        # The address is the customer's own; only the failure is recorded.
+        current_app.logger.warning("Geocoding unavailable: %s", error)
+        return jsonify({"available": True, "places": [], "error": "lookup_failed"})
+
+    return jsonify({"available": True, "places": [place.as_dict() for place in places]})
+
+
+def _coordinate(raw, limit):
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if -limit <= value <= limit else None
+
+
+@bp.route("/api/route")
+def api_route():
+    """Distance, duration and the resulting fare for one journey.
+
+    Returns a quote of None when the fare cannot be worked out, which the page
+    turns into "the operator will confirm" rather than a number.
+    """
+    fare = OperatorFare.query.get(request.args.get("fare_id", type=int))
+    if fare is None or not fare.is_bookable:
+        abort(404)
+
+    origin = (_coordinate(request.args.get("from_lat"), 90),
+              _coordinate(request.args.get("from_lng"), 180))
+    destination = (_coordinate(request.args.get("to_lat"), 90),
+                   _coordinate(request.args.get("to_lng"), 180))
+
+    if None in origin or None in destination:
+        return jsonify({"available": routing.routing_available(), "route": None,
+                        "quote": None, "basis": MANUAL_QUOTE,
+                        "error": "bad_coordinates"}), 400
+
+    if not routing.routing_available():
+        amount, basis = fare.quote(None)
+        return jsonify({"available": False, "route": None,
+                        "quote": float(amount) if amount is not None else None,
+                        "basis": basis})
+
+    if not _within_rate_limit("_route_hits"):
+        return jsonify({"available": True, "route": None, "quote": None,
+                        "basis": MANUAL_QUOTE, "error": "too_many"}), 429
+
+    try:
+        leg = routing.route(origin, destination)
+    except routing.RoutingUnavailable as error:
+        current_app.logger.warning("Routing unavailable: %s", error)
+        amount, basis = fare.quote(None)
+        return jsonify({"available": True, "route": None,
+                        "quote": float(amount) if amount is not None else None,
+                        "basis": basis, "error": "route_failed"})
+
+    amount, basis = fare.quote(leg.distance_m)
+    return jsonify({
+        "available": True,
+        "route": leg.as_dict(),
+        "quote": float(amount) if amount is not None else None,
+        "basis": basis,
+    })
