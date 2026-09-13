@@ -116,11 +116,17 @@ def register_health(app):
                 "error": type(error).__name__,
             }), 503
 
+        # Routing is reported because it fails silently: with no provider
+        # configured the site still works, it just quietly stops measuring
+        # journeys and asks the operator to quote by hand. That is a
+        # deployment fact worth being able to check from outside.
         return jsonify({
             "status": "ok",
             "database": "ok",
             "storage": (app.config.get("STORAGE_BACKEND")
                         or ("supabase" if app.config.get("SUPABASE_URL") else "local")),
+            "geocoding": "configured" if app.config.get("GEOCODER_URL") else "not configured",
+            "routing": "configured" if app.config.get("ROUTER_URL") else "not configured",
         }), 200
 
 

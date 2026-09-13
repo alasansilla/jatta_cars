@@ -463,6 +463,17 @@ def checklist():
     if not settings.get("default_excess"):
         blockers.append("The insurance excess is still 0, so it is not quoted anywhere.")
 
+    # Two things that look finished but are not, and would otherwise be found
+    # out by a customer rather than by whoever runs this.
+    if not current_app.config.get("ROUTER_URL"):
+        blockers.append(
+            "No routing provider is configured, so ride distances are not measured "
+            "and every journey falls back to a manual quote.")
+    if commission.totals() > 0:
+        blockers.append(
+            f"{commission.totals()} of commission has been recorded but nothing "
+            f"collects it — settling up with operators happens outside this site.")
+
     return render_template(
         "admin/checklist.html",
         live=settings["site_live"],

@@ -13,7 +13,9 @@ from .settings import current_settings
 from . import routing, commission
 
 bp = Blueprint('dispatch', __name__)
-ACTIVE = ('confirmed', 'arriving', 'in_progress')
+ACTIVE = ('accepted', 'confirmed', 'arriving', 'in_progress')
+# A ride nobody has claimed yet: any available driver may take it.
+OPEN = ('pending',)
 
 @bp.before_request
 def guard():
@@ -161,8 +163,11 @@ def request_ride():
         DriverState.active_booking_id.is_(None),DriverState.vehicle_id==vehicle.id,
         DriverState.updated_at>=now-timedelta(minutes=2)).values(active_booking_id=b.id,available=False))
     if won.rowcount != 1:
-        db.session.rollback()
-        return jsonify(error='That driver just became busy. Get another estimate.'),409
+        # That driver was taken a moment before us. Rather than throwing the
+        # customer back to the start, the trip becomes an open offer that any
+        # available driver can claim. The quote they were shown still stands.
+        b.operator_id = None
+        b.vehicle_id = None
     db.session.commit()
     session.pop('ride_quote',None);session['booking_reference']=b.reference
     return jsonify(url=url_for('dispatch.track',reference=b.reference)),201
@@ -253,7 +258,7 @@ def status(reference):
 @bp.post('/ride/cancel/<reference>')
 def cancel(reference):
     b=customer_booking(reference)
-    changed=db.session.execute(update(Booking).where(Booking.id==b.id,Booking.status.in_(('pending','confirmed','arriving'))).values(status='cancelled'))
+    changed=db.session.execute(update(Booking).where(Booking.id==b.id,Booking.status.in_(('pending','accepted','confirmed','arriving'))).values(status='cancelled'))
     if changed.rowcount != 1: return jsonify(error='This trip cannot be cancelled now.'),409
     db.session.execute(update(DriverState).where(DriverState.active_booking_id==b.id).values(active_booking_id=None,available=False))
     db.session.commit()
@@ -301,7 +306,8 @@ def progress():
     op=_current();data=payload();state=db.session.get(DriverState,op.id)
     if not state or not state.active_booking_id: abort(404)
     b=Booking.query.filter_by(id=state.active_booking_id,operator_id=op.id).first_or_404()
-    allowed={'pending':('confirmed','cancelled'),'confirmed':('arriving','cancelled'),
+    allowed={'pending':('confirmed','cancelled'),'accepted':('arriving','cancelled'),
+             'confirmed':('arriving','cancelled'),
              'arriving':('in_progress','cancelled'),'in_progress':('completed',)}
     target=data.get('status')
     if target not in allowed.get(b.status,()): return jsonify(error='Invalid trip transition.'),409
@@ -314,3 +320,78 @@ def progress():
         state.active_booking_id=None;state.available=False
     db.session.commit()
     return jsonify(status=target)
+
+
+@bp.get('/operator/drive/offers')
+@login_required
+def offers_open():
+    """Trips waiting for a driver.
+
+    Deliberately says nothing about the customer. A driver deciding whether to
+    take a job needs to know where it starts, where it goes and what it pays —
+    not who is waiting. Name and phone appear only once they have accepted.
+    """
+    op = _current()
+    state = db.session.get(DriverState, op.id)
+    if not state or not state.available or state.active_booking_id:
+        return jsonify(offers=[])
+
+    waiting = (Booking.query
+               .filter(Booking.booking_type == 'ride',
+                       Booking.status.in_(OPEN),
+                       Booking.operator_id.is_(None))
+               .order_by(Booking.id).limit(20).all())
+    return jsonify(offers=[dict(
+        id=ride.id, reference=ride.reference,
+        pickup=ride.pickup_address or ride.pickup_location,
+        dropoff=ride.dropoff_address or ride.dropoff_location,
+        distance_km=ride.route_distance_km,
+        fare=float(ride.total_price) if ride.total_price is not None else None,
+    ) for ride in waiting])
+
+
+@bp.post('/operator/drive/accept')
+@login_required
+def accept():
+    """Claim an open trip. Exactly one driver can win.
+
+    Two guarded updates, both of which must match exactly one row: the trip must
+    still be unclaimed, and this driver must still be free. If either has moved
+    under us the whole thing rolls back, so a driver is never left holding a
+    trip that someone else also holds.
+    """
+    op = _current()
+    data = payload()
+    try:
+        booking_id = int(data.get('booking_id', 0))
+    except (TypeError, ValueError):
+        return jsonify(error='Which trip?'), 400
+
+    state = db.session.get(DriverState, op.id)
+    if not state or not state.available or state.active_booking_id or not state.vehicle_id:
+        return jsonify(error='Go online with a vehicle before accepting a trip.'), 409
+    if not state.updated_at or state.updated_at < datetime.utcnow() - timedelta(minutes=2):
+        return jsonify(error='Share your location before accepting a trip.'), 409
+
+    claimed = db.session.execute(update(Booking).where(
+        Booking.id == booking_id,
+        Booking.booking_type == 'ride',
+        Booking.status.in_(OPEN),
+        Booking.operator_id.is_(None),
+    ).values(operator_id=op.id, vehicle_id=state.vehicle_id, status='accepted'))
+    if claimed.rowcount != 1:
+        db.session.rollback()
+        return jsonify(error='Another driver took that trip.'), 409
+
+    held = db.session.execute(update(DriverState).where(
+        DriverState.operator_id == op.id,
+        DriverState.available.is_(True),
+        DriverState.active_booking_id.is_(None),
+    ).values(active_booking_id=booking_id, available=False))
+    if held.rowcount != 1:
+        db.session.rollback()
+        return jsonify(error='You picked up another trip a moment ago.'), 409
+
+    db.session.commit()
+    ride = db.session.get(Booking, booking_id)
+    return jsonify(status='accepted', reference=ride.reference)
