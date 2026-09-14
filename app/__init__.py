@@ -71,6 +71,9 @@ def create_app(config_object=Config):
     register_health(app)
     register_cli(app)
 
+    from . import schema_setup
+    schema_setup.prepare(app)
+
     return app
 
 
@@ -88,6 +91,16 @@ def register_health(app):
     from sqlalchemy import text
 
     from . import sms
+
+    def _schema_state():
+        if db.engine.dialect.name != "postgresql":
+            return "not checked"
+        from .schema_setup import schema_state
+
+        try:
+            return schema_state(db.engine)
+        except Exception as error:  # noqa: BLE001
+            return f"error: {type(error).__name__}"
 
     @app.get("/healthz")
     def healthz():
@@ -119,6 +132,7 @@ def register_health(app):
             "geocoding": "configured" if app.config.get("GEOCODER_URL") else "not configured",
             "routing": "configured" if app.config.get("ROUTER_URL") else "not configured",
             # "fake" means codes go nowhere; only a real provider counts.
+            "schema": _schema_state(),
             "sms": ("fake (local only)" if (app.config.get("SMS_BACKEND") or "") == "fake"
                     else "configured" if not sms.configuration_problems(app)
                     else "not configured"),

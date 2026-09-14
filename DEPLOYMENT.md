@@ -24,6 +24,22 @@ What works locally, and is covered by tests:
   `DRIVER_SIGN_IN.md`.
 - 5% commission recorded on completed bookings, excluding deposits.
 
+### Empty Supabase database
+
+On a production start, if the database has **no application tables at all**,
+the app creates the schema from `supabase/bootstrap.sql` in one transaction,
+under a lock so two workers can't both do it (`app/schema_setup.py`). A
+database that already has tables is never altered. Pending migrations are only
+reported, in the log and as `schema` on `/healthz`, and are applied by hand
+after a backup with `python -m migrations`. The media-bucket part of the script
+runs separately. If Supabase refuses it, the log says so and the bucket is
+created in the dashboard instead.
+
+The first staff account can be created the same way. Set `JATTA_ADMIN_USER` and
+`JATTA_ADMIN_PASSWORD` (12+ characters) in Render, deploy, sign in, then delete
+`JATTA_ADMIN_PASSWORD`. Or run `python tools/create_admin.py` locally against
+the production URL.
+
 ### Production blockers — none of these are done
 
 1. **Supabase migrations.** The remote database was last seen at migration 0004.

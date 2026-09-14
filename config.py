@@ -227,6 +227,13 @@ class Config:
     # Changing a sign-in number needs a sign-in at least this recent.
     RECENT_SIGN_IN_SECONDS = _int_env("JATTA_RECENT_SIGN_IN_SECONDS", 900)
 
+    # Create the schema on start when a production Postgres database has no tables
+    # at all (see app/schema_setup.py). A database that has tables is never
+    # altered automatically.
+    AUTO_BOOTSTRAP = os.environ.get(
+        "JATTA_AUTO_BOOTSTRAP", "1" if _is_production_env() else "0"
+    ).strip().lower() in ("1", "true", "yes", "on")
+
     # --- On-demand rides -----------------------------------------------------
     # How long a chosen driver has to accept before the customer is asked to
     # choose again.
