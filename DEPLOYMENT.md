@@ -1,29 +1,53 @@
 # Deploying Jatta Cars
 
-## Current local checkpoint — 13 September 2026
+## Current local checkpoint — 14 September 2026
 
-The local preview runs at `http://127.0.0.1:5001/` (port 5000 may be used by
-macOS AirPlay). The marketplace home links to `/ride`, scheduled journeys and
-rentals. `/operator/drive` provides a single active vehicle per operator with
-availability, driver acceptance, trip stages and authenticated GPS sharing.
-Migration 0006 adds driver state; run pending migrations on the hosting database
-before deploying this code. The local migration is applied; remote migration
-and a successful production deployment have not been verified.
+The local preview runs at `http://127.0.0.1:5000/`. Use the IP address, not
+`localhost`: macOS AirPlay Receiver also listens on port 5000 over IPv6.
 
-Geoapify is connected locally. Its key is in `instance/geoapify.json`, an ignored
-file with owner-only permissions. Do not commit or copy it into frontend assets.
-For hosting, set `GEOAPIFY_API_KEY` as a secret environment variable; production
-does not read the local credential file. This automatically selects Geoapify's
-geocoding and driving-route endpoints; explicit `JATTA_GEOCODER_*` and
-`JATTA_ROUTER_*` settings still take precedence. A real Kololi–Bakau lookup and
-road route were verified on 13 September. Tests use independent credentials and
-mocked provider data.
+What works locally, and is covered by tests:
 
-Real bookings still require approved operators, assigned active vehicles,
-distance fares and drivers online. Do not seed invented operators into the live
-database. Commission is recorded, not collected: online payment, payouts and
-email delivery are not implemented. This checkpoint is not a completed Uber
-replacement or a verified production launch.
+- **Ride.** A customer searches real addresses, sees the measured road route,
+  compares free drivers by their own price, car and reviews (or a driver they
+  asked for by name), and requests one. If that driver declines, doesn't answer
+  in time, or goes silent, the customer chooses again. Nobody is swapped in
+  automatically.
+- **Driving mode** (`/operator/drive`). The driver goes online with their car
+  and shares their location. They accept or decline the request within the time
+  limit, then move through on the way → start → finish. The customer tracks the
+  accepted driver's position.
+- **Airport transfers** and booked-ahead journeys at a driver's fixed price, and
+  **car rental** of cars linked to approved drivers.
+- **Reviews** after completed rides, transfers and rentals, shown on driver and
+  car pages.
+- **Driver phone sign-in** with the fake local SMS transport. See
+  `DRIVER_SIGN_IN.md`.
+- 5% commission recorded on completed bookings, excluding deposits.
+
+### Production blockers — none of these are done
+
+1. **Supabase migrations.** The remote database was last seen at migration 0004.
+   Apply 0005–0009 (route planning, driver dispatch, reviews, phone sign-in,
+   9-digit Gambian numbers)
+   before deploying this code, and back up first. Regenerate/compare
+   `supabase/bootstrap.sql` for a fresh project.
+2. **Routing on the host.** Set `GEOAPIFY_API_KEY` as a secret on Render.
+   Without it, address search and fares for on-demand rides are switched off
+   there, and the pages say so.
+3. **SMS for driver sign-in.** No provider account, no credentials, and no
+   delivery test to Gambian networks. Until then phone sign-in is unavailable
+   in production (fails closed). The activation checklist is in
+   `DRIVER_SIGN_IN.md`. Also set `JATTA_TRUSTED_PROXIES=1` on Render so
+   per-IP limits see visitors rather than the proxy.
+4. **Commission collection.** Commission is recorded, never collected. There
+   is no payment provider, payout or invoicing.
+5. **Drivers and cars.** No real driver is approved and no real car is linked.
+   Staff approve drivers, and check and list the cars drivers submit. The five
+   "Demo driver" accounts from `tools/seed_demo_drivers.py` are local test data
+   only; the script refuses to run against anything but a local SQLite file.
+6. **Email.** No email is sent.
+7. A successful production deployment of this version has not been attempted
+   or verified.
 
 The app is Flask talking directly to Postgres. Supabase provides the database
 and the image storage; the host runs the Flask app. Local development keeps

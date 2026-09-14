@@ -19,6 +19,8 @@ services:
     plan: free
     region: frankfurt          # nearest Render region to the Irish Supabase project
     branch: main
+    domains:
+      - gogo-taxi.com
 
     buildCommand: pip install -r requirements.txt
 
@@ -62,6 +64,11 @@ services:
       - key: JATTA_DB_SSLMODE
         value: require
 
+      # Render puts exactly one proxy in front of the app. Sign-in rate limits
+      # count per visitor IP, so X-Forwarded-For is trusted for that one hop.
+      - key: JATTA_TRUSTED_PROXIES
+        value: "1"
+
       - key: JATTA_STORAGE
         value: supabase
       - key: SUPABASE_STORAGE_BUCKET
@@ -85,4 +92,18 @@ services:
 
       # SERVICE ROLE key. Server-only: it bypasses row-level security.
       - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # --- Driver sign-in by text message (not configured yet) ---------------
+      # Leave JATTA_SMS_BACKEND unset until a real SMS account exists and a
+      # test text has reached Africell, QCell, Gamcel and Comium phones.
+      # Unset means phone sign-in says it is unavailable; it never fakes codes.
+      # See DRIVER_SIGN_IN.md. Never set it to "fake" here: the app refuses to start.
+      - key: JATTA_SMS_BACKEND
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_MESSAGING_SERVICE_SID
         sync: false

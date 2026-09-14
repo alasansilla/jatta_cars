@@ -31,6 +31,7 @@ TARGET = os.path.join(ROOT, "supabase", "bootstrap.sql")
 # Tables that must never be reachable through Supabase's auto-generated REST
 # API. That is all of them: the application talks to Postgres directly.
 PRIVATE_TABLES = [
+    "phone_codes", "auth_events",
     "vehicles", "bookings", "enquiries", "settings", "media_assets",
     "admin_users", "schema_migrations",
     # Marketplace tables. operators and commission_entries carry business and

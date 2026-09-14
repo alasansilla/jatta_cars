@@ -106,9 +106,9 @@ img { max-width: 100%; display: block; }
   font-size: 1.55rem;
   color: var(--ink);
   letter-spacing: -.02em;
-  text-transform: uppercase;
+  text-transform: none;
 }
-.brand__sub { display: block; font-size: 1.05rem; color: var(--ink); font-weight: 400; }
+.brand__sub { display: block; max-width: 26ch; margin-top: 5px; font-size: .875rem; line-height: 1.3; color: var(--ink); font-weight: 400; }
 
 .nav { display: flex; gap: 2px; margin-left: auto; align-items: center; flex-wrap: wrap; }
 .nav a {
@@ -884,3 +884,89 @@ body.is-editing [data-edit-choice].is-changed { outline-color: var(--good); }
   font-size: .95rem;
 }
 .route-summary__source { color: var(--body); font-size: .85rem; }
+
+/* --- Driver sign-in: large, plain, thumb-sized ----------------------------- */
+
+.driver-card { max-width: 480px; margin: 40px auto; }
+.driver-card h1 { font-size: clamp(1.7rem, 5vw, 2.2rem); margin-bottom: 10px; }
+.driver-card p { font-size: 1.05rem; }
+.driver-card .lede { font-size: 1.15rem; }
+.btn--xl {
+  width: 100%;
+  min-height: 60px;
+  padding: 16px 22px;
+  font-size: 1.2rem;
+  margin-top: 18px;
+}
+.phone-input { display: grid; grid-template-columns: 6.2rem 1fr; gap: 10px; }
+.phone-input input { font-size: 1.35rem; padding: 14px 12px; letter-spacing: .02em; }
+.code-input {
+  font-size: 2.1rem !important;
+  letter-spacing: .35em;
+  text-align: center;
+  padding: 14px 10px !important;
+  font-variant-numeric: tabular-nums;
+}
+.big-label { font-size: 1.05rem; font-weight: 600; color: var(--ink); }
+.notice {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--soft);
+  color: var(--ink);
+  margin: 14px 0;
+}
+.notice--error { background: var(--bad-tint); color: var(--bad); }
+.notice--good { background: var(--good-tint); color: var(--good); }
+.notice--warn { background: var(--warn-tint); color: var(--warn); }
+.link-button { background: none; border: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; }
+.link-button:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+.status-steps { list-style: none; padding: 0; margin: 18px 0; display: grid; gap: 10px; }
+.status-steps li { display: flex; gap: 12px; align-items: flex-start; font-size: 1.05rem; }
+.status-steps .dot { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: .85rem; font-weight: 700; background: var(--soft); color: var(--muted); }
+.status-steps .dot--done { background: var(--good-tint); color: var(--good); }
+.status-steps .dot--now { background: var(--accent); color: #fff; }
+
+/* --- Ride statuses ------------------------------------------------------------ */
+.tag--accepted, .tag--arriving, .tag--in_progress { background: var(--good-tint); color: var(--good); }
+.tag--declined, .tag--expired { background: var(--warn-tint); color: var(--warn); }
+
+/* --- Choosing a driver ------------------------------------------------------ */
+.choice-card { border: 2px solid var(--line); border-radius: var(--radius); padding: 18px; margin: 12px 0; background: #fff; }
+.choice-card.is-selected { border-color: var(--accent); }
+.choice-card.is-preferred { border-color: var(--good); }
+.choice-card h3 { margin: 0 0 4px; font-size: 1.2rem; }
+.choice-card .price { font-size: 1.4rem; font-weight: 700; color: var(--ink); margin: 8px 0; }
+.choice-card .meta { color: var(--body); font-size: .95rem; margin: 2px 0; }
+.choice-card .links a { margin-right: 16px; font-size: .95rem; }
+.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .8rem; font-weight: 600; background: var(--soft); color: var(--ink); margin: 0 6px 6px 0; }
+.badge--good { background: var(--good-tint); color: var(--good); }
+.badge--demo { background: var(--warn-tint); color: var(--warn); }
+
+/* --- Reviews -------------------------------------------------------------------- */
+.review-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+.review-item { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; background: #fff; }
+.review-item .stars { color: var(--accent); letter-spacing: .08em; font-size: 1.05rem; }
+.review-item p { margin: 8px 0 0; white-space: pre-line; }
+.review-item .small { margin-top: 8px; }
+.rating-choice { display: flex; gap: 8px; flex-wrap: wrap; }
+.rating-choice label { display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px; border: 2px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; font-size: 1.05rem; margin: 0; }
+.rating-choice input { width: auto; }
+
+/* --- Driving mode ---------------------------------------------------------------- */
+.drive-status { display: flex; align-items: center; gap: 10px; font-size: 1.15rem; font-weight: 600; margin: 8px 0 16px; }
+.drive-status .light { width: 14px; height: 14px; border-radius: 50%; background: var(--muted); }
+.drive-status.is-online .light { background: var(--good); }
+.drive-status.is-busy .light { background: var(--accent); }
+.drive-job { border: 2px solid var(--accent); border-radius: var(--radius); padding: 18px; margin: 18px 0; background: #fff; }
+.drive-job h2 { font-size: 1.35rem; margin: 0 0 8px; }
+.drive-job dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 12px 0; }
+.drive-job dt { color: var(--body); }
+.drive-job dd { margin: 0; color: var(--ink); font-weight: 600; }
+.drive-actions { display: grid; gap: 10px; margin-top: 14px; }
+.drive-map { height: 260px; border-radius: var(--radius-sm); border: 1px solid var(--line); margin-top: 12px; z-index: 0; }
+.track-map { height: 340px; border-radius: var(--radius); border: 1px solid var(--line); margin: 16px 0; z-index: 0; }
+
+.search-row { max-width: 640px; margin: 0 0 30px; }
+.search-row__controls { display: flex; gap: 10px; }
+.search-row__controls input { flex: 1; min-width: 0; }
+.search-row__controls .btn { flex: none; }

@@ -4,25 +4,35 @@
 {% block operator_content %}
 <div class="panel__head">
   <div>
-    <p class="eyebrow" style="margin:0">{{ operator.name }}</p>
+    <p class="eyebrow" style="margin:0">{{ operator.display_name }}</p>
     <h1 style="font-size:2rem;margin:0">Your dashboard</h1>
   </div>
-  <a class="btn btn--primary" href="{{ url_for('operator.fares') }}">Manage fares</a>
+  <a class="btn btn--primary btn--lg" href="{{ url_for('dispatch.drive') }}">Start Driving mode</a>
 </div>
+
+{% if not counts.ready_vehicles %}
+  <p class="notice notice--warn">
+    {% if counts.vehicles %}Your car is waiting for {{ company_name }} to check it. You can go online once it is approved.
+    {% else %}You have no car yet, so you can't go online or rent out a car. <a href="{{ url_for('operator.car_form') }}">Add my car</a> — {{ company_name }} checks it before customers see it.{% endif %}
+  </p>
+{% endif %}
+{% if not operator.phone_e164 %}
+  <p class="notice">Add your phone number so you can sign in with a text message. <a href="{{ url_for('driver_auth.phone') }}">Add my phone number</a></p>
+{% endif %}
 
 <div class="stat-cards">
   <div class="stat"><div class="stat__label">Awaiting your reply</div><div class="stat__value">{{ counts.pending }}</div></div>
-  <div class="stat"><div class="stat__label">Confirmed</div><div class="stat__value">{{ counts.confirmed }}</div></div>
+  <div class="stat"><div class="stat__label">Accepted</div><div class="stat__value">{{ counts.confirmed }}</div></div>
   <div class="stat"><div class="stat__label">Completed</div><div class="stat__value">{{ counts.completed }}</div></div>
-  <div class="stat"><div class="stat__label">Routes listed</div><div class="stat__value">{{ counts.fares }}</div></div>
+  <div class="stat"><div class="stat__label">Prices listed</div><div class="stat__value">{{ counts.fares }}</div></div>
   <div class="stat"><div class="stat__label">Commission charged</div><div class="stat__value">{{ earned | money }}</div></div>
 </div>
 
 <div class="panel" style="margin-top:26px">
   <h2 style="font-size:1.2rem">How commission works</h2>
   <p class="small muted" style="margin-bottom:8px">
-    We take <strong>{{ operator_rate }}%</strong> of the fare on each booking you
-    complete. Refundable deposits are never included, and nothing is charged on a
+    {{ company_name }} takes <strong>{{ operator_rate }}%</strong> of the fare on each trip
+    or rental you complete. Refundable deposits are never included, and nothing is charged on a
     booking that is cancelled or never completed.
   </p>
   <p class="small muted" style="margin:0">{{ payout_note }}</p>
@@ -61,7 +71,7 @@
   {% else %}
     <div class="empty">
       <h3>Nothing booked yet</h3>
-      <p>Requests for your routes and vehicles appear here.</p>
+      <p>Trips, airport transfers and car rentals customers book with you appear here.</p>
     </div>
   {% endif %}
 </div>

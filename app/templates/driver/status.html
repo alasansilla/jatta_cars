@@ -1,0 +1,23 @@
+{% extends "driver/base.html" %}
+{% block driver_title %}Your application{% endblock %}
+{% block driver_content %}
+  <h1>Hello, {{ account.display_name }}</h1>
+  {% if account.status == 'pending' %}
+    <p class="lede">Thank you for joining {{ company_name }}.</p>
+    <ol class="status-steps">
+      <li><span class="dot dot--done">✓</span><span>Phone number confirmed{% if phone %}: {{ phone }}{% endif %}</span></li>
+      <li><span class="dot dot--now">2</span><span><strong>{{ company_name }} is checking your details.</strong> We will contact you on your phone.</span></li>
+      <li><span class="dot">3</span><span>After you are approved, you can switch on Driving mode and take trips.</span></li>
+    </ol>
+    <p>You don't need to do anything else right now.</p>
+  {% elif account.status == 'suspended' %}
+    <p class="notice notice--warn">Your driver account is paused, so you can't take trips at the moment.</p>
+    <p>Please contact {{ company_name }} to find out more.</p>
+  {% else %}
+    <p class="notice notice--warn">We can't approve your driver account at the moment.</p>
+    <p>Please contact {{ company_name }} if you have questions.</p>
+  {% endif %}
+  <a class="btn btn--dark btn--xl" href="{{ url_for('public.contact') }}">Contact {{ company_name }}</a>
+  {% if not account.phone_e164 %}<p style="margin-top:16px"><a href="{{ url_for('driver_auth.phone') }}">Add your phone number</a></p>{% endif %}
+  <p style="margin-top:16px"><a href="{{ url_for('driver_auth.sign_out') }}">Sign out</a></p>
+{% endblock %}

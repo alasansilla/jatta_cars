@@ -27,9 +27,12 @@
         <h4 data-edit="footer_company_heading">{{ site.footer_company_heading }}</h4>
         <ul>
           <li><a href="{{ url_for('public.about') }}">About us</a></li>
-          <li><a href="{{ url_for('public.fleet') }}">Our fleet</a></li>
           <li><a href="{{ url_for('public.contact') }}">Contact</a></li>
-          <li><a href="{{ url_for('public.booking_lookup') }}">Manage a booking</a></li>
+          <li><a href="{{ url_for('dispatch.drivers') }}">Choose a driver</a></li>
+          <li><a href="{{ url_for('public.fleet') }}">Car rental</a></li>
+          <li><a href="{{ url_for('public.booking_lookup') }}">My booking</a></li>
+          <li><a href="{{ url_for('driver_auth.join') }}">Become a driver</a></li>
+          <li><a href="{{ url_for('driver_auth.sign_in') }}">Driver sign in</a></li>
         </ul>
       </div>
 

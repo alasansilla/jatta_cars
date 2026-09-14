@@ -12,6 +12,18 @@ db = SQLAlchemy()
 # Booking states that occupy a vehicle for their date range.
 BLOCKING_STATUSES = ("pending", "confirmed")
 
+# The life of an on-demand ride. The customer picks a driver and the request
+# waits for that driver ("pending"). The driver accepts, drives to the pickup,
+# starts and finishes the trip. If the driver says no, or does not answer in
+# time, the trip is "declined" or "expired" and the customer chooses again —
+# nobody else is ever put in the chosen driver's place without the customer
+# picking them.
+RIDE_WAITING = ("pending",)
+RIDE_ACTIVE = ("accepted", "confirmed", "arriving", "in_progress")
+RIDE_REOPENABLE = ("declined", "expired")
+RIDE_STATUSES = ("pending", "accepted", "arriving", "in_progress", "completed",
+                 "declined", "expired", "cancelled")
+
 # What a booking is for. A rental holds a car for a range of days; a ride and an
 # airport transfer are a single journey at a point in time. They share one table
 # so that privacy, references and commission have exactly one implementation
@@ -51,8 +63,18 @@ class Operator(db.Model):
     slug = db.Column(db.String(120), nullable=False, unique=True, index=True)
 
     contact_name = db.Column(db.String(120), nullable=True)
-    email = db.Column(db.String(160), nullable=False, unique=True, index=True)
+    # Optional. Drivers who join with their phone number never give one; older
+    # accounts that applied by email keep theirs and can still sign in with it.
+    email = db.Column(db.String(160), nullable=True, unique=True, index=True)
+    # A contact number as typed, by the applicant or by staff. It has never been
+    # proved to belong to anyone, so nothing treats it as a way in.
     phone = db.Column(db.String(40), nullable=True)
+
+    # The driver's sign-in number, in E.164 form (+2207701234), set only after
+    # the driver has typed back a code texted to it. Unique, so one number can
+    # only ever open one account, whatever spacing or prefix it was typed with.
+    phone_e164 = db.Column(db.String(16), nullable=True, unique=True, index=True)
+    phone_verified_at = db.Column(db.DateTime, nullable=True)
 
     # Set when the operator is approved and given a sign-in. Null means they
     # applied but cannot sign in yet.
@@ -83,7 +105,13 @@ class Operator(db.Model):
 
     @property
     def can_sign_in(self):
-        return self.is_approved and bool(self.password_hash)
+        """Whether the older email-and-password sign-in works for this account."""
+        return self.is_approved and bool(self.password_hash) and bool(self.email)
+
+    @property
+    def display_name(self):
+        """What customers see: the person's name, falling back to the listing name."""
+        return self.contact_name or self.name
 
     def set_password(self, password):
         # pbkdf2 rather than Werkzeug's scrypt default: some Python builds are
@@ -370,8 +398,20 @@ class Booking(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, nullable=True)
 
+    # On-demand rides only. The one-time token from the customer's estimate,
+    # unique so a double-tapped "Request" can never create two trips; and when
+    # the chosen driver was last asked, which is what their time to answer runs
+    # from.
+    request_token = db.Column(db.String(64), nullable=True, unique=True, index=True)
+    requested_at = db.Column(db.DateTime, nullable=True)
+
     commission = db.relationship("CommissionEntry", back_populates="booking",
                                  uselist=False, cascade="all, delete-orphan")
+
+    @property
+    def is_on_demand(self):
+        """A ride requested now from a chosen driver, rather than booked ahead."""
+        return self.request_token is not None
 
     @property
     def is_journey(self):
@@ -568,3 +608,50 @@ class DriverState(db.Model):
     lat = db.Column(db.Float, nullable=True)
     lng = db.Column(db.Float, nullable=True)
     updated_at = db.Column(db.DateTime, nullable=True)
+
+
+class PhoneCode(db.Model):
+    """A one-time code texted to a phone number.
+
+    Only a keyed hash of the code is stored, so reading this table does not let
+    anyone sign in. A code is closed the moment it is used, replaced by a newer
+    one, or guessed wrongly too often; `closed_at` is set once and never cleared.
+    """
+
+    __tablename__ = "phone_codes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    phone_e164 = db.Column(db.String(16), nullable=False, index=True)
+    # What proving the number is for: signing in or joining ("sign_in"), or
+    # putting a number on an account that is already signed in ("add_phone").
+    purpose = db.Column(db.String(20), nullable=False, default="sign_in")
+    code_hash = db.Column(db.String(64), nullable=False)
+    # Ties the code to the browser that asked for it.
+    session_hash = db.Column(db.String(64), nullable=False)
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    outcome = db.Column(db.String(20), nullable=True)  # used, replaced, locked
+
+    def __repr__(self):
+        return f"<PhoneCode {self.id} {self.purpose} {self.outcome or 'open'}>"
+
+
+class AuthEvent(db.Model):
+    """One counted event for rate limiting sign-in: a text sent, a wrong code.
+
+    The subject is a keyed hash of a phone number or an IP address, never the
+    number or address itself, so the table can be counted without being a list
+    of who tried to sign in.
+    """
+
+    __tablename__ = "auth_events"
+    __table_args__ = (
+        db.Index("ix_auth_events_kind_subject_time", "kind", "subject_hash", "created_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(30), nullable=False)
+    subject_hash = db.Column(db.String(64), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

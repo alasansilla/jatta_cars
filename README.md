@@ -270,7 +270,14 @@ database.
   promises an email, because none goes out — staff contact the customer. Wire up
   SMTP (or a service like Postmark) when you want that automated.
 - **No payouts.** Commission is recorded, not collected. Settling up with
-  operators happens outside the site.
+  drivers happens outside the site.
+- **No real text messages yet.** Driver phone sign-in works locally with a fake
+  transport. A real SMS provider has to be set up and tested on Gambian networks
+  first — see `DRIVER_SIGN_IN.md`.
+- **Drivers submit their own cars; staff publish them.** A driver adds or edits a
+  car under My cars; every change hides it until staff check it and list it
+  again. Staff can also link a car to a driver on the admin car form. There are
+  no fleet staff accounts: one driver account drives its own cars.
 - **No online payment.** Bookings are requests; money changes hands when the car
   is collected. Cash, mobile money and card are preferences for later, not
   capabilities this site has — do not advertise them as if they were.

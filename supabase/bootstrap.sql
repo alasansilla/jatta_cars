@@ -37,6 +37,15 @@ CREATE TABLE IF NOT EXISTS admin_users (
 	UNIQUE (username)
 );
 
+CREATE TABLE IF NOT EXISTS auth_events (
+	id SERIAL NOT NULL,
+	kind VARCHAR(30) NOT NULL,
+	subject_hash VARCHAR(64) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS ix_auth_events_kind_subject_time ON auth_events (kind, subject_hash, created_at);
+
 CREATE TABLE IF NOT EXISTS enquiries (
 	id SERIAL NOT NULL,
 	name VARCHAR(120) NOT NULL,
@@ -66,8 +75,10 @@ CREATE TABLE IF NOT EXISTS operators (
 	name VARCHAR(120) NOT NULL,
 	slug VARCHAR(120) NOT NULL,
 	contact_name VARCHAR(120),
-	email VARCHAR(160) NOT NULL,
+	email VARCHAR(160),
 	phone VARCHAR(40),
+	phone_e164 VARCHAR(16),
+	phone_verified_at TIMESTAMP WITHOUT TIME ZONE,
 	password_hash VARCHAR(255),
 	status VARCHAR(20) NOT NULL,
 	commission_rate NUMERIC(5, 2),
@@ -79,8 +90,25 @@ CREATE TABLE IF NOT EXISTS operators (
 	PRIMARY KEY (id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ix_operators_email ON operators (email);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_operators_phone_e164 ON operators (phone_e164);
 CREATE UNIQUE INDEX IF NOT EXISTS ix_operators_slug ON operators (slug);
 CREATE INDEX IF NOT EXISTS ix_operators_status ON operators (status);
+
+CREATE TABLE IF NOT EXISTS phone_codes (
+	id SERIAL NOT NULL,
+	phone_e164 VARCHAR(16) NOT NULL,
+	purpose VARCHAR(20) NOT NULL,
+	code_hash VARCHAR(64) NOT NULL,
+	session_hash VARCHAR(64) NOT NULL,
+	attempts INTEGER NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	closed_at TIMESTAMP WITHOUT TIME ZONE,
+	outcome VARCHAR(20),
+	PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS ix_phone_codes_created_at ON phone_codes (created_at);
+CREATE INDEX IF NOT EXISTS ix_phone_codes_phone_e164 ON phone_codes (phone_e164);
 
 CREATE TABLE IF NOT EXISTS settings (
 	key VARCHAR(80) NOT NULL,
@@ -172,6 +200,8 @@ CREATE TABLE IF NOT EXISTS bookings (
 	notes TEXT,
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
 	completed_at TIMESTAMP WITHOUT TIME ZONE,
+	request_token VARCHAR(64),
+	requested_at TIMESTAMP WITHOUT TIME ZONE,
 	PRIMARY KEY (id),
 	FOREIGN KEY(vehicle_id) REFERENCES vehicles (id),
 	FOREIGN KEY(operator_id) REFERENCES operators (id),
@@ -180,6 +210,7 @@ CREATE TABLE IF NOT EXISTS bookings (
 CREATE INDEX IF NOT EXISTS ix_bookings_booking_type ON bookings (booking_type);
 CREATE INDEX IF NOT EXISTS ix_bookings_operator_id ON bookings (operator_id);
 CREATE UNIQUE INDEX IF NOT EXISTS ix_bookings_reference ON bookings (reference);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_bookings_request_token ON bookings (request_token);
 CREATE INDEX IF NOT EXISTS ix_bookings_status ON bookings (status);
 
 CREATE TABLE IF NOT EXISTS booking_reviews (
@@ -278,7 +309,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['vehicles', 'bookings', 'enquiries', 'settings', 'media_assets', 'admin_users', 'schema_migrations', 'operators', 'operator_fares', 'commission_entries', 'driver_states', 'booking_reviews'] loop
+  foreach t in array array['phone_codes', 'auth_events', 'vehicles', 'bookings', 'enquiries', 'settings', 'media_assets', 'admin_users', 'schema_migrations', 'operators', 'operator_fares', 'commission_entries', 'driver_states', 'booking_reviews'] loop
     if exists (select 1 from pg_tables where schemaname = 'public' and tablename = t) then
       execute format('alter table public.%I enable row level security', t);
       execute format('revoke all on table public.%I from anon, authenticated', t);
@@ -340,7 +371,9 @@ insert into public.schema_migrations (version, name, applied_at) values
   ('0004', 'marketplace: operators, journeys and commission', now()),
   ('0005', 'route planning: coordinates, distance and distance-based fares', now()),
   ('0006', 'driver availability and dispatch', now()),
-  ('0007', 'verified completed booking reviews', now())
+  ('0007', 'verified completed booking reviews', now()),
+  ('0008', 'driver phone sign-in and one request per estimate', now()),
+  ('0009', 'verified Gambian numbers in 9-digit form', now())
 on conflict (version) do nothing;
 
 alter table public.schema_migrations enable row level security;

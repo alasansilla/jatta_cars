@@ -129,10 +129,13 @@ def _engine_options(uri):
     automatically after a few executions, so it is told not to; psycopg2 binds
     parameters client-side and needs nothing.
     """
+    # Bound parameters carry phone numbers, addresses and booking details. They
+    # are kept out of SQLAlchemy's log and error messages whatever the log level.
     if uri.startswith("sqlite"):
-        return {}
+        return {"hide_parameters": True}
 
     options = {
+        "hide_parameters": True,
         "pool_pre_ping": True,  # a pooled connection may have been closed under us
         "connect_args": {
             "connect_timeout": int(os.environ.get("JATTA_DB_CONNECT_TIMEOUT", "10")),
@@ -160,10 +163,74 @@ def _engine_options(uri):
     return options
 
 
+def _is_production_env():
+    return os.environ.get("JATTA_ENV", "development").strip().lower() in ("production", "prod")
+
+
+def _int_env(name, default):
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return int(default)
+
+
 class Config:
     ENV_NAME = os.environ.get("JATTA_ENV", "development")
 
     SECRET_KEY = os.environ.get("JATTA_SECRET_KEY", DEV_SECRET)
+
+    # --- Sessions -----------------------------------------------------------
+    #
+    # The cookie is signed, not encrypted, and holds who is signed in. HttpOnly
+    # keeps page scripts away from it; SameSite=Lax stops other sites riding it
+    # on a POST; Secure keeps it off plain HTTP wherever the site is served over
+    # HTTPS. A driver who signs in with their phone stays signed in for a
+    # fortnight, because signing in again costs them a text message.
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = _is_production_env()
+    PERMANENT_SESSION_LIFETIME = 60 * 60 * 24 * _int_env("JATTA_DRIVER_SESSION_DAYS", 14)
+
+    # How many proxies sit in front of the app and append to X-Forwarded-For.
+    # Render and most platforms add exactly one. Leave 0 when the app is reached
+    # directly: trusting a header nobody strips would let anyone pick the IP
+    # address that sign-in rate limits count against.
+    TRUSTED_PROXIES = _int_env("JATTA_TRUSTED_PROXIES", 0)
+
+    # --- Driver sign-in by text message ------------------------------------
+    #
+    # See app/sms.py. Development defaults to the fake transport, which sends
+    # nothing and writes codes to a git-ignored file under instance/. Production
+    # has no default: until a real provider is configured, phone sign-in says it
+    # is unavailable instead of pretending to send codes.
+    SMS_BACKEND = os.environ.get(
+        "JATTA_SMS_BACKEND", "").strip().lower()
+    SMS_FAKE_OUTBOX = os.environ.get(
+        "JATTA_SMS_FAKE_OUTBOX", os.path.join(BASE_DIR, "instance", "dev_sms_outbox.jsonl"))
+    SMS_TIMEOUT = _int_env("JATTA_SMS_TIMEOUT", 10)
+    SMS_WEBOTP_DOMAIN = os.environ.get("JATTA_SMS_WEBOTP_DOMAIN", "").strip()
+    TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
+    TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
+    TWILIO_MESSAGING_SERVICE_SID = os.environ.get("TWILIO_MESSAGING_SERVICE_SID", "").strip()
+    TWILIO_FROM = os.environ.get("TWILIO_FROM", "").strip()
+
+    SMS_CODE_TTL_SECONDS = _int_env("JATTA_SMS_CODE_TTL_SECONDS", 600)
+    SMS_CODE_MAX_ATTEMPTS = _int_env("JATTA_SMS_CODE_MAX_ATTEMPTS", 5)
+    SMS_RESEND_SECONDS = _int_env("JATTA_SMS_RESEND_SECONDS", 60)
+    SMS_MAX_PER_NUMBER_HOUR = _int_env("JATTA_SMS_MAX_PER_NUMBER_HOUR", 5)
+    SMS_MAX_PER_NUMBER_DAY = _int_env("JATTA_SMS_MAX_PER_NUMBER_DAY", 10)
+    SMS_MAX_PER_IP_HOUR = _int_env("JATTA_SMS_MAX_PER_IP_HOUR", 10)
+    SMS_MAX_PER_DAY = _int_env("JATTA_SMS_MAX_PER_DAY", 300)
+    SMS_WRONG_CODES_PER_IP_HOUR = _int_env("JATTA_SMS_WRONG_CODES_PER_IP_HOUR", 30)
+    # How long after proving a number a new driver has to type their name.
+    PHONE_VERIFIED_SECONDS = _int_env("JATTA_PHONE_VERIFIED_SECONDS", 900)
+    # Changing a sign-in number needs a sign-in at least this recent.
+    RECENT_SIGN_IN_SECONDS = _int_env("JATTA_RECENT_SIGN_IN_SECONDS", 900)
+
+    # --- On-demand rides -----------------------------------------------------
+    # How long a chosen driver has to accept before the customer is asked to
+    # choose again.
+    DRIVER_ACCEPT_SECONDS = _int_env("JATTA_DRIVER_ACCEPT_SECONDS", 120)
 
     SQLALCHEMY_DATABASE_URI = _database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -285,5 +352,14 @@ def check_production_config(app):
         )
     elif not app.config.get("SUPABASE_URL"):
         problems.append("SUPABASE_URL is missing.")
+
+    # The fake text transport never delivers anything. In production that would
+    # make driver sign-in silently impossible, so it is refused outright. An
+    # unset transport is allowed: phone sign-in then reports itself unavailable,
+    # which fails closed without taking the rest of the site down.
+    if (app.config.get("SMS_BACKEND") or "").strip().lower() == "fake":
+        problems.append(
+            "JATTA_SMS_BACKEND=fake cannot run in production: it never sends a text. "
+            "Configure a real SMS provider, or leave JATTA_SMS_BACKEND unset.")
 
     return problems

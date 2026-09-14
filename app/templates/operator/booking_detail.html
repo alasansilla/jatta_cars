@@ -76,13 +76,13 @@
     </div>
   {% else %}
     <p class="small muted" style="margin:0">
-      Contact details are shown once you accept this booking. Until then you can see
-      the journey and the fare, which is what you need to decide.
+      The customer's name and phone number appear once you accept. Until then you can
+      see the journey and the fare, which is what you need to decide.
     </p>
   {% endif %}
 </div>
 
-{% if booking.status not in ['completed', 'cancelled'] %}
+{% if booking.status not in ['completed', 'cancelled', 'declined', 'expired'] and not booking.is_on_demand %}
   <div class="panel">
     <h2 style="font-size:1.2rem">
       {% if booking.needs_quote %}Set the fare{% else %}Change the fare{% endif %}
@@ -113,13 +113,16 @@
   </div>
 {% endif %}
 
-{% set next_steps = {'pending': [('confirmed', 'Accept this booking'), ('cancelled', 'Decline')], 'confirmed': [('completed', 'Mark as completed'), ('cancelled', 'Cancel')]}.get(booking.status, []) %}
+{% set next_steps = {} if booking.is_on_demand else {'pending': [('confirmed', 'Accept this booking'), ('cancelled', 'Decline')], 'confirmed': [('completed', 'Mark as completed'), ('cancelled', 'Cancel')]}.get(booking.status, []) %}
+{% if booking.is_on_demand and booking.status in ['pending', 'accepted', 'confirmed', 'arriving', 'in_progress'] %}
+  <div class="panel"><p style="margin:0">This is a ride a customer requested from you now. Answer it and move it along in <a href="{{ url_for('dispatch.drive') }}">Driving mode</a>.</p></div>
+{% endif %}
 {% if next_steps %}
   <div class="panel">
     <h2 style="font-size:1.2rem">What next</h2>
     {% if booking.status == 'confirmed' %}
       <p class="small muted">
-        Completing this booking records our commission of {{ operator_rate }}% of the
+        Completing this booking records {{ company_name }}'s commission of {{ operator_rate }}% of the
         fare. It cannot be undone from here.
         {% if booking.needs_quote %}
           <br><strong style="color:var(--warn)">Set a fare first — a job with no

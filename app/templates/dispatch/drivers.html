@@ -1,10 +1,53 @@
 {% extends 'base.html' %}
-{% block title %}Drivers on Jatta{% endblock %}
+{% block title %}Choose a driver — {{ company_name }}{% endblock %}
 {% block content %}
-<section class="section"><div class="wrap">
-  <p class="eyebrow">Ride with confidence</p><h1>Choose a driver</h1>
-  <p>Browse approved Jatta partners, compare reviews and choose someone you know.</p>
-  <form method="get" class="field-row" style="max-width:620px;margin:26px 0"><div class="field" style="flex:1"><label for="q">Search drivers or companies</label><input id="q" name="q" value="{{ query }}" placeholder="Name or company"></div><button class="btn btn--primary" type="submit" style="align-self:end">Search</button></form>
-  <div class="grid grid--2">{% for profile in operators %}<article class="panel"><p class="eyebrow">Jatta partner</p><h2 style="margin:0 0 8px">{{ profile.contact_name or profile.name }}</h2><p class="small muted">{{ profile.name }}{% if profile.service_area %} · {{ profile.service_area }}{% endif %}</p>{% set summary=review_summary(operator_id=profile.id) %}<p>{{ summary.rating or 'New' }}{% if summary.rating %} / 5{% endif %} · {{ summary.review_count }} review{{ 's' if summary.review_count != 1 }}</p><a class="btn btn--ghost" href="{{ url_for('dispatch.driver_profile',operator_id=profile.id) }}">View profile</a></article>{% else %}<p>No approved drivers match that search yet.</p>{% endfor %}</div>
-</div></section>
+<section class="page-head">
+  <div class="wrap">
+    <p class="eyebrow">Drivers</p>
+    <h1>Choose a driver</h1>
+    <p>Compare drivers by their prices, cars and reviews — or look up someone you already know.</p>
+  </div>
+</section>
+<section class="section">
+  <div class="wrap">
+    <form method="get" class="search-row" role="search">
+      <label for="q">Search by name or area</label>
+      <div class="search-row__controls">
+        <input id="q" name="q" type="text" value="{{ query }}" placeholder="A driver's name, or an area such as Kololi" maxlength="120">
+        <button class="btn btn--primary" type="submit">Search</button>
+      </div>
+    </form>
+
+    {% if listing %}
+      <div class="grid grid--2">
+        {% for item in listing %}
+          {% set d = item.driver %}
+          <article class="choice-card">
+            {% if item.available_now %}<span class="badge badge--good">Online now</span>{% endif %}
+            {% if item.offers_rides %}<span class="badge">Rides</span>{% endif %}
+            {% if item.scheduled_fares %}<span class="badge">Booked ahead &amp; airport</span>{% endif %}
+            {% if item.cars %}<span class="badge">Car rental</span>{% endif %}
+            <h3>{{ d.display_name }}</h3>
+            {% if d.service_area %}<p class="meta">{{ d.service_area }}</p>{% endif %}
+            <p class="meta">
+              {% if item.rating.rating %}★ {{ item.rating.rating }} / 5 from {{ item.rating.review_count }} review{{ 's' if item.rating.review_count != 1 }}{% else %}New driver — no reviews yet{% endif %}
+            </p>
+            {% for fare in item.ride_fares[:1] %}
+              <p class="meta">Rides: {{ fare.base_price | money }} + {{ fare.per_km | money }} per km{% if fare.minimum_price %}, at least {{ fare.minimum_price | money }}{% endif %}</p>
+            {% endfor %}
+            <p class="links" style="margin-top:12px">
+              <a class="btn btn--ghost btn--sm" href="{{ url_for('dispatch.driver_profile', operator_id=d.id) }}">See profile</a>
+              {% if item.offers_rides %}<a class="btn btn--primary btn--sm" href="{{ url_for('dispatch.ride', driver=d.id) }}">Ride with {{ d.display_name }}</a>{% endif %}
+            </p>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty panel">
+        <h3>{% if query %}No driver matches “{{ query }}”{% else %}No drivers are listed yet{% endif %}</h3>
+        <p>Drivers appear here once {{ company_name }} has approved them.</p>
+      </div>
+    {% endif %}
+  </div>
+</section>
 {% endblock %}

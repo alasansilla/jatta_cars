@@ -3,10 +3,10 @@
 
 {% block operator_content %}
 <div class="panel__head">
-  <h1 style="font-size:2rem;margin:0">Your bookings</h1>
+  <h1 style="font-size:2rem;margin:0">Trips &amp; bookings</h1>
   <div class="actions">
     <a class="btn btn--sm {{ 'btn--primary' if not status else 'btn--ghost' }}" href="{{ url_for('operator.bookings') }}">All</a>
-    {% for item in ['pending', 'confirmed', 'completed', 'cancelled'] %}
+    {% for item in ['pending', 'accepted', 'confirmed', 'completed', 'declined', 'expired', 'cancelled'] %}
       <a class="btn btn--sm {{ 'btn--primary' if status == item else 'btn--ghost' }}"
          href="{{ url_for('operator.bookings', status=item) }}">{{ item | capitalize }}</a>
     {% endfor %}

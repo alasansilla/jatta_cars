@@ -1,0 +1,9 @@
+{% extends "driver/base.html" %}
+{% block driver_title %}Driver sign in{% endblock %}
+{% block driver_content %}
+  <h1>Driver sign in</h1>
+  <p class="lede">Enter your phone number. We will text you a code.</p>
+  {% include "driver/phone_form.html" %}
+  <p class="center" style="margin-top:18px">New driver? <a href="{{ url_for('driver_auth.join') }}">Become a driver</a></p>
+  <p class="center small muted" style="margin-top:6px">Joined with an email address before? <a href="{{ url_for('operator.login') }}">Sign in with email</a></p>
+{% endblock %}

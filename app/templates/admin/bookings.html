@@ -6,7 +6,7 @@
   <h1 style="font-size:2rem;margin:0">Bookings</h1>
   <div class="actions">
     <a class="btn btn--sm {{ 'btn--primary' if not status else 'btn--ghost' }}" href="{{ url_for('admin.bookings') }}">All</a>
-    {% for item in statuses %}
+    {% for item in filter_statuses %}
       <a class="btn btn--sm {{ 'btn--primary' if status == item else 'btn--ghost' }}"
          href="{{ url_for('admin.bookings', status=item) }}">{{ item | capitalize }}</a>
     {% endfor %}
@@ -50,8 +50,8 @@
               <td>
                 <form method="post" action="{{ url_for('admin.update_booking_status', booking_id=booking.id) }}" class="actions"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                   <select name="status" style="width:auto;padding:7px 10px;font-size:.85rem">
-                    {% for item in statuses %}
-                      <option value="{{ item }}" {{ 'selected' if booking.status == item }}>{{ item | capitalize }}</option>
+                    {% for item in ([booking.status] + staff_ride_statuses if booking.is_on_demand else statuses) | unique %}
+                      <option value="{{ item }}" {{ 'selected' if booking.status == item }}>{{ item | replace('_', ' ') | capitalize }}</option>
                     {% endfor %}
                   </select>
                   <button class="btn btn--ghost btn--sm" type="submit">Update</button>

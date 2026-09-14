@@ -1,397 +1,941 @@
-"""Customer ride requests and authenticated single-vehicle operator dispatch."""
+"""On-demand rides: the customer chooses a driver, and that driver answers.
+
+The rules this module keeps:
+
+* **The customer chooses.** Every trip is requested from one driver the
+  customer picked, at that driver's own published price. If the driver says no,
+  does not answer in time, or goes silent after accepting, the trip waits for
+  the customer to pick someone else. Nobody is ever put in the chosen driver's
+  place without the customer choosing them.
+* **Each driver's own fare.** The price is worked out on the server from the
+  chosen driver's fare and the measured road distance. The page only echoes the
+  price it was shown, and a mismatch means "look again", never "charge it".
+* **Strict choices.** A missing or malformed selection is refused. Nothing
+  falls back to the cheapest driver or to any default.
+* **One driver, one trip.** Reserving a driver is a single guarded UPDATE that
+  must match exactly one row, so two customers cannot both get the same driver,
+  and a driver can never hold two trips.
+* **Fresh positions only.** A driver whose last location is more than two
+  minutes old is neither offered nor reservable, and a customer is never shown a
+  position more than 45 seconds old.
+
+Customers are identified by the booking reference held in their own session.
+Drivers must be signed in and approved, and can only act on the trip they hold.
+"""
+import math
+import re
+import secrets
+from collections import namedtuple
 from datetime import datetime, timedelta
 from decimal import Decimal
-import secrets
-from flask import Blueprint, abort, jsonify, render_template, request, session, redirect, url_for
-from sqlalchemy import update
-from .models import db, Booking, DriverState, OperatorFare, Operator, Vehicle, BookingReview
-from sqlalchemy.exc import IntegrityError
-from .operator import _current, login_required
-from .public import hold_until_published, _coordinate, _within_rate_limit
-from .forms import validate_customer
-from .settings import current_settings
-from . import routing, commission
 
-bp = Blueprint('dispatch', __name__)
-ACTIVE = ('accepted', 'confirmed', 'arriving', 'in_progress')
-# A ride nobody has claimed yet: any available driver may take it.
-OPEN = ('pending',)
+from flask import (
+    Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
+    request, session, url_for,
+)
+from sqlalchemy import or_, update
+from sqlalchemy.exc import IntegrityError
+
+from . import commission, reviews, routing
+from .forms import validate_customer
+from .models import (
+    RIDE_ACTIVE, RIDE_REOPENABLE, Booking, BookingReview, DriverState, Operator,
+    OperatorFare, Vehicle, db,
+)
+from .operator import _current, login_required
+from .phone import pretty
+from .public import _within_rate_limit, hold_until_published
+from .settings import current_settings
+
+bp = Blueprint("dispatch", __name__)
+
+FRESH_FIX = timedelta(minutes=2)      # older than this: not offered, not reservable
+SHOW_FIX = timedelta(seconds=45)      # older than this: not shown to the customer
+DRIVER_SILENT = timedelta(minutes=3)  # an accepted driver this quiet can be replaced
+QUOTE_LIFETIME = timedelta(minutes=3)
+MAX_PASSENGERS = 8
+
+# Kept for older imports: the statuses in which a driver is on a trip.
+ACTIVE = RIDE_ACTIVE
+
+CANCELLABLE = ("pending", "accepted", "confirmed", "arriving") + RIDE_REOPENABLE
+DRIVER_CAN_DECLINE = ("pending", "accepted", "confirmed", "arriving")
+NEXT_STAGE = {"accepted": "arriving", "confirmed": "arriving",
+              "arriving": "in_progress", "in_progress": "completed"}
+STAGE_LABELS = {"arriving": "I'm on my way", "in_progress": "Start the trip",
+                "completed": "Finish the trip"}
+
+Choice = namedtuple("Choice", "amount fare state vehicle")
+
 
 @bp.before_request
 def guard():
-    held = hold_until_published()
-    if held is not None:
-        return held
-    if request.method == 'POST':
-        token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token', '')
-        expected = session.get('_csrf_token', '')
-        if not expected or not secrets.compare_digest(token, expected):
-            return jsonify(error='Your session expired. Refresh and try again.'), 400
+    # Driving mode is for drivers and has to work before the public site opens.
+    if not request.path.startswith("/operator/"):
+        held = hold_until_published()
+        if held is not None:
+            return held
+    if request.method == "POST":
+        supplied = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token", "")
+        expected = session.get("_csrf_token", "")
+        if not expected or not secrets.compare_digest(str(supplied), str(expected)):
+            if request.form and not request.is_json:
+                flash("This page had expired. Please try again.", "error")
+                return redirect(request.path)
+            return jsonify(error="This page has expired. Refresh it and try again."), 400
+    return None
+
 
 @bp.after_request
 def private(response):
-    response.headers['Cache-Control'] = 'no-store'
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 
+# --- reading what the page sent ------------------------------------------------
+
 def payload():
-    return request.get_json(silent=True) or request.form
+    """The request body as a dict. A JSON list or string is treated as empty."""
+    data = request.get_json(silent=True)
+    if isinstance(data, dict):
+        return data
+    if request.is_json:
+        return {}
+    return request.form
 
 
-def measured(data):
-    points = [_coordinate(data.get(key), limit) for key, limit in
-              [('pickup_lat',90),('pickup_lng',180),('dropoff_lat',90),('dropoff_lng',180)]]
-    if None in points:
-        return None, points
+def _whole(value, low=1, high=2_147_483_647):
+    """A whole number from JSON or a form, or None. True is not 1; 2.5 is not 2."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, str) and re.fullmatch(r"\s*[0-9]{1,10}\s*", value):
+        number = int(value)
+    else:
+        return None
+    return number if low <= number <= high else None
+
+
+def _amount(value):
+    """A price to the cent, or None. Rejects NaN, infinities, exponents and booleans."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        text = repr(value)
+    elif isinstance(value, int):
+        text = str(value)
+    elif isinstance(value, str):
+        text = value.strip()
+    else:
+        return None
+    if not re.fullmatch(r"[0-9]{1,9}(\.[0-9]{1,2})?", text):
+        return None
+    return Decimal(text).quantize(Decimal("0.01"))
+
+
+def _point(value, limit):
+    if isinstance(value, bool) or value is None:
+        return None
     try:
-        return routing.route(points[:2], points[2:]), points
-    except routing.RoutingUnavailable:
-        return None, points
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or not -limit <= number <= limit:
+        return None
+    return number
 
 
-def offers(distance, passengers):
-    # Only current, approved, unoccupied drivers with their own active vehicle.
-    rows = db.session.query(OperatorFare, DriverState).join(
-        DriverState, DriverState.operator_id == OperatorFare.operator_id).join(
-        Operator, Operator.id == OperatorFare.operator_id).join(
-        Vehicle, Vehicle.id == DriverState.vehicle_id).filter(
-        Operator.status == 'approved', DriverState.available.is_(True),
-        DriverState.active_booking_id.is_(None),
-        DriverState.updated_at >= datetime.utcnow()-timedelta(minutes=2),
-        Vehicle.is_active.is_(True), Vehicle.operator_id == Operator.id,
-        Vehicle.seats >= passengers, OperatorFare.kind == 'ride',
-        OperatorFare.is_active.is_(True), OperatorFare.pricing_model == 'distance').all()
+def _text(value, limit):
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split())[:limit]
+
+
+def _money_text(amount):
+    return f"{current_settings()['currency']}{Decimal(amount):,.2f}"
+
+
+# --- which drivers can take a trip -----------------------------------------------
+
+def offers(distance_m, passengers, now=None, exclude_operator_id=None):
+    """Every driver who could take this trip right now, priced by their own fare.
+
+    Approved, online with a fresh location, holding no trip, driving their own
+    active car with enough seats, and publishing an active per-kilometre ride
+    fare. Cheapest first; the customer still chooses.
+    """
+    now = now or datetime.utcnow()
+    query = (
+        db.session.query(OperatorFare, DriverState, Vehicle)
+        .join(DriverState, DriverState.operator_id == OperatorFare.operator_id)
+        .join(Operator, Operator.id == OperatorFare.operator_id)
+        .join(Vehicle, Vehicle.id == DriverState.vehicle_id)
+        .filter(
+            Operator.status == "approved",
+            DriverState.available.is_(True),
+            DriverState.active_booking_id.is_(None),
+            DriverState.updated_at >= now - FRESH_FIX,
+            DriverState.lat.isnot(None), DriverState.lng.isnot(None),
+            Vehicle.is_active.is_(True),
+            Vehicle.operator_id == OperatorFare.operator_id,
+            Vehicle.seats >= passengers,
+            OperatorFare.kind == "ride",
+            OperatorFare.is_active.is_(True),
+            OperatorFare.pricing_model == "distance",
+            or_(OperatorFare.seats.is_(None), OperatorFare.seats >= passengers),
+        )
+    )
+    if exclude_operator_id is not None:
+        query = query.filter(OperatorFare.operator_id != exclude_operator_id)
+
     choices = []
-    for fare, state in rows:
-        amount, basis = fare.quote(distance)
-        if amount is not None:
-            choices.append((amount, fare, state))
-    return sorted(choices, key=lambda row: (row[0], row[1].id))
+    for fare, state, vehicle in query.all():
+        amount, _basis = fare.quote(distance_m)
+        if amount is not None and amount > 0:
+            choices.append(Choice(amount, fare, state, vehicle))
+    return sorted(choices, key=lambda choice: (choice.amount, choice.fare.id))
 
 
-@bp.get('/ride')
-def ride():
-    return render_template('dispatch/ride.html', map_settings=routing.map_settings())
+def _card(choice, preferred_id=None):
+    driver = choice.fare.operator
+    car = choice.vehicle
+    rated = reviews.journey_summary(driver.id)
+    return {
+        "fare_id": choice.fare.id,
+        "vehicle_id": car.id,
+        "driver_id": driver.id,
+        "driver": driver.display_name,
+        "fare_title": choice.fare.title,
+        "vehicle": f"{car.name} · {car.year}",
+        "seats": car.seats,
+        "price": float(choice.amount),
+        "price_text": _money_text(choice.amount),
+        "rating": rated["rating"],
+        "review_count": rated["review_count"],
+        "profile": url_for("dispatch.driver_profile", operator_id=driver.id),
+        "preferred": preferred_id is not None and driver.id == preferred_id,
+    }
 
 
-@bp.post('/ride/estimate')
-def estimate():
-    if not _within_rate_limit('_dispatch_quote', 15):
-        return jsonify(error='Please wait before requesting another estimate.'), 429
-    data = payload()
-    try:
-        passengers = int(data.get('passengers', 1))
-        if not 1 <= passengers <= 8: raise ValueError()
-    except (ValueError, TypeError):
-        return jsonify(error='Choose between 1 and 8 passengers.'), 400
-    leg, points = measured(data)
-    choices = offers(leg.distance_m, passengers) if leg else []
-    session.pop('ride_quote', None)
-    if not choices:
-        return jsonify(route=leg.as_dict() if leg else None, quote=None,
-            error='No priced ride is available right now. Try a scheduled journey.' if leg else
-            'Route estimates are unavailable. You can request a scheduled quote instead.')
-    token = secrets.token_urlsafe(24)
-    # Keep only route context in the signed session. Every chosen fare and driver
-    # is priced and checked again on submission; the customer supplies no price.
-    session['ride_quote'] = dict(token=token, points=points, distance=leg.distance_m, duration=leg.duration_s,
-        provider=leg.provider, passengers=passengers, expires=(datetime.utcnow()+timedelta(minutes=2)).timestamp())
-    cards=[]
-    for amount, fare, state in choices:
-        car=db.session.get(Vehicle,state.vehicle_id)
-        cards.append(dict(fare_id=fare.id, vehicle_id=car.id, price=float(amount),
-            driver=fare.operator.contact_name or fare.operator.name,
-            operator=fare.operator.name, vehicle=car.name, seats=car.seats,
-            image=url_for('static',filename=car.image_url) if car.image_url.startswith('img/') else None,
-            profile=url_for('dispatch.driver_profile',operator_id=fare.operator_id),
-            car_profile=url_for('public.vehicle_detail',vehicle_id=car.id),
-            **review_summary(operator_id=fare.operator_id)))
-    return jsonify(route=leg.as_dict(), choices=cards, quote=(cards[0]['price'] if cards else None), token=token,
-                   currency='GMD', message='Choose your driver. Availability is checked when you request.')
+def _cards(choices, preferred_id=None):
+    cards = [_card(choice, preferred_id) for choice in choices]
+    # Someone the customer asked for by name goes first; otherwise cheapest first.
+    cards.sort(key=lambda card: not card["preferred"])
+    return cards
 
 
-@bp.post('/ride/request')
-def request_ride():
-    data=payload()
-    quote=session.get('ride_quote') or {}
-    if quote.get('token') != data.get('token') or quote.get('expires',0)<datetime.utcnow().timestamp():
-        return jsonify(error='Get a fresh estimate before requesting.'),400
-    customer, errors=validate_customer(data)
-    pickup=str(data.get('pickup_address','')).strip()[:240]
-    dropoff=str(data.get('dropoff_address','')).strip()[:240]
-    if len(pickup)<3 or len(dropoff)<3: errors.append('Enter pickup and destination.')
-    if errors: return jsonify(error=' '.join(errors)),400
-    eligible_offers=offers(quote['distance'],quote['passengers'])
-    try:
-        fare_id=int(data.get('fare_id'))
-        vehicle_id=int(data.get('vehicle_id'))
-        expected=Decimal(str(data.get('expected_price')))
-        if not expected.is_finite(): raise ValueError()
-        eligible=next((row for row in eligible_offers
-                       if row[1].id==fare_id and row[2].vehicle_id==vehicle_id),None)
-    except (TypeError, ValueError, ArithmeticError):
-        # Keep older clients working while the public UI uses explicit choice cards.
-        # New requests should always send the selected fare and vehicle.
-        if not eligible_offers:
-            return jsonify(error='Your selected driver is no longer available. Refresh the choices.'),409
-        expected, fare, state = eligible_offers[0]
-        fare_id, vehicle_id, eligible = fare.id, state.vehicle_id, (expected, fare, state)
-    if eligible is None:
-        return jsonify(error='Your selected driver is no longer available. Refresh the choices.'),409
-    fare=db.session.get(OperatorFare,fare_id)
-    if not fare or not fare.is_bookable: return jsonify(error='This ride is no longer available.'),409
-    state=db.session.get(DriverState,fare.operator_id)
-    vehicle=db.session.get(Vehicle, vehicle_id)
-    if not state or not vehicle or not vehicle.is_active or vehicle.operator_id != fare.operator_id:
-        return jsonify(error='Driver unavailable. Get another estimate.'),409
-    now=datetime.utcnow()
-    # Price is taken only from the signed server session; recheck the published rate.
-    amount,_=fare.quote(quote['distance'])
-    if amount is None or amount != expected:
-        return jsonify(error='The fare changed. Get another estimate.'),409
-    b=Booking(reference=Booking.new_reference(),booking_type='ride',operator_id=fare.operator_id,
-        fare_id=fare.id,vehicle_id=vehicle.id, customer_name=customer['customer_name'],
-        email=customer['email'],phone=customer['phone'],pickup_location=pickup,dropoff_location=dropoff,
-        pickup_address=pickup,dropoff_address=dropoff,pickup_at=now,start_date=now.date(),end_date=now.date(),
-        passengers=quote['passengers'],pickup_lat=quote['points'][0],pickup_lng=quote['points'][1],
-        dropoff_lat=quote['points'][2],dropoff_lng=quote['points'][3],route_distance_m=quote['distance'],
-        route_duration_s=quote['duration'],route_provider=quote['provider'],total_price=amount,
-        quote_basis='distance',deposit_amount=0,status='pending')
-    db.session.add(b); db.session.flush()
-    won=db.session.execute(update(DriverState).where(
-        DriverState.operator_id==fare.operator_id,DriverState.available.is_(True),
-        DriverState.active_booking_id.is_(None),DriverState.vehicle_id==vehicle.id,
-        DriverState.updated_at>=now-timedelta(minutes=2)).values(active_booking_id=b.id,available=False))
-    if won.rowcount != 1:
-        # That driver was taken a moment before us. Rather than throwing the
-        # customer back to the start, the trip becomes an open offer that any
-        # available driver can claim. The quote they were shown still stands.
-        b.operator_id = None
-        b.vehicle_id = None
+def reserve(booking_id, choice, now):
+    """Hold the chosen driver for this trip. True only if this call got them."""
+    won = db.session.execute(update(DriverState).where(
+        DriverState.operator_id == choice.fare.operator_id,
+        DriverState.vehicle_id == choice.vehicle.id,
+        DriverState.available.is_(True),
+        DriverState.active_booking_id.is_(None),
+        DriverState.updated_at >= now - FRESH_FIX,
+    ).values(active_booking_id=booking_id, available=False))
+    return won.rowcount == 1
+
+
+def release(booking_id):
+    """Let go of whichever driver holds this trip. They go back online on their next location update."""
+    db.session.execute(update(DriverState).where(
+        DriverState.active_booking_id == booking_id,
+    ).values(active_booking_id=None, available=False))
+
+
+def _accept_window():
+    return timedelta(seconds=current_app.config.get("DRIVER_ACCEPT_SECONDS", 120))
+
+
+def settle(booking, now=None):
+    """Apply what time alone decides: a request nobody answered expires."""
+    if booking.status != "pending" or not booking.is_on_demand or booking.requested_at is None:
+        return booking
+    now = now or datetime.utcnow()
+    if booking.requested_at > now - _accept_window():
+        return booking
+    expired = db.session.execute(update(Booking).where(
+        Booking.id == booking.id,
+        Booking.status == "pending",
+        Booking.requested_at <= now - _accept_window(),
+    ).values(status="expired"))
+    if expired.rowcount == 1:
+        release(booking.id)
     db.session.commit()
-    session.pop('ride_quote',None);session['booking_reference']=b.reference
-    return jsonify(url=url_for('dispatch.track',reference=b.reference)),201
+    db.session.refresh(booking)
+    return booking
 
 
-def reviews_for(operator_id=None, vehicle_id=None):
-    query=BookingReview.query.join(Booking).filter(Booking.status=='completed')
-    if vehicle_id is not None:
-        query=query.filter(Booking.vehicle_id==vehicle_id,Booking.booking_type=='rental')
-    elif operator_id is not None:
-        query=query.filter(Booking.operator_id==operator_id)
-    return query
+def _silent(booking, state, now):
+    """An accepted driver who has stopped sending their location."""
+    holding = state is not None and state.active_booking_id == booking.id
+    return not (holding and state.updated_at is not None
+                and state.updated_at >= now - DRIVER_SILENT)
 
 
-def review_summary(operator_id=None, vehicle_id=None):
-    rows=reviews_for(operator_id,vehicle_id).all()
-    return dict(review_count=len(rows), rating=round(sum(r.rating for r in rows)/len(rows),1) if rows else None)
+def can_choose_again(booking, now=None):
+    now = now or datetime.utcnow()
+    if booking.status in RIDE_REOPENABLE:
+        return True
+    if booking.status in ("accepted", "confirmed", "arriving"):
+        state = db.session.get(DriverState, booking.operator_id) if booking.operator_id else None
+        return _silent(booking, state, now)
+    return False
 
 
-@bp.app_context_processor
-def profile_helpers():
-    return dict(review_summary=review_summary, reviews_for=reviews_for)
+def _excluded_driver(booking):
+    """A driver who said no, or went silent, is not offered for the same trip again."""
+    if booking.status == "expired":
+        return None
+    return booking.operator_id
 
 
-@bp.get('/drivers')
-def drivers():
-    query=(request.args.get('q') or '').strip()[:120]
-    operators=Operator.query.filter_by(status='approved').order_by(Operator.name).all()
-    if query:
-        operators=[op for op in operators if query.casefold() in
-                   (op.name+' '+(op.contact_name or '')).casefold()]
-    return render_template('dispatch/drivers.html',operators=operators,query=query)
+# --- the customer's side ----------------------------------------------------------
+
+@bp.get("/ride")
+def ride():
+    preferred = _whole(request.args.get("driver"))
+    preferred_driver = None
+    if preferred is not None:
+        preferred_driver = Operator.query.filter_by(id=preferred, status="approved").first()
+    return render_template("dispatch/ride.html", map_settings=routing.map_settings(),
+                           preferred_driver=preferred_driver)
 
 
-@bp.get('/drivers/<int:operator_id>')
-def driver_profile(operator_id):
-    op=Operator.query.filter_by(id=operator_id,status='approved').first_or_404()
-    return render_template('dispatch/profile.html',profile=op,
-        cars=Vehicle.query.filter_by(operator_id=op.id,is_active=True).all())
+@bp.post("/ride/estimate")
+def estimate():
+    if not _within_rate_limit("_dispatch_quote", 15):
+        return jsonify(error="Please wait a moment before checking again."), 429
+    data = payload()
+    passengers = _whole(data.get("passengers", 1), 1, MAX_PASSENGERS)
+    if passengers is None:
+        return jsonify(error=f"Choose between 1 and {MAX_PASSENGERS} passengers."), 400
+
+    points = [_point(data.get("pickup_lat"), 90), _point(data.get("pickup_lng"), 180),
+              _point(data.get("dropoff_lat"), 90), _point(data.get("dropoff_lng"), 180)]
+    if None in points:
+        return jsonify(error="Choose your pickup and destination from the search results."), 400
+
+    session.pop("ride_quote", None)
+    if not routing.routing_available():
+        return jsonify(route=None, choices=[], quote=None,
+                       error="Fares can't be worked out right now because route "
+                             "measuring is switched off. You can book a scheduled "
+                             "journey instead.")
+    try:
+        leg = routing.route(points[:2], points[2:])
+    except routing.RoutingUnavailable:
+        leg = None
+    if leg is None:
+        return jsonify(route=None, choices=[], quote=None,
+                       error="We couldn't measure that route. Please try again.")
+
+    preferred_id = _whole(data.get("driver"))
+    choices = offers(leg.distance_m, passengers)
+    note = None
+    if preferred_id is not None and not any(c.fare.operator_id == preferred_id for c in choices):
+        wanted = Operator.query.filter_by(id=preferred_id, status="approved").first()
+        if wanted is not None:
+            note = (f"{wanted.display_name} can't take a ride right now. "
+                    f"You can choose another driver below.")
+
+    if not choices:
+        return jsonify(route=leg.as_dict(), choices=[], quote=None, note=note,
+                       error="No driver is free for this trip right now. Please try "
+                             "again in a few minutes, or book a scheduled journey.")
+
+    token = secrets.token_urlsafe(24)
+    session["ride_quote"] = {
+        "token": token, "points": points, "distance": leg.distance_m,
+        "duration": leg.duration_s, "provider": leg.provider, "passengers": passengers,
+        "expires": (datetime.utcnow() + QUOTE_LIFETIME).timestamp(),
+    }
+    cards = _cards(choices, preferred_id)
+    return jsonify(route=leg.as_dict(), choices=cards, token=token, note=note,
+                   quote=min(card["price"] for card in cards),
+                   currency=current_settings()["currency"],
+                   message="Choose your driver. We check they are still free when you send the request.")
 
 
-@bp.route('/booking/<reference>/review',methods=['GET','POST'])
-def review(reference):
-    if session.get('booking_reference') != reference: abort(404)
-    booking=Booking.query.filter_by(reference=reference).first_or_404()
-    if booking.status != 'completed': abort(403)
-    existing=BookingReview.query.filter_by(booking_id=booking.id).first()
-    error=None
-    if request.method=='POST' and existing is None:
-        try:
-            rating=int(request.form.get('rating',''))
-            if not 1<=rating<=5: raise ValueError()
-        except ValueError:
-            rating=None;error='Choose a rating from 1 to 5.'
-        comment=(request.form.get('comment') or '').strip()
-        if not 3<=len(comment)<=2000: error='Write a review between 3 and 2,000 characters.'
-        if error is None:
-            db.session.add(BookingReview(booking_id=booking.id,rating=rating,comment=comment))
-            try: db.session.commit()
-            except IntegrityError: db.session.rollback()
-            return redirect(url_for('dispatch.review',reference=reference))
-    return render_template('dispatch/review.html',booking=booking,existing=existing,error=error)
+def _choose_again_response(message, quote, choices, status=409):
+    """Refused: show the drivers who are free now, and keep the estimate alive."""
+    quote["expires"] = (datetime.utcnow() + QUOTE_LIFETIME).timestamp()
+    session["ride_quote"] = quote
+    return jsonify(error=message, choices=_cards(choices), token=quote["token"],
+                   quote=min((float(c.amount) for c in choices), default=None)), status
+
+
+@bp.post("/ride/request")
+def request_ride():
+    data = payload()
+    quote = session.get("ride_quote") or {}
+    token = data.get("token")
+    if not isinstance(token, str) or not quote.get("token") \
+            or not secrets.compare_digest(token, str(quote["token"])) \
+            or quote.get("expires", 0) < datetime.utcnow().timestamp():
+        return jsonify(error="Your estimate has run out. Please check the fare again."), 400
+
+    fare_id = _whole(data.get("fare_id"))
+    vehicle_id = _whole(data.get("vehicle_id"))
+    expected = _amount(data.get("expected_price"))
+    if fare_id is None or vehicle_id is None or expected is None:
+        return jsonify(error="Choose a driver first."), 400
+
+    customer, errors = validate_customer({
+        "customer_name": _text(data.get("customer_name"), 120),
+        "email": _text(data.get("email"), 160),
+        "phone": _text(data.get("phone"), 40),
+    })
+    pickup = _text(data.get("pickup_address"), 240)
+    dropoff = _text(data.get("dropoff_address"), 240)
+    if len(pickup) < 3 or len(dropoff) < 3:
+        errors.append("Enter your pickup and destination.")
+    if errors:
+        return jsonify(error=" ".join(errors)), 400
+
+    # One open ride per browser. A second request would reserve a second driver
+    # for a customer who can only ride with one.
+    current = session.get("booking_reference")
+    if current:
+        open_trip = Booking.query.filter_by(reference=current).first()
+        if open_trip is not None and open_trip.is_on_demand and \
+                open_trip.status in ("pending",) + RIDE_ACTIVE + RIDE_REOPENABLE:
+            return jsonify(error="You already have a ride request open.",
+                           url=url_for("dispatch.track", reference=open_trip.reference)), 409
+
+    choices = offers(quote["distance"], quote["passengers"])
+    chosen = next((c for c in choices if c.fare.id == fare_id and c.vehicle.id == vehicle_id), None)
+    if chosen is None:
+        return _choose_again_response(
+            "That driver is no longer free. Please choose another driver.", quote, choices)
+    if chosen.amount != expected:
+        return _choose_again_response(
+            f"{chosen.fare.operator.display_name}'s price for this trip is now "
+            f"{_money_text(chosen.amount)}. Please check it and choose again.", quote, choices)
+
+    now = datetime.utcnow()
+    points = quote["points"]
+    trip = Booking(
+        reference=Booking.new_reference(), booking_type="ride",
+        request_token=quote["token"], requested_at=now,
+        operator_id=chosen.fare.operator_id, fare_id=chosen.fare.id, vehicle_id=chosen.vehicle.id,
+        customer_name=customer["customer_name"], email=customer["email"],
+        phone=customer["phone"] or None,
+        pickup_location=pickup[:120], dropoff_location=dropoff[:120],
+        pickup_address=pickup, dropoff_address=dropoff,
+        pickup_at=now, start_date=now.date(), end_date=now.date(),
+        passengers=quote["passengers"],
+        pickup_lat=points[0], pickup_lng=points[1], dropoff_lat=points[2], dropoff_lng=points[3],
+        route_distance_m=quote["distance"], route_duration_s=quote["duration"],
+        route_provider=quote["provider"],
+        total_price=chosen.amount, quote_basis="distance", deposit_amount=0, status="pending",
+    )
+    db.session.add(trip)
+    try:
+        db.session.flush()
+    except IntegrityError:
+        # The same estimate already became a trip: a double tap, or two tabs.
+        db.session.rollback()
+        same = Booking.query.filter_by(request_token=quote["token"]).first()
+        if same is None:
+            raise
+        session.pop("ride_quote", None)
+        session["booking_reference"] = same.reference
+        return jsonify(url=url_for("dispatch.track", reference=same.reference)), 200
+
+    if not reserve(trip.id, chosen, now):
+        db.session.rollback()
+        return _choose_again_response(
+            "That driver just became busy. Please choose another driver.",
+            quote, offers(quote["distance"], quote["passengers"]))
+    db.session.commit()
+
+    session.pop("ride_quote", None)
+    session["booking_reference"] = trip.reference
+    return jsonify(url=url_for("dispatch.track", reference=trip.reference)), 201
 
 
 def customer_booking(reference):
-    if session.get('booking_reference') != reference: abort(404)
-    return Booking.query.filter_by(reference=reference,booking_type='ride').first_or_404()
+    reference = str(reference or "").upper()[:12]
+    if session.get("booking_reference") != reference:
+        abort(404)
+    booking = Booking.query.filter_by(reference=reference, booking_type="ride").first()
+    if booking is None or not booking.is_on_demand:
+        abort(404)
+    return booking
 
-@bp.get('/ride/track/<reference>')
+
+@bp.get("/ride/track/<reference>")
 def track(reference):
-    b=customer_booking(reference)
-    return render_template('dispatch/track.html', booking=b, map_settings=routing.map_settings())
+    booking = settle(customer_booking(reference))
+    return render_template("dispatch/track.html", booking=booking,
+                           map_settings=routing.map_settings())
 
-@bp.get('/ride/status/<reference>')
+
+@bp.get("/ride/status/<reference>")
 def status(reference):
-    b=customer_booking(reference)
-    state=db.session.get(DriverState,b.operator_id) if b.operator_id else None
-    driver=None
-    if b.status in ACTIVE:
-        op=db.session.get(Operator,b.operator_id)
-        car=db.session.get(Vehicle,b.vehicle_id)
-        driver=dict(name=op.contact_name or op.name,phone=op.phone,
-                    vehicle=car.name if car else None)
-        if state and state.active_booking_id == b.id and state.updated_at and state.updated_at>=datetime.utcnow()-timedelta(seconds=45):
-            driver.update(lat=state.lat,lng=state.lng,updated_at=state.updated_at.isoformat()+'Z')
-    return jsonify(status=b.status,driver=driver,fare=float(b.total_price) if b.total_price is not None else None)
+    booking = settle(customer_booking(reference))
+    now = datetime.utcnow()
+    driver_account = booking.operator
+    state = db.session.get(DriverState, booking.operator_id) if booking.operator_id else None
 
-@bp.post('/ride/cancel/<reference>')
+    chosen = None
+    if driver_account is not None and booking.status != "cancelled":
+        chosen = {"name": driver_account.display_name,
+                  "vehicle": booking.vehicle.name if booking.vehicle else None,
+                  "profile": url_for("dispatch.driver_profile", operator_id=driver_account.id)}
+
+    # Contact details and position only once the driver has accepted, and only
+    # while this driver is actually holding this trip.
+    driver = None
+    if booking.status in RIDE_ACTIVE and driver_account is not None:
+        driver = {"name": driver_account.display_name,
+                  "phone": pretty(driver_account.phone_e164) or driver_account.phone,
+                  "vehicle": booking.vehicle.name if booking.vehicle else None}
+        holding = state is not None and state.active_booking_id == booking.id
+        if holding and state.updated_at is not None and state.updated_at >= now - SHOW_FIX \
+                and state.lat is not None and state.lng is not None:
+            driver.update(lat=state.lat, lng=state.lng,
+                          updated_at=state.updated_at.isoformat() + "Z")
+
+    expires_in = None
+    if booking.status == "pending" and booking.requested_at is not None:
+        left = booking.requested_at + _accept_window() - now
+        expires_in = max(0, int(left.total_seconds()))
+
+    reviewed = BookingReview.query.filter_by(booking_id=booking.id).first() is not None
+    return jsonify(
+        status=booking.status,
+        chosen=chosen,
+        driver=driver,
+        fare=float(booking.total_price) if booking.total_price is not None else None,
+        fare_text=_money_text(booking.total_price) if booking.total_price is not None else None,
+        expires_in=expires_in,
+        can_cancel=booking.status in CANCELLABLE,
+        can_choose_again=can_choose_again(booking, now),
+        driver_silent=booking.status in ("accepted", "confirmed", "arriving")
+        and _silent(booking, state, now),
+        review_url=url_for("dispatch.review", reference=booking.reference)
+        if booking.status == "completed" and not reviewed else None,
+    )
+
+
+@bp.post("/ride/cancel/<reference>")
 def cancel(reference):
-    b=customer_booking(reference)
-    changed=db.session.execute(update(Booking).where(Booking.id==b.id,Booking.status.in_(('pending','accepted','confirmed','arriving'))).values(status='cancelled'))
-    if changed.rowcount != 1: return jsonify(error='This trip cannot be cancelled now.'),409
-    db.session.execute(update(DriverState).where(DriverState.active_booking_id==b.id).values(active_booking_id=None,available=False))
+    booking = settle(customer_booking(reference))
+    changed = db.session.execute(update(Booking).where(
+        Booking.id == booking.id, Booking.status.in_(CANCELLABLE),
+    ).values(status="cancelled"))
+    if changed.rowcount != 1:
+        db.session.rollback()
+        return jsonify(error="This trip can't be cancelled now."), 409
+    release(booking.id)
     db.session.commit()
-    return jsonify(status='cancelled')
+    return jsonify(status="cancelled")
 
-@bp.get('/operator/drive')
+
+@bp.post("/ride/choices/<reference>")
+def choices_again(reference):
+    """Drivers the customer can pick instead, when their driver can't take the trip."""
+    booking = settle(customer_booking(reference))
+    if not can_choose_again(booking):
+        return jsonify(error="Your driver is still on this trip."), 409
+    if not _within_rate_limit("_dispatch_quote", 15):
+        return jsonify(error="Please wait a moment before checking again."), 429
+    if booking.route_distance_m is None or not booking.passengers:
+        return jsonify(error="This trip can't be re-priced. Please request a new ride."), 409
+
+    choices = offers(booking.route_distance_m, booking.passengers,
+                     exclude_operator_id=_excluded_driver(booking))
+    token = secrets.token_urlsafe(24)
+    session["rechoice"] = {"reference": booking.reference, "token": token,
+                           "expires": (datetime.utcnow() + QUOTE_LIFETIME).timestamp()}
+    return jsonify(
+        choices=_cards(choices), token=token,
+        route={"distance_km": booking.route_distance_km,
+               "duration_minutes": round((booking.route_duration_s or 0) / 60)},
+        error=None if choices else "No other driver is free right now. Please try again "
+                                   "in a few minutes.")
+
+
+@bp.post("/ride/choose-again/<reference>")
+def choose_again(reference):
+    """Send the same trip to a driver the customer has just picked."""
+    booking = settle(customer_booking(reference))
+    data = payload()
+    now = datetime.utcnow()
+
+    pending = session.get("rechoice") or {}
+    token = data.get("token")
+    if pending.get("reference") != booking.reference or not isinstance(token, str) \
+            or not pending.get("token") or not secrets.compare_digest(token, str(pending["token"])) \
+            or pending.get("expires", 0) < now.timestamp():
+        return jsonify(error="Please look at the available drivers again."), 400
+
+    fare_id = _whole(data.get("fare_id"))
+    vehicle_id = _whole(data.get("vehicle_id"))
+    expected = _amount(data.get("expected_price"))
+    if fare_id is None or vehicle_id is None or expected is None:
+        return jsonify(error="Choose a driver first."), 400
+
+    if not can_choose_again(booking, now):
+        return jsonify(error="Your driver is still on this trip."), 409
+
+    choices = offers(booking.route_distance_m, booking.passengers,
+                     exclude_operator_id=_excluded_driver(booking))
+    chosen = next((c for c in choices if c.fare.id == fare_id and c.vehicle.id == vehicle_id), None)
+
+    def refused(message):
+        pending["expires"] = (datetime.utcnow() + QUOTE_LIFETIME).timestamp()
+        session["rechoice"] = pending
+        return jsonify(error=message, choices=_cards(choices), token=pending["token"]), 409
+
+    if chosen is None:
+        return refused("That driver is no longer free. Please choose another driver.")
+    if chosen.amount != expected:
+        return refused(f"{chosen.fare.operator.display_name}'s price for this trip is now "
+                       f"{_money_text(chosen.amount)}. Please check it and choose again.")
+
+    moved = db.session.execute(update(Booking).where(
+        Booking.id == booking.id,
+        Booking.status == booking.status,
+    ).values(operator_id=chosen.fare.operator_id, vehicle_id=chosen.vehicle.id,
+             fare_id=chosen.fare.id, total_price=chosen.amount, quote_basis="distance",
+             status="pending", requested_at=now))
+    if moved.rowcount != 1:
+        db.session.rollback()
+        return jsonify(error="Your trip has just changed. Please look again."), 409
+
+    # The previous driver lets go first, so the release cannot undo the new hold.
+    release(booking.id)
+    if not reserve(booking.id, chosen, now):
+        db.session.rollback()
+        return refused("That driver just became busy. Please choose another driver.")
+    db.session.commit()
+    session.pop("rechoice", None)
+    return jsonify(status="pending")
+
+
+# --- choosing a driver by name, and reviews -------------------------------------
+
+def _driver_facts(driver, now):
+    state = db.session.get(DriverState, driver.id)
+    ride_fares = [fare for fare in driver.fares
+                  if fare.is_active and fare.kind == "ride" and fare.pricing_model == "distance"]
+    cars = [car for car in driver.vehicles if car.is_active]
+    return {
+        "driver": driver,
+        "ride_fares": ride_fares,
+        "scheduled_fares": [fare for fare in driver.fares
+                            if fare.is_active and not (fare.kind == "ride"
+                                                       and fare.pricing_model == "distance")],
+        "cars": cars,
+        "offers_rides": bool(ride_fares and cars),
+        "available_now": bool(state and state.available and state.active_booking_id is None
+                              and state.updated_at and state.updated_at >= now - FRESH_FIX),
+        "rating": reviews.summary(reviews.for_driver(driver.id)),
+    }
+
+
+@bp.get("/drivers")
+def drivers():
+    query = _text(request.args.get("q"), 120)
+    approved = Operator.query.filter_by(status="approved").all()
+    if query:
+        needle = query.casefold()
+        approved = [d for d in approved
+                    if needle in " ".join(filter(None, [d.display_name, d.name, d.service_area]))
+                    .casefold()]
+    approved.sort(key=lambda d: d.display_name.casefold())
+    now = datetime.utcnow()
+    return render_template("dispatch/drivers.html",
+                           listing=[_driver_facts(d, now) for d in approved], query=query)
+
+
+@bp.get("/drivers/<int:operator_id>")
+def driver_profile(operator_id):
+    driver = Operator.query.filter_by(id=operator_id, status="approved").first_or_404()
+    facts = _driver_facts(driver, datetime.utcnow())
+    return render_template(
+        "dispatch/profile.html", profile=driver, facts=facts, cars=facts["cars"],
+        journeys=reviews.summary(reviews.for_driver_journeys(driver.id)),
+        review_list=reviews.newest(reviews.for_driver(driver.id), 30),
+    )
+
+
+@bp.route("/booking/<reference>/review", methods=["GET", "POST"])
+def review(reference):
+    reference = str(reference or "").upper()[:12]
+    if session.get("booking_reference") != reference:
+        abort(404)
+    booking = Booking.query.filter_by(reference=reference).first_or_404()
+    if booking.operator_id is None and booking.vehicle_id is None:
+        abort(404)
+    if booking.status != "completed":
+        return render_template("dispatch/review.html", booking=booking, existing=None,
+                               error=None, not_ready=True), 403
+
+    existing = BookingReview.query.filter_by(booking_id=booking.id).first()
+    error = None
+    if request.method == "POST" and existing is None:
+        raw_rating = request.form.get("rating", "")
+        rating = int(raw_rating) if raw_rating in ("1", "2", "3", "4", "5") else None
+        comment = str(request.form.get("comment") or "").strip()
+        if rating is None:
+            error = "Choose a rating from 1 to 5 stars."
+        elif not 3 <= len(comment) <= 2000:
+            error = "Please write a few words about it (up to 2,000 characters)."
+        else:
+            db.session.add(BookingReview(booking_id=booking.id, rating=rating, comment=comment))
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+            return redirect(url_for("dispatch.review", reference=reference))
+    return render_template("dispatch/review.html", booking=booking, existing=existing,
+                           error=error, not_ready=False), (400 if error else 200)
+
+
+# --- the driver's side ------------------------------------------------------------
+
+def _held_booking(driver, state, now):
+    """The trip this driver holds, after letting time expire an unanswered request."""
+    if state is None or state.active_booking_id is None:
+        return None
+    booking = db.session.get(Booking, state.active_booking_id)
+    if booking is None or booking.operator_id != driver.id:
+        return None
+    booking = settle(booking, now)
+    db.session.refresh(state)
+    if state.active_booking_id != booking.id or \
+            booking.status not in ("pending",) + RIDE_ACTIVE:
+        return None
+    return booking
+
+
+def _job(booking, now):
+    job = {
+        "id": booking.id,
+        "reference": booking.reference,
+        "status": booking.status,
+        "pickup": booking.pickup_address or booking.pickup_location,
+        "dropoff": booking.dropoff_address or booking.dropoff_location,
+        "pickup_point": [float(booking.pickup_lat), float(booking.pickup_lng)]
+        if booking.pickup_lat is not None and booking.pickup_lng is not None else None,
+        "dropoff_point": [float(booking.dropoff_lat), float(booking.dropoff_lng)]
+        if booking.dropoff_lat is not None and booking.dropoff_lng is not None else None,
+        "distance_km": booking.route_distance_km,
+        "duration": booking.route_duration_label,
+        "passengers": booking.passengers,
+        "fare_text": _money_text(booking.total_price) if booking.total_price is not None else None,
+        "expires_in": None,
+        "customer": None,
+        "next": None,
+        "can_decline": booking.status in DRIVER_CAN_DECLINE,
+    }
+    if booking.status == "pending":
+        left = booking.requested_at + _accept_window() - now if booking.requested_at else timedelta(0)
+        job["expires_in"] = max(0, int(left.total_seconds()))
+    else:
+        # The customer's name and number only once the driver has accepted.
+        job["customer"] = {"name": booking.customer_name, "phone": booking.phone}
+        stage = NEXT_STAGE.get(booking.status)
+        if stage:
+            job["next"] = {"status": stage, "label": STAGE_LABELS[stage]}
+    return job
+
+
+@bp.get("/operator/drive")
 @login_required
 def drive():
-    op=_current()
-    state=db.session.get(DriverState,op.id)
-    job=db.session.get(Booking,state.active_booking_id) if state and state.active_booking_id else None
-    return render_template('dispatch/drive.html',state=state,job=job,
-        vehicles=Vehicle.query.filter_by(operator_id=op.id,is_active=True).all())
+    driver = _current()
+    return render_template(
+        "dispatch/drive.html", map_settings=routing.map_settings(),
+        vehicles=Vehicle.query.filter_by(operator_id=driver.id, is_active=True)
+        .order_by(Vehicle.make, Vehicle.model).all(),
+        state=db.session.get(DriverState, driver.id),
+        has_ride_fare=any(fare.is_active and fare.kind == "ride" and fare.pricing_model == "distance"
+                          for fare in driver.fares),
+        accept_seconds=int(_accept_window().total_seconds()),
+    )
 
-@bp.post('/operator/drive/offline')
+
+@bp.get("/operator/drive/state")
+@login_required
+def drive_state():
+    driver = _current()
+    now = datetime.utcnow()
+    state = db.session.get(DriverState, driver.id)
+    booking = _held_booking(driver, state, now)
+    fix_age = int((now - state.updated_at).total_seconds()) \
+        if state is not None and state.updated_at is not None else None
+
+    waiting = (Booking.query
+               .filter(Booking.operator_id == driver.id, Booking.status == "pending",
+                       Booking.request_token.is_(None))
+               .order_by(Booking.start_date.asc()).limit(10).all())
+    return jsonify(
+        online=bool(state is not None and state.available and fix_age is not None
+                    and fix_age <= FRESH_FIX.total_seconds()),
+        vehicle_id=state.vehicle_id if state is not None else None,
+        fix_age_s=fix_age,
+        job=_job(booking, now) if booking is not None else None,
+        scheduled=[{
+            "reference": item.reference,
+            "what": (f"{item.pickup_address or item.pickup_location} → "
+                     f"{item.dropoff_address or item.dropoff_location}")
+            if item.is_journey else (item.vehicle.name if item.vehicle else "Car rental"),
+            "when": item.pickup_at.strftime("%a %d %b, %H:%M") if item.pickup_at
+            else item.start_date.strftime("%a %d %b"),
+            "url": url_for("operator.booking_detail", booking_id=item.id),
+        } for item in waiting],
+    )
+
+
+@bp.post("/operator/drive/location")
+@login_required
+def location():
+    driver = _current()
+    data = payload()
+    lat, lng = _point(data.get("lat"), 90), _point(data.get("lng"), 180)
+    if lat is None or lng is None:
+        return jsonify(error="Your phone didn't send a usable location."), 400
+
+    state = db.session.get(DriverState, driver.id)
+    if state is None:
+        state = DriverState(operator_id=driver.id, available=False)
+        db.session.add(state)
+    if not state.active_booking_id:
+        vehicle_id = _whole(data.get("vehicle_id"))
+        vehicle = Vehicle.query.filter_by(id=vehicle_id, operator_id=driver.id,
+                                          is_active=True).first() if vehicle_id else None
+        if vehicle is None:
+            db.session.rollback()
+            return jsonify(error="Choose your car first."), 400
+        state.vehicle_id = vehicle.id
+        state.available = data.get("available") is True
+    state.lat, state.lng = lat, lng
+    state.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify(active_booking_id=state.active_booking_id, available=state.available)
+
+
+@bp.post("/operator/drive/offline")
 @login_required
 def offline():
-    state=db.session.get(DriverState,_current().id)
-    if state:
-        state.available=False
+    driver = _current()
+    state = db.session.get(DriverState, driver.id)
+    if state is not None:
+        state.available = False
+        if state.active_booking_id:
+            # Going offline with a request still waiting says no to it, so the
+            # customer can choose someone else straight away.
+            declined = db.session.execute(update(Booking).where(
+                Booking.id == state.active_booking_id,
+                Booking.operator_id == driver.id,
+                Booking.status == "pending",
+            ).values(status="declined"))
+            if declined.rowcount == 1:
+                release(state.active_booking_id)
         db.session.commit()
     return jsonify(available=False)
 
-@bp.post('/operator/drive/location')
-@login_required
-def location():
-    op=_current(); data=payload()
-    lat=_coordinate(data.get('lat'),90);lng=_coordinate(data.get('lng'),180)
-    if lat is None or lng is None: return jsonify(error='Valid location required.'),400
-    state=db.session.get(DriverState,op.id)
-    if state is None: state=DriverState(operator_id=op.id);db.session.add(state)
-    if not state.active_booking_id:
-        try: vehicle_id=int(data.get('vehicle_id',0))
-        except (ValueError,TypeError): vehicle_id=0
-        vehicle=Vehicle.query.filter_by(id=vehicle_id,operator_id=op.id,is_active=True).first()
-        if not vehicle: return jsonify(error='Select your assigned vehicle.'),400
-        state.vehicle_id=vehicle.id;state.available=data.get('available') is True
-    state.lat=lat;state.lng=lng;state.updated_at=datetime.utcnow()
-    db.session.commit()
-    return jsonify(active_booking_id=state.active_booking_id,available=state.available)
 
-@bp.post('/operator/drive/status')
-@login_required
-def progress():
-    op=_current();data=payload();state=db.session.get(DriverState,op.id)
-    if not state or not state.active_booking_id: abort(404)
-    b=Booking.query.filter_by(id=state.active_booking_id,operator_id=op.id).first_or_404()
-    allowed={'pending':('confirmed','cancelled'),'accepted':('arriving','cancelled'),
-             'confirmed':('arriving','cancelled'),
-             'arriving':('in_progress','cancelled'),'in_progress':('completed',)}
-    target=data.get('status')
-    if target not in allowed.get(b.status,()): return jsonify(error='Invalid trip transition.'),409
-    if target=='completed' and b.needs_quote: return jsonify(error='Fare required.'),400
-    changed=db.session.execute(update(Booking).where(Booking.id==b.id,Booking.status==b.status).values(status=target))
-    if changed.rowcount!=1: db.session.rollback();return jsonify(error='Trip changed. Refresh.'),409
-    db.session.refresh(b)
-    commission.sync_for(b)
-    if target in ('completed','cancelled'):
-        state.active_booking_id=None;state.available=False
-    db.session.commit()
-    return jsonify(status=target)
+def _owned_held(driver, data, now):
+    booking_id = _whole(data.get("booking_id"))
+    if booking_id is None:
+        return None, (jsonify(error="Which trip?"), 400)
+    booking = Booking.query.filter_by(id=booking_id, operator_id=driver.id).first()
+    if booking is None or not booking.is_on_demand:
+        return None, (jsonify(error="That trip isn't yours."), 404)
+    booking = settle(booking, now)
+    state = db.session.get(DriverState, driver.id)
+    if state is None or state.active_booking_id != booking.id:
+        messages = {"expired": "This request timed out. The customer is choosing another driver.",
+                    "cancelled": "The customer cancelled this trip.",
+                    "declined": "This trip is no longer yours."}
+        return None, (jsonify(error=messages.get(booking.status, "This trip is no longer yours."),
+                              status=booking.status), 409)
+    return booking, None
 
 
-@bp.get('/operator/drive/offers')
-@login_required
-def offers_open():
-    """Trips waiting for a driver.
-
-    Deliberately says nothing about the customer. A driver deciding whether to
-    take a job needs to know where it starts, where it goes and what it pays —
-    not who is waiting. Name and phone appear only once they have accepted.
-    """
-    op = _current()
-    state = db.session.get(DriverState, op.id)
-    if not state or not state.available or state.active_booking_id:
-        return jsonify(offers=[])
-
-    waiting = (Booking.query
-               .filter(Booking.booking_type == 'ride',
-                       Booking.status.in_(OPEN),
-                       Booking.operator_id.is_(None))
-               .order_by(Booking.id).limit(20).all())
-    return jsonify(offers=[dict(
-        id=ride.id, reference=ride.reference,
-        pickup=ride.pickup_address or ride.pickup_location,
-        dropoff=ride.dropoff_address or ride.dropoff_location,
-        distance_km=ride.route_distance_km,
-        fare=float(ride.total_price) if ride.total_price is not None else None,
-    ) for ride in waiting])
-
-
-@bp.post('/operator/drive/accept')
+@bp.post("/operator/drive/accept")
 @login_required
 def accept():
-    """Claim an open trip. Exactly one driver can win.
+    driver = _current()
+    now = datetime.utcnow()
+    booking, refused = _owned_held(driver, payload(), now)
+    if refused:
+        return refused
+    if booking.status != "pending":
+        return jsonify(error="This request is no longer waiting for you.",
+                       status=booking.status), 409
 
-    Two guarded updates, both of which must match exactly one row: the trip must
-    still be unclaimed, and this driver must still be free. If either has moved
-    under us the whole thing rolls back, so a driver is never left holding a
-    trip that someone else also holds.
-    """
-    op = _current()
-    data = payload()
-    try:
-        booking_id = int(data.get('booking_id', 0))
-    except (TypeError, ValueError):
-        return jsonify(error='Which trip?'), 400
+    state = db.session.get(DriverState, driver.id)
+    if state.updated_at is None or state.updated_at < now - FRESH_FIX or state.lat is None:
+        return jsonify(error="Turn on location sharing before you accept."), 409
 
-    state = db.session.get(DriverState, op.id)
-    if not state or not state.available or state.active_booking_id or not state.vehicle_id:
-        return jsonify(error='Go online with a vehicle before accepting a trip.'), 409
-    if not state.updated_at or state.updated_at < datetime.utcnow() - timedelta(minutes=2):
-        return jsonify(error='Share your location before accepting a trip.'), 409
-
-    claimed = db.session.execute(update(Booking).where(
-        Booking.id == booking_id,
-        Booking.booking_type == 'ride',
-        Booking.status.in_(OPEN),
-        Booking.operator_id.is_(None),
-    ).values(operator_id=op.id, vehicle_id=state.vehicle_id, status='accepted'))
-    if claimed.rowcount != 1:
+    accepted = db.session.execute(update(Booking).where(
+        Booking.id == booking.id,
+        Booking.operator_id == driver.id,
+        Booking.status == "pending",
+        Booking.requested_at > now - _accept_window(),
+    ).values(status="accepted"))
+    if accepted.rowcount != 1:
         db.session.rollback()
-        return jsonify(error='Another driver took that trip.'), 409
-
-    held = db.session.execute(update(DriverState).where(
-        DriverState.operator_id == op.id,
-        DriverState.available.is_(True),
-        DriverState.active_booking_id.is_(None),
-    ).values(active_booking_id=booking_id, available=False))
-    if held.rowcount != 1:
-        db.session.rollback()
-        return jsonify(error='You picked up another trip a moment ago.'), 409
-
+        settle(booking)
+        return jsonify(error="This request is no longer waiting for you.",
+                       status=booking.status), 409
     db.session.commit()
-    ride = db.session.get(Booking, booking_id)
-    return jsonify(status='accepted', reference=ride.reference)
+    return jsonify(status="accepted")
+
+
+@bp.post("/operator/drive/decline")
+@login_required
+def decline():
+    driver = _current()
+    booking, refused = _owned_held(driver, payload(), datetime.utcnow())
+    if refused:
+        return refused
+    if booking.status not in DRIVER_CAN_DECLINE:
+        return jsonify(error="You can't hand back a trip that has started."), 409
+    declined = db.session.execute(update(Booking).where(
+        Booking.id == booking.id, Booking.operator_id == driver.id,
+        Booking.status == booking.status,
+    ).values(status="declined"))
+    if declined.rowcount != 1:
+        db.session.rollback()
+        return jsonify(error="This trip has just changed. Please look again."), 409
+    release(booking.id)
+    db.session.commit()
+    return jsonify(status="declined")
+
+
+@bp.post("/operator/drive/status")
+@login_required
+def progress():
+    driver = _current()
+    data = payload()
+    booking, refused = _owned_held(driver, data, datetime.utcnow())
+    if refused:
+        return refused
+    target = data.get("status")
+    if not isinstance(target, str) or NEXT_STAGE.get(booking.status) != target:
+        return jsonify(error="That step isn't possible now.", status=booking.status), 409
+    if target == "completed" and booking.needs_quote:
+        return jsonify(error="This trip has no fare yet."), 400
+
+    moved = db.session.execute(update(Booking).where(
+        Booking.id == booking.id, Booking.operator_id == driver.id,
+        Booking.status == booking.status,
+    ).values(status=target))
+    if moved.rowcount != 1:
+        db.session.rollback()
+        return jsonify(error="This trip has just changed. Please look again."), 409
+    db.session.refresh(booking)
+    commission.sync_for(booking)
+    db.session.commit()
+    return jsonify(status=target)

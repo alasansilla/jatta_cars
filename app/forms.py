@@ -61,15 +61,22 @@ def validate_rental_dates(start_raw, end_raw, settings):
 def validate_customer(form):
     """Check the customer's contact details. Returns (values, errors)."""
     errors = []
-    name = (form.get("customer_name") or "").strip()
-    email = (form.get("email") or "").strip()
-    phone = (form.get("phone") or "").strip()
+    # Values can arrive from JSON as numbers or lists; only text is text.
+    def text(key):
+        value = form.get(key)
+        return value.strip() if isinstance(value, str) else ""
+
+    name = text("customer_name")
+    email = text("email")
+    phone = text("phone")
 
     if len(name) < 2:
         errors.append("Enter your full name.")
-    if not EMAIL_RE.match(email):
+    elif len(name) > 120:
+        errors.append("That name is too long.")
+    if not EMAIL_RE.match(email) or len(email) > 160:
         errors.append("Enter a valid email address.")
-    if phone and len(phone) < 6:
+    if phone and not 6 <= len(phone) <= 40:
         errors.append("Enter a valid phone number, or leave it blank.")
 
     return {"customer_name": name, "email": email, "phone": phone}, errors

@@ -9,6 +9,7 @@ worse than no pin.
 Every fixture here is built in an in-memory database. Nothing touches the real
 one, and no operator invented for a test can reach it.
 """
+import secrets
 import unittest
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -67,6 +68,7 @@ class LiveTrackingCase(unittest.TestCase):
         today = date.today()
         booking = Booking(
             reference=reference or Booking.new_reference(), booking_type="ride",
+            request_token=secrets.token_urlsafe(16), requested_at=datetime.utcnow(),
             operator_id=operator.id, vehicle_id=vehicle.id if vehicle else None,
             customer_name="Awa Ceesay", email="awa@example.com", phone="+220700111",
             pickup_location="Kololi", dropoff_location="Banjul",

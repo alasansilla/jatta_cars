@@ -76,12 +76,12 @@ SCHEMA = [
         "Your name, contact details and where customers collect a car. "
         "These appear all over the site.",
         [
-            Field("company_name", "Company name", default="Jatta Cars"),
-            Field("brand_name", "Logo — first word", default="Jatta",
+            Field("company_name", "Company name", default="GoGo Taxi"),
+            Field("brand_name", "Logo name", default="GoGo Taxi",
                   help="The bold word in the logo, top left."),
-            Field("brand_sub", "Logo — second word", default="Cars"),
+            Field("brand_sub", "Logo tagline", default="Rides & car rentals in The Gambia"),
             Field("company_tagline", "Tagline",
-                  default="Self-drive car hire in The Gambia."),
+                  default="Rides & car rentals in The Gambia"),
             Field("company_email", "Email address",
                   default=f"{TBC} add the email address enquiries should go to",
                   help="Shown on the site and used as the reply address customers write to."),
@@ -320,7 +320,7 @@ SCHEMA = [
                   default="Self-drive hire, arranged with a person"),
             Field("about_section1_heading", "First section heading", default="Who we are"),
             Field("about_section1_body", "First section text", type="textarea", rows=8,
-                  default=f"{TBC} write a short introduction — who runs Jatta Cars, where you "
+                  default=f"{TBC} write a short introduction — who runs GoGo Taxi, where you "
                           f"are based, and how long you have been hiring cars.\n\n"
                           f"{TBC} add a second paragraph about the kind of trips your "
                           f"customers take and how you help them plan."),
@@ -420,14 +420,14 @@ SCHEMA = [
             Field("market_steps_heading", "Marketplace steps heading", default="From pickup to arrival"),
             Field("commission_rate", "Commission rate (%)", type="number", default=5,
                   help="Percentage of the fare on a completed ride or rental. "
-                       "Refundable deposits are excluded. An individual operator can "
+                       "Refundable deposits are excluded. An individual driver can "
                        "be given their own rate, which overrides this one. Changing "
                        "this moves future bookings only — commission already earned "
                        "keeps the rate it was recorded at."),
-            Field("operator_payout_note", "How operators are paid", type="textarea", rows=3,
-                  default=f"{TBC} say how and when operators are paid, and who covers "
+            Field("operator_payout_note", "How drivers settle commission", type="textarea", rows=3,
+                  default=f"{TBC} say how and when drivers pay the commission, and who covers "
                           f"any transfer charges.",
-                  help="Shown to operators in their dashboard."),
+                  help="Shown to drivers in their dashboard."),
         ],
     ),
     Group(
@@ -438,18 +438,18 @@ SCHEMA = [
             Field("rides_heading", "Page heading",
                   default="Scheduled rides and airport transfers"),
             Field("rides_intro", "Page intro", type="textarea", rows=3,
-                  default="Book a car and driver for a single journey. Fares are set by "
-                          "the operator who drives it, and shown in full before you "
-                          "request — there is nothing to pay on this website."),
+                  default="Book a driver ahead of time for a single journey. Each price is "
+                          "set by the driver and shown in full before you request — there "
+                          "is nothing to pay on this website."),
             Field("rides_empty", "Shown when no fares are published yet",
                   type="textarea", rows=3,
-                  default="No operators have published fares yet. Once an approved "
-                          "operator adds a route it will appear here.",
+                  default="No driver has published a price for a journey yet. Once an "
+                          "approved driver adds one it will appear here.",
                   help="Customers see this instead of an empty page. Do not replace it "
                        "with example prices."),
             Field("rides_request_note", "What happens after a request",
                   type="textarea", rows=3,
-                  default=f"Your request goes to the operator, who confirms it with you "
+                  default=f"Your request goes to the driver, who confirms it with you "
                           f"directly. {TBC} say how quickly a customer should expect to "
                           f"hear back."),
             Field("transfers_heading", "Airport transfers heading",
@@ -460,34 +460,35 @@ SCHEMA = [
         ],
     ),
     Group(
-        "operators", "Operators page",
-        "The page transport businesses read before applying to list with you.",
+        "operators", "Become a driver page",
+        "The page drivers read when they join with their phone number.",
         [
-            Field("operators_eyebrow", "Small label", default="For operators"),
-            Field("operators_heading", "Page heading", default="List your vehicles with us"),
+            Field("operators_eyebrow", "Small label", default="For drivers"),
+            Field("operators_heading", "Page heading", default="Become a driver"),
             Field("operators_intro", "Page intro", type="textarea", rows=4,
-                  default=f"We pass you booking requests from customers looking for rides, "
-                          f"transfers and car hire. You set your own fares and terms.\n\n"
+                  default=f"Customers choose you for rides, airport transfers and car "
+                          f"rental. You set your own prices.\n\n"
                           f"{TBC} add a sentence about who you are looking for."),
-            Field("operators_requirements", "What an operator needs", type="lines", rows=7,
+            Field("operators_requirements", "What a driver needs", type="lines", rows=7,
                   default=f"{TBC} vehicle documents you require\n"
                           f"{TBC} driver licence and permit requirements\n"
-                          f"{TBC} insurance you require an operator to hold\n"
+                          f"{TBC} insurance you require a driver to hold\n"
                           f"{TBC} vehicle age or condition standards",
                   help="One per line. These are your rules, so nothing is filled in for "
                        "you."),
             Field("operators_commission_note", "How commission is explained",
                   type="textarea", rows=3,
-                  default="We take a commission on the fare of each completed booking. "
-                          "Refundable deposits are never included. The current rate is "
-                          "shown when you apply."),
-            Field("operators_apply_note", "Note on the application form",
+                  default="Joining is free. We take a commission on the price of each "
+                          "completed trip or rental. Refundable deposits are never "
+                          "included."),
+            Field("operators_apply_note", "Note about approval",
                   type="textarea", rows=3,
-                  default=f"Applying does not list you straight away — we review every "
-                          f"application first. {TBC} say how long a review usually takes."),
-            Field("operators_empty", "Shown when no operators are approved yet",
+                  default=f"Confirming your phone number does not approve you straight "
+                          f"away — we check every driver first. {TBC} say how long a check "
+                          f"usually takes."),
+            Field("operators_empty", "Shown when no drivers are approved yet",
                   type="textarea", rows=2,
-                  default="No operators are listed yet."),
+                  default="No drivers are listed yet."),
         ],
     ),
     Group(

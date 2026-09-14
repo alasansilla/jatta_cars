@@ -8,6 +8,7 @@ from flask import (
     render_template, request, session, url_for,
 )
 
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from . import routing
@@ -16,7 +17,7 @@ from .forms import (
     validate_rental_dates,
 )
 from .models import (
-    CATEGORIES, MANUAL_QUOTE, RIDE, TRANSFER, TRANSMISSIONS, Booking, Enquiry,
+    CATEGORIES, MANUAL_QUOTE, RENTAL, RIDE, TRANSFER, TRANSMISSIONS, Booking, Enquiry,
     Operator, OperatorFare, Vehicle, db,
 )
 from .settings import current_settings
@@ -56,10 +57,18 @@ def _search_filters():
     }
 
 
+def bookable_vehicles():
+    """Cars a customer may see and book: listed, and not belonging to a driver
+    who is unapproved or suspended. One query, so no page forgets the second half."""
+    return (Vehicle.query.outerjoin(Operator, Vehicle.operator_id == Operator.id)
+            .filter(Vehicle.is_active.is_(True),
+                    or_(Vehicle.operator_id.is_(None), Operator.status == "approved")))
+
+
 @bp.route("/")
 def index():
     featured = (
-        Vehicle.query.filter_by(is_active=True)
+        bookable_vehicles()
         .order_by(Vehicle.daily_rate.asc())
         .limit(6)
         .all()
@@ -71,14 +80,14 @@ def index():
         categories=CATEGORIES,
         default_start=tomorrow.isoformat(),
         default_end=(tomorrow + timedelta(days=3)).isoformat(),
-        stats={"vehicles": Vehicle.query.filter_by(is_active=True).count()},
+        stats={"vehicles": bookable_vehicles().count()},
     )
 
 
 @bp.route("/fleet")
 def fleet():
     filters = _search_filters()
-    query = Vehicle.query.filter_by(is_active=True)
+    query = bookable_vehicles()
 
     if filters["category"] in CATEGORIES:
         query = query.filter(Vehicle.category == filters["category"])
@@ -135,8 +144,8 @@ def fleet():
 
 @bp.route("/fleet/<int:vehicle_id>")
 def vehicle_detail(vehicle_id):
-    vehicle = Vehicle.query.get_or_404(vehicle_id)
-    if not vehicle.is_active:
+    vehicle = db.session.get(Vehicle, vehicle_id) or abort(404)
+    if not vehicle.is_bookable:
         abort(404)
 
     start = request.args.get("start", "")
@@ -150,10 +159,9 @@ def vehicle_detail(vehicle_id):
 
     tomorrow = date.today() + timedelta(days=1)
     similar = (
-        Vehicle.query.filter(
+        bookable_vehicles().filter(
             Vehicle.category == vehicle.category,
             Vehicle.id != vehicle.id,
-            Vehicle.is_active.is_(True),
         )
         .limit(3)
         .all()
@@ -161,7 +169,7 @@ def vehicle_detail(vehicle_id):
 
     # A short strip of nearby-priced cars so visitors can flick between options.
     tabs = (
-        Vehicle.query.filter(Vehicle.is_active.is_(True))
+        bookable_vehicles()
         .order_by(Vehicle.daily_rate.asc())
         .limit(4)
         .all()
@@ -190,8 +198,8 @@ def vehicle_detail(vehicle_id):
 
 @bp.route("/fleet/<int:vehicle_id>/book", methods=["POST"])
 def book(vehicle_id):
-    vehicle = Vehicle.query.get_or_404(vehicle_id)
-    if not vehicle.is_active:
+    vehicle = db.session.get(Vehicle, vehicle_id) or abort(404)
+    if not vehicle.is_bookable:
         abort(404)
 
     settings = current_settings()
@@ -229,7 +237,11 @@ def book(vehicle_id):
 
     booking = Booking(
         reference=Booking.new_reference(),
+        booking_type=RENTAL,
         vehicle=vehicle,
+        # The driver who rents the car out. Their commission rate applies, the
+        # booking appears in their account, and a review lands on their profile.
+        operator_id=vehicle.operator_id,
         customer_name=customer["customer_name"],
         email=customer["email"],
         phone=customer["phone"],
@@ -238,6 +250,9 @@ def book(vehicle_id):
         start_date=start,
         end_date=end,
         total_price=vehicle.quote((end - start).days),
+        # The deposit as it stands today, kept apart from the fare so commission
+        # never touches it even if the car's deposit is changed later.
+        deposit_amount=vehicle.deposit or 0,
         status="pending",
         notes=(request.form.get("notes") or "").strip() or None,
     )
@@ -276,7 +291,7 @@ def booking_detail(reference):
     if session.get("booking_reference") != reference:
         return redirect(url_for("public.booking_lookup"))
     booking = Booking.query.filter_by(reference=reference).first_or_404()
-    if booking.booking_type == "ride" and booking.quote_basis == "distance" and booking.vehicle_id:
+    if booking.is_on_demand:
         return redirect(url_for("dispatch.track", reference=reference))
     response = make_response(render_template("booking.html", booking=booking))
     response.headers["Cache-Control"] = "no-store"
@@ -302,7 +317,7 @@ def booking_lookup():
 def about():
     return render_template(
         "about.html",
-        stats={"vehicles": Vehicle.query.filter_by(is_active=True).count()},
+        stats={"vehicles": bookable_vehicles().count()},
     )
 
 
@@ -480,59 +495,21 @@ def request_ride(fare_id):
     return redirect(url_for("public.booking_detail", reference=booking.reference))
 
 
-# --- Operators --------------------------------------------------------------
+# --- Becoming a driver -------------------------------------------------------
 
 @bp.route("/operators")
 def operators():
-    return render_template(
-        "operators.html",
-        approved=Operator.query.filter_by(status="approved")
-        .order_by(Operator.name).all(),
-        commission_rate=current_settings()["commission_rate"],
-    )
+    """The old "list your service" page. Joining is now by phone number."""
+    return redirect(url_for("driver_auth.join"), code=301)
 
 
 @bp.route("/operators/apply", methods=["POST"])
 def operator_apply():
-    """Take an application. It lists nobody until a person approves it."""
-    name = (request.form.get("name") or "").strip()
-    email = (request.form.get("email") or "").strip().lower()
-    phone = (request.form.get("phone") or "").strip()
-    contact_name = (request.form.get("contact_name") or "").strip()
-
-    errors = []
-    if len(name) < 2:
-        errors.append("Enter your business name.")
-    contact, contact_errors = validate_customer({
-        "customer_name": contact_name or name, "email": email, "phone": phone,
-    })
-    errors += contact_errors
-
-    if not errors and Operator.query.filter(
-            db.func.lower(Operator.email) == email).first():
-        errors.append("We already have an application from that email address. "
-                      "Get in touch if you have not heard back.")
-
-    if errors:
-        for message in errors:
-            flash(message, "error")
-        return redirect(url_for("public.operators") + "#apply")
-
-    db.session.add(Operator(
-        name=name,
-        slug=Operator.make_slug(name),
-        contact_name=contact_name or None,
-        email=contact["email"],
-        phone=contact["phone"] or None,
-        service_area=(request.form.get("service_area") or "").strip() or None,
-        notes=(request.form.get("about") or "").strip() or None,
-        status="pending",
-    ))
-    db.session.commit()
-
-    flash("Thanks — your application is with us. We review every one before "
-          "listing anybody, and will be in touch.", "success")
-    return redirect(url_for("public.operators"))
+    """The old email application form. Nothing is created from it any more:
+    a driver joins by proving their phone number, so an application cannot be
+    made in someone else's name."""
+    flash("Joining is now done with your phone number.", "success")
+    return redirect(url_for("driver_auth.join"))
 
 
 

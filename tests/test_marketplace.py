@@ -201,14 +201,16 @@ class CommissionRecordingTests(MarketplaceCase):
 # --- operator approval ------------------------------------------------------
 
 class OperatorApprovalTests(MarketplaceCase):
-    def test_an_application_starts_pending_and_lists_nothing(self):
+    def test_the_old_email_application_creates_nobody(self):
+        """Joining is by proving a phone number; a typed-in form makes no account."""
+        before = Operator.query.count()
         response = self.client.post("/operators/apply", data={
             "name": "New Cabs", "contact_name": "Sainey",
             "email": "new@example.com", "phone": "+220700999"})
         self.assertEqual(response.status_code, 302)
-        applicant = Operator.query.filter_by(email="new@example.com").one()
-        self.assertEqual(applicant.status, "pending")
-        self.assertFalse(applicant.can_sign_in)
+        self.assertIn("/driver/join", response.location)
+        self.assertEqual(Operator.query.count(), before)
+        self.assertEqual(self.client.get("/operators").status_code, 301)
 
     def test_a_pending_operator_cannot_sign_in(self):
         self._operator("Waiting", "waiting@example.com", status="pending")
@@ -229,11 +231,11 @@ class OperatorApprovalTests(MarketplaceCase):
         self.assertEqual(client.get("/operator/").status_code, 302)
 
     def test_only_an_approved_operators_fares_are_public(self):
-        self.assertIn("Airport", self.client.get("/rides").get_data(as_text=True))
+        self.assertIn(self.fare.title, self.client.get("/rides").get_data(as_text=True))
 
         self.operator.status = "suspended"
         db.session.commit()
-        self.assertNotIn("Airport", self.client.get("/rides").get_data(as_text=True))
+        self.assertNotIn(self.fare.title, self.client.get("/rides").get_data(as_text=True))
         self.assertEqual(self.client.get(f"/rides/{self.fare.id}").status_code, 404)
 
     def test_suspending_takes_their_cars_off_the_site(self):

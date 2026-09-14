@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+{% block title %}Test text messages — {{ company_name }} staff{% endblock %}
+{% block admin_content %}
+<div class="panel__head">
+  <div>
+    <h1 style="font-size:2rem;margin:0">Test text messages</h1>
+    <p class="small muted" style="margin:4px 0 0;max-width:64ch">
+      Local development only. This site is using the fake text-message transport, so
+      nothing is sent to any phone. These are the codes it would have sent, newest
+      first. This page does not exist when a real SMS provider is configured or in production.
+    </p>
+  </div>
+</div>
+<div class="panel">
+  {% if messages %}
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Sent (UTC)</th><th>To</th><th>Message</th></tr></thead>
+        <tbody>
+          {% for message in messages %}
+            <tr><td class="nowrap">{{ message.sent_at }}</td><td class="nowrap">{{ message.to | phone_pretty }}</td><td style="white-space:pre-line">{{ message.body }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty"><h3>No test messages yet</h3></div>
+  {% endif %}
+</div>
+{% endblock %}

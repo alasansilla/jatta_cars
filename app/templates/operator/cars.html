@@ -1,0 +1,17 @@
+{% extends "operator/base.html" %}
+{% block title %}My cars — {{ company_name }}{% endblock %}
+{% block operator_content %}
+<div class="panel__head"><h1>My cars</h1><a class="btn btn--primary" href="{{ url_for('operator.car_form') }}">Add a car</a></div>
+<p>Add your car, its rental price and a photo. Staff check new cars and changes before customers can book them.</p>
+{% for car in cars %}
+<article class="panel" style="margin-bottom:20px">
+  <img src="{{ media_url(car.image_url) }}" alt="{{ car.name }}" width="180" style="max-width:100%;border-radius:8px">
+  <h2>{{ car.name }} · {{ car.year }}</h2>
+  <p>{{ car.daily_rate | money }} per day · {{ car.seats }} seats · {{ car.transmission }}</p>
+  <p>{{ 'Listed' if car.is_active else 'Hidden — awaiting staff review' }}</p>
+  <a class="btn btn--ghost" href="{{ url_for('operator.car_form', vehicle_id=car.id) }}">Edit car</a>
+</article>
+{% else %}
+<div class="panel"><p>You have not added a car yet.</p></div>
+{% endfor %}
+{% endblock %}

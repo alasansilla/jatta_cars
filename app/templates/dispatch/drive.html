@@ -1,17 +1,336 @@
-{% extends 'operator/base.html' %}
-{% block operator_content %}<h1>Driver console</h1><p>Keep this screen open during your shift. Location sharing stops when you close it; availability expires after two minutes without updates.</p>
-<label for="vehicle">Your vehicle</label><select id="vehicle">{% for car in vehicles %}<option value="{{ car.id }}" {% if state and state.vehicle_id==car.id %}selected{% endif %}>{{ car.name }}</option>{% endfor %}</select>
-<button class="btn btn--primary" id="online">Go online and share location</button><button class="btn" id="offline">Go offline</button><p id="message" role="status"></p>
-{% if job %}<h2>Ride {{ job.reference }}</h2><p>{{ job.pickup_address }} → {{ job.dropoff_address }}</p><p>Status: {{ job.status }} · Fare: GMD {{ job.total_price }}</p>{% if job.status != 'pending' %}<p>{{ job.customer_name }} · {{ job.phone }}</p>{% endif %}
-{% for status,label in [('confirmed','Accept ride'),('arriving','On my way'),('in_progress','Start trip'),('completed','Finish trip'),('cancelled','Decline / cancel')] %}<button class="btn trip-action" data-status="{{ status }}">{{ label }}</button>{% endfor %}{% else %}<p>No active ride. Go online to receive requests.</p>{% endif %}
+{% extends "operator/base.html" %}
+{% block title %}Driving mode — {{ company_name }}{% endblock %}
+{% block head %}
+  {% if map_settings.enabled %}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  {% endif %}
 {% endblock %}
-{% block scripts %}<script>
-const csrf={{ csrf_token|tojson }},currentJob={{ (job.id if job else none)|tojson }};let watch=null,online=false,last=null,lastSent=0,fixTime=0;
-const msg=document.getElementById('message');async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(data)});return r.json();}
-async function send(){if(!last||Date.now()-fixTime>45000)return;const d=await post('/operator/drive/location',{lat:last.latitude,lng:last.longitude,vehicle_id:document.getElementById('vehicle').value,available:online});msg.textContent=d.error||(online?'Online — location updated.':'Offline');if(d.active_booking_id!==undefined&&d.active_booking_id!==currentJob)location.reload();}
-document.getElementById('online').onclick=()=>{if(!navigator.geolocation){msg.textContent='Location sharing is unavailable in this browser.';return;}online=true;sessionStorage.setItem('jatta-sharing','1');if(watch!==null)navigator.geolocation.clearWatch(watch);watch=navigator.geolocation.watchPosition(p=>{last=p.coords;fixTime=p.timestamp;if(Date.now()-lastSent>5000){lastSent=Date.now();send().catch(()=>msg.textContent='Connection lost.');}},()=>{msg.textContent='Allow location access in your browser to go online.';},{enableHighAccuracy:true,maximumAge:5000});};
-document.getElementById('offline').onclick=()=>{online=false;sessionStorage.removeItem('jatta-sharing');post('/operator/drive/offline',{}).then(()=>msg.textContent='Offline').catch(()=>msg.textContent='Could not update availability.');if(watch!==null)navigator.geolocation.clearWatch(watch);watch=null;};
-setInterval(()=>{if(watch!==null)send().catch(()=>msg.textContent='Connection lost.');},15000);
-if(sessionStorage.getItem('jatta-sharing')==='1')document.getElementById('online').click();
-document.querySelectorAll('.trip-action').forEach(b=>b.onclick=async()=>{const d=await post('/operator/drive/status',{status:b.dataset.status});if(d.error)msg.textContent=d.error;else location.reload();});
-</script>{% endblock %}
+
+{% block operator_content %}
+<div style="max-width:640px;margin:0 auto">
+  <h1 style="font-size:2rem;margin-bottom:4px">Driving mode</h1>
+  <div id="drive-status" class="drive-status" role="status">
+    <span class="light" aria-hidden="true"></span><span id="status-text">You are offline</span>
+  </div>
+
+  {% if not vehicles %}
+    <p class="notice notice--warn">
+      You have no approved car yet, so you can't go online.
+      <a href="{{ url_for('operator.cars') }}">Go to My cars</a> to add one. {{ company_name }}
+      checks each car before you can drive it for customers.
+    </p>
+  {% else %}
+    {% if not has_ride_fare %}
+      <p class="notice notice--warn">
+        Customers can't request a ride from you yet, because you have no price per
+        kilometre. <a href="{{ url_for('operator.fares') }}">Add my price</a>.
+      </p>
+    {% endif %}
+    <div id="controls">
+      <label class="big-label" for="vehicle">Your car</label>
+      <select id="vehicle" style="font-size:1.1rem;padding:12px">
+        {% for car in vehicles %}
+          <option value="{{ car.id }}" {{ 'selected' if state and state.vehicle_id == car.id }}>{{ car.name }} · {{ car.year }} · {{ car.seats }} seats</option>
+        {% endfor %}
+      </select>
+      <button id="online" class="btn btn--primary btn--xl" type="button">Go online</button>
+      <button id="offline" class="btn btn--dark btn--xl" type="button" hidden>Go offline</button>
+      <p class="hint">
+        While you are online, keep this page open. Your phone shares its location so
+        customers can choose you and see you coming. If your location stops for
+        2 minutes, you go offline.
+      </p>
+    </div>
+  {% endif %}
+
+  <p id="message" class="notice" role="alert" hidden></p>
+
+  <section id="job" class="drive-job" hidden aria-live="polite">
+    <h2 id="job-title"></h2>
+    <p id="job-countdown" class="notice notice--warn" hidden></p>
+    <dl>
+      <dt>Pick up</dt><dd id="job-pickup"></dd>
+      <dt>Drop off</dt><dd id="job-dropoff"></dd>
+      <dt>Distance</dt><dd id="job-distance"></dd>
+      <dt>Passengers</dt><dd id="job-passengers"></dd>
+      <dt>Your price</dt><dd id="job-fare"></dd>
+      <dt class="js-customer" hidden>Customer</dt><dd class="js-customer" id="job-customer" hidden></dd>
+      <dt class="js-customer" hidden>Phone</dt><dd class="js-customer" hidden><a id="job-phone"></a></dd>
+    </dl>
+    <div id="job-map" class="drive-map" hidden></div>
+    <div class="drive-actions">
+      <button id="accept" class="btn btn--primary btn--xl" type="button" hidden>Accept this ride</button>
+      <button id="next" class="btn btn--primary btn--xl" type="button" hidden></button>
+      <button id="decline" class="btn btn--ghost btn--xl" type="button" hidden>Decline</button>
+    </div>
+  </section>
+
+  <section id="scheduled" style="margin-top:30px" hidden>
+    <h2 style="font-size:1.3rem">Booked ahead — waiting for your answer</h2>
+    <ul id="scheduled-list" class="review-list"></ul>
+  </section>
+
+  <p id="idle" class="muted" style="margin-top:22px">When a customer chooses you, the request appears here. You have {{ accept_seconds }} seconds to answer.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if map_settings.enabled %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+{% endif %}
+<script>
+(function () {
+  "use strict";
+  var CSRF = {{ csrf_token | tojson }};
+  var MAP = {{ map_settings | tojson }};
+  var $ = function (id) { return document.getElementById(id); };
+  var vehicle = $("vehicle");
+  var watchId = null, pollFix = null, lastFix = null, sending = false, lastSentAt = 0;
+  var lastJobKey = null, countdownTimer = null, map = null, layers = [];
+  var online = false;
+
+  function say(text, kind) {
+    var box = $("message");
+    box.textContent = text || "";
+    box.className = "notice" + (kind ? " notice--" + kind : "");
+    box.hidden = !text;
+  }
+
+  function post(path, body) {
+    return fetch(path, {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": CSRF },
+      body: JSON.stringify(body || {})
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        data._ok = response.ok; return data;
+      });
+    });
+  }
+
+  /* ---- location ---- */
+
+  function sendFix() {
+    if (!online || !lastFix || sending || !vehicle) return;
+    if (Date.now() - lastFix.at > 30000) return;   // never report an old position as current
+    sending = true;
+    post("/operator/drive/location", {
+      lat: lastFix.lat, lng: lastFix.lng, vehicle_id: Number(vehicle.value), available: true
+    }).then(function (data) {
+      if (!data._ok) say(data.error || "Your location could not be sent.", "error");
+      else { lastSentAt = Date.now(); say(""); }
+    }).catch(function () {
+      say("No internet connection. Trying again…", "warn");
+    }).then(function () { sending = false; refresh(); });
+  }
+
+  function onFix(position) {
+    lastFix = { lat: position.coords.latitude, lng: position.coords.longitude, at: Date.now() };
+    if (Date.now() - lastSentAt > 5000) sendFix();
+  }
+
+  function onFixError(error) {
+    if (error && error.code === 1) {
+      say("Allow location for this site in your browser settings, then tap Go online again.", "error");
+      goOffline(true);
+    } else {
+      say("Looking for your location… Make sure location is switched on.", "warn");
+    }
+  }
+
+  var wakeLock = null;
+  function keepAwake(on) {
+    if (on && "wakeLock" in navigator && !wakeLock) {
+      navigator.wakeLock.request("screen").then(function (lock) { wakeLock = lock; }).catch(function () {});
+    } else if (!on && wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
+  }
+
+  function goOnline() {
+    if (!navigator.geolocation) {
+      say("This browser can't share your location, so you can't go online here.", "error");
+      return;
+    }
+    online = true;
+    try { sessionStorage.setItem("drive-online", "1"); } catch (e) {}
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    watchId = navigator.geolocation.watchPosition(onFix, onFixError,
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+    clearInterval(pollFix);
+    pollFix = setInterval(function () {
+      navigator.geolocation.getCurrentPosition(onFix, onFixError,
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 });
+      sendFix();
+    }, 15000);
+    $("online").hidden = true; $("offline").hidden = false;
+    say("Getting your location…", "warn");
+    keepAwake(true);
+  }
+
+  function goOffline(quiet) {
+    online = false;
+    try { sessionStorage.removeItem("drive-online"); } catch (e) {}
+    if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
+    watchId = null; clearInterval(pollFix);
+    if ($("online")) { $("online").hidden = false; $("offline").hidden = true; }
+    keepAwake(false);
+    post("/operator/drive/offline", {}).then(function () {
+      if (!quiet) say("You are offline.");
+      refresh();
+    });
+  }
+
+  /* ---- what is happening now ---- */
+
+  var TITLES = {
+    pending: "New ride request",
+    accepted: "Go to the pickup",
+    confirmed: "Go to the pickup",
+    arriving: "Pick up your customer",
+    in_progress: "On the trip"
+  };
+
+  function drawMap(job) {
+    if (!MAP.enabled || typeof L === "undefined" || !job.pickup_point) { $("job-map").hidden = true; return; }
+    $("job-map").hidden = false;
+    if (!map) {
+      map = L.map("job-map").setView(MAP.centre, MAP.zoom);
+      L.tileLayer(MAP.tile_url, { attribution: MAP.attribution, maxZoom: MAP.max_zoom }).addTo(map);
+    }
+    layers.forEach(function (layer) { map.removeLayer(layer); });
+    layers = [];
+    var points = [];
+    [[job.pickup_point, "Pick up"], [job.dropoff_point, "Drop off"],
+     [lastFix ? [lastFix.lat, lastFix.lng] : null, "You"]].forEach(function (pair) {
+      if (!pair[0]) return;
+      layers.push(L.marker(pair[0]).addTo(map).bindTooltip(pair[1], { permanent: pair[1] === "You" }));
+      points.push(pair[0]);
+    });
+    if (points.length > 1) map.fitBounds(L.latLngBounds(points).pad(0.2));
+    else if (points.length) map.setView(points[0], 14);
+    setTimeout(function () { map.invalidateSize(); }, 50);
+  }
+
+  function renderJob(job) {
+    var section = $("job");
+    clearInterval(countdownTimer);
+    if (!job) { section.hidden = true; lastJobKey = null; $("idle").hidden = false; return; }
+    $("idle").hidden = true;
+    section.hidden = false;
+    var key = job.id + ":" + job.status;
+    if (key !== lastJobKey && job.status === "pending" && navigator.vibrate) navigator.vibrate([300, 150, 300]);
+    lastJobKey = key;
+
+    $("job-title").textContent = TITLES[job.status] || "Your trip";
+    $("job-pickup").textContent = job.pickup || "—";
+    $("job-dropoff").textContent = job.dropoff || "—";
+    $("job-distance").textContent = job.distance_km !== null ? job.distance_km + " km" + (job.duration ? " · about " + job.duration : "") : "—";
+    $("job-passengers").textContent = job.passengers || "—";
+    $("job-fare").textContent = job.fare_text || "—";
+
+    var showCustomer = !!job.customer;
+    document.querySelectorAll(".js-customer").forEach(function (el) { el.hidden = !showCustomer; });
+    if (showCustomer) {
+      $("job-customer").textContent = job.customer.name || "—";
+      var link = $("job-phone");
+      link.textContent = job.customer.phone || "No number given";
+      if (job.customer.phone) link.href = "tel:" + job.customer.phone.replace(/[^\d+]/g, "");
+      else link.removeAttribute("href");
+    }
+
+    var countdown = $("job-countdown");
+    if (job.status === "pending") {
+      var left = job.expires_in;
+      var tick = function () {
+        countdown.textContent = left > 0 ? "Answer within " + left + " seconds." : "Time is up.";
+        left -= 1;
+      };
+      countdown.hidden = false; tick();
+      countdownTimer = setInterval(tick, 1000);
+    } else { countdown.hidden = true; }
+
+    $("accept").hidden = job.status !== "pending";
+    $("accept").dataset.id = job.id;
+    var next = $("next");
+    next.hidden = !job.next;
+    if (job.next) { next.textContent = job.next.label; next.dataset.status = job.next.status; next.dataset.id = job.id; }
+    var decline = $("decline");
+    decline.hidden = !job.can_decline;
+    decline.dataset.id = job.id;
+    decline.textContent = job.status === "pending" ? "Decline" : "I can't do this trip";
+
+    drawMap(job);
+  }
+
+  function renderScheduled(items) {
+    var list = $("scheduled-list");
+    list.replaceChildren();
+    items.forEach(function (item) {
+      var li = document.createElement("li"); li.className = "review-item";
+      var strong = document.createElement("strong"); strong.textContent = item.when;
+      var what = document.createElement("p"); what.textContent = item.what;
+      var link = document.createElement("a"); link.textContent = "Open and answer";
+      if (item.url.charAt(0) === "/") link.href = item.url;
+      li.append(strong, what, link);
+      list.appendChild(li);
+    });
+    $("scheduled").hidden = items.length === 0;
+  }
+
+  function renderStatus(data) {
+    var box = $("drive-status"), text = $("status-text");
+    box.classList.remove("is-online", "is-busy");
+    if (data.job) { box.classList.add("is-busy"); text.textContent = data.job.status === "pending" ? "A customer chose you" : "You are on a trip"; }
+    else if (data.online) { box.classList.add("is-online"); text.textContent = "You are online — customers can choose you"; }
+    else if (online) { text.textContent = "Connecting…"; }
+    else { text.textContent = "You are offline"; }
+  }
+
+  function refresh() {
+    return fetch("/operator/drive/state", { credentials: "same-origin" })
+      .then(function (response) {
+        if (response.redirected || !response.ok) throw new Error("signed out");
+        return response.json();
+      })
+      .then(function (data) {
+        renderStatus(data); renderJob(data.job); renderScheduled(data.scheduled || []);
+        if (data.vehicle_id && vehicle && !online) vehicle.value = String(data.vehicle_id);
+      })
+      .catch(function () { say("Can't reach " + {{ company_name | tojson }} + ". Check your internet connection.", "warn"); });
+  }
+
+  function act(path, body, button) {
+    button.disabled = true;
+    post(path, body).then(function (data) {
+      if (!data._ok) say(data.error || "That didn't work. Please try again.", "error");
+      else say("");
+    }).catch(function () { say("No internet connection. Please try again.", "error"); })
+      .then(function () { button.disabled = false; refresh(); });
+  }
+
+  if ($("online")) {
+    $("online").addEventListener("click", goOnline);
+    $("offline").addEventListener("click", function () { goOffline(false); });
+    vehicle.addEventListener("change", sendFix);
+  }
+  $("accept").addEventListener("click", function () {
+    act("/operator/drive/accept", { booking_id: Number(this.dataset.id) }, this);
+  });
+  $("next").addEventListener("click", function () {
+    act("/operator/drive/status", { booking_id: Number(this.dataset.id), status: this.dataset.status }, this);
+  });
+  $("decline").addEventListener("click", function () {
+    var pending = this.textContent === "Decline";
+    if (!pending && !window.confirm("Hand this trip back? The customer will choose another driver.")) return;
+    act("/operator/drive/decline", { booking_id: Number(this.dataset.id) }, this);
+  });
+
+  var wasOnline = false;
+  try { wasOnline = sessionStorage.getItem("drive-online") === "1"; } catch (e) {}
+  if (wasOnline && $("online")) goOnline();
+  refresh();
+  setInterval(refresh, 4000);
+})();
+</script>
+{% endblock %}

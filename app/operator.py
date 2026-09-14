@@ -10,6 +10,9 @@ that the operator sees the journey and the fare, which is what they need to
 decide, but not the person's email and phone.
 """
 import math
+import secrets
+import time
+from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from functools import wraps
 
@@ -21,17 +24,23 @@ from flask import (
 from . import commission, routing
 from .models import (
     BOOKING_TYPES, DISTANCE_PRICE, FIXED_PRICE, JOURNEY_TYPES, PRICING_MODELS,
-    RIDE, TRANSFER, Booking, Operator, OperatorFare, Vehicle, db,
+    RIDE, TRANSFER, Booking, DriverState, Operator, OperatorFare, Vehicle, db,
 )
 from .settings import current_settings
+from .models import CATEGORIES, TRANSMISSIONS, FUELS
+from .media import save_upload
 
 bp = Blueprint("operator", __name__)
 
 FARE_KINDS = (RIDE, TRANSFER)
 
-# Statuses at which an operator may see who the customer is. Before a booking is
-# confirmed there is no reason for them to hold a stranger's contact details.
-CONTACT_VISIBLE_AT = ("confirmed", "completed")
+# Statuses at which a driver may see who the customer is. Before a booking is
+# accepted there is no reason for them to hold a stranger's contact details.
+CONTACT_VISIBLE_AT = ("confirmed", "accepted", "arriving", "in_progress", "completed")
+
+# Session keys that belong to a signed-in driver.
+DRIVER_SESSION_KEYS = ("operator_id", "operator_name", "driver_signed_in_at",
+                       "driver_sign_in_method")
 
 
 @bp.before_request
@@ -50,28 +59,68 @@ def check_csrf():
     return None
 
 
-def _current():
-    """The operator this session belongs to, or None.
+def _account():
+    """The driver account this session belongs to, whatever its status, or None.
 
-    A suspended or rejected operator loses access immediately, without anyone
-    having to clear their session.
+    A driver who has just joined is signed in but not yet approved: they can see
+    their application status and nothing else.
     """
     operator_id = session.get("operator_id")
     if not operator_id:
         return None
-    operator = db.session.get(Operator, operator_id)
+    return db.session.get(Operator, operator_id)
+
+
+def _current():
+    """The *approved* driver this session belongs to, or None.
+
+    A suspended or rejected driver loses access immediately, without anyone
+    having to clear their session.
+    """
+    operator = _account()
     if operator is None or not operator.is_approved:
         return None
     return operator
+
+
+def start_session(operator, method):
+    """Sign a driver in. Used by both phone and email sign-in.
+
+    The session is emptied first so nothing from before sign-in — a half-finished
+    code, another person's leftovers — carries into the signed-in session. A
+    customer's own booking reference is kept, and a fresh CSRF token issued.
+    """
+    kept = {key: session[key] for key in ("booking_reference",) if key in session}
+    session.clear()
+    session.update(kept)
+    session["_csrf_token"] = secrets.token_urlsafe(32)
+    session["operator_id"] = operator.id
+    session["operator_name"] = operator.display_name
+    session["driver_signed_in_at"] = int(time.time())
+    session["driver_sign_in_method"] = method
+    session.permanent = True
+
+
+def end_session():
+    for key in DRIVER_SESSION_KEYS + ("phone_flow", "phone_verified"):
+        session.pop(key, None)
+
+
+def signed_in_recently(seconds):
+    stamp = session.get("driver_signed_in_at")
+    return bool(stamp) and time.time() - int(stamp) <= seconds
 
 
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if _current() is None:
+            if _account() is not None:
+                # Signed in, just not approved (yet, or any more).
+                return redirect(url_for("driver_auth.status"))
             session.pop("operator_id", None)
             flash("Please sign in to continue.", "error")
-            return redirect(url_for("operator.login", next=request.path))
+            return redirect(url_for("driver_auth.sign_in"))
         return view(*args, **kwargs)
 
     return wrapped
@@ -108,8 +157,7 @@ def login():
 
         if operator is not None and operator.can_sign_in and \
                 operator.check_password(password):
-            session["operator_id"] = operator.id
-            session["operator_name"] = operator.name
+            start_session(operator, "email")
             target = request.args.get("next")
             if target and target.startswith("/operator") and not target.startswith("//"):
                 return redirect(target)
@@ -117,15 +165,15 @@ def login():
 
         # Deliberately one message: telling an unapproved applicant that their
         # password was right would confirm the account exists.
-        flash("Those details do not match an approved operator account.", "error")
+        flash("That email and password don't match a driver account that can "
+              "sign in this way.", "error")
     return render_template("operator/login.html")
 
 
 @bp.route("/logout")
 def logout():
-    session.pop("operator_id", None)
-    session.pop("operator_name", None)
-    flash("Signed out.", "success")
+    end_session()
+    flash("You are signed out.", "success")
     return redirect(url_for("public.index"))
 
 
@@ -134,15 +182,17 @@ def logout():
 def dashboard():
     operator = _current()
     upcoming = owned(Booking.query).filter(
-        Booking.status.in_(("pending", "confirmed"))
+        Booking.status.in_(("pending", "confirmed", "accepted", "arriving", "in_progress"))
     ).order_by(Booking.start_date.asc()).limit(10).all()
 
     counts = {
         "pending": owned(Booking.query).filter_by(status="pending").count(),
-        "confirmed": owned(Booking.query).filter_by(status="confirmed").count(),
+        "confirmed": owned(Booking.query).filter(
+            Booking.status.in_(("confirmed", "accepted", "arriving", "in_progress"))).count(),
         "completed": owned(Booking.query).filter_by(status="completed").count(),
         "fares": OperatorFare.query.filter_by(operator_id=operator.id).count(),
         "vehicles": Vehicle.query.filter_by(operator_id=operator.id).count(),
+        "ready_vehicles": Vehicle.query.filter_by(operator_id=operator.id, is_active=True).count(),
     }
     return render_template(
         "operator/dashboard.html",
@@ -185,9 +235,11 @@ def booking_detail(booking_id):
 @login_required
 def update_status(booking_id):
     booking = owned(Booking.query).filter(Booking.id == booking_id).first_or_404()
-    from .models import DriverState
-    if DriverState.query.filter_by(active_booking_id=booking.id).first():
-        return redirect(url_for('dispatch.drive'))
+    if booking.is_on_demand or DriverState.query.filter_by(active_booking_id=booking.id).first():
+        # A ride requested now is answered in Driving mode, where the time limit,
+        # the location check and the trip stages are enforced.
+        flash("Answer ride requests in Driving mode.", "error")
+        return redirect(url_for("dispatch.drive"))
     new_status = request.form.get("status")
 
     # An operator may accept, decline or finish their own work. They may not
@@ -337,7 +389,14 @@ def set_fare(booking_id):
     """Agree a fare on a journey the site could not price automatically."""
     booking = owned(Booking.query).filter(Booking.id == booking_id).first_or_404()
 
-    if booking.status in ("completed", "cancelled"):
+    if booking.is_on_demand:
+        # The customer chose this driver at the price the driver published.
+        # Changing it afterwards would charge them something they never agreed to.
+        flash("The price of a ride requested now was set when the customer chose you, "
+              "so it can't be changed.", "error")
+        return redirect(url_for("operator.booking_detail", booking_id=booking.id))
+
+    if booking.status in ("completed", "cancelled", "declined", "expired"):
         flash("That booking is closed.", "error")
         return redirect(url_for("operator.booking_detail", booking_id=booking.id))
 
@@ -346,7 +405,7 @@ def set_fare(booking_id):
         amount = float(raw)
     except ValueError:
         amount = -1
-    if amount < 0:
+    if not math.isfinite(amount) or amount < 0:
         flash("Enter the fare as a number.", "error")
         return redirect(url_for("operator.booking_detail", booking_id=booking.id))
 
@@ -355,3 +414,88 @@ def set_fare(booking_id):
     db.session.commit()
     flash(f"Fare for {booking.reference} set to {amount}.", "success")
     return redirect(url_for("operator.booking_detail", booking_id=booking.id))
+
+
+@bp.route("/cars")
+@login_required
+def cars():
+    return render_template("operator/cars.html", cars=owned(
+        Vehicle.query, Vehicle).order_by(Vehicle.created_at.desc()).all())
+
+
+@bp.route("/cars/new", methods=["GET", "POST"])
+@bp.route("/cars/<int:vehicle_id>/edit", methods=["GET", "POST"])
+@login_required
+def car_form(vehicle_id=None):
+    car = owned(Vehicle.query, Vehicle).filter_by(id=vehicle_id).first_or_404() \
+        if vehicle_id is not None else None
+    if request.method == "POST":
+        # Editing a car must not change the vehicle promised on an open booking.
+        if car and (Booking.query.filter(Booking.vehicle_id == car.id,
+                Booking.status.in_(("pending", "confirmed", "accepted", "arriving",
+                                    "in_progress"))).first() or
+                DriverState.query.filter_by(vehicle_id=car.id, available=True).first()):
+            flash("Go offline and finish your open bookings before changing this car.", "error")
+            return redirect(url_for("operator.cars"))
+        values, errors = {}, []
+        for key, label in (("make", "Make"), ("model", "Model")):
+            value = request.form.get(key, "").strip()
+            if not 1 <= len(value) <= 60:
+                errors.append(f"Enter {label.lower()} using 1–60 characters.")
+            values[key] = value
+        for key, choices in (("category", CATEGORIES), ("transmission", TRANSMISSIONS),
+                             ("fuel", FUELS)):
+            values[key] = request.form.get(key)
+            if values[key] not in choices:
+                errors.append(f"Choose a valid {key}.")
+        for key, low, high in (("year", 1950, datetime.utcnow().year + 1),
+                               ("seats", 1, 20), ("doors", 1, 8), ("luggage", 0, 20)):
+            try:
+                values[key] = int(request.form.get(key, ""))
+                if not low <= values[key] <= high:
+                    raise ValueError()
+            except ValueError:
+                errors.append(f"Enter {key} between {low} and {high}.")
+        for key in ("daily_rate", "weekly_rate", "deposit"):
+            raw = request.form.get(key, "").strip().replace(",", "")
+            if key == "weekly_rate" and not raw:
+                values[key] = None
+                continue
+            try:
+                amount = Decimal(raw)
+                if not amount.is_finite() or not 0 <= amount <= Decimal("99999999.99"):
+                    raise ValueError()
+                if key != "deposit" and amount == 0:
+                    raise ValueError()
+                values[key] = amount.quantize(Decimal("0.01"))
+            except (InvalidOperation, ValueError):
+                errors.append(f"Enter a valid {key.replace('_', ' ')} in Dalasi.")
+        for key in ("description", "features"):
+            values[key] = request.form.get(key, "").strip()
+            if len(values[key]) > 5000:
+                errors.append(f"Keep {key} under 5,000 characters.")
+        upload = request.files.get("photo_file")
+        if not errors and upload and upload.filename:
+            asset, error = save_upload(upload)
+            if error:
+                errors.append(error)
+            else:
+                values["image"] = asset.path
+        if not errors:
+            if car is None:
+                car = Vehicle(operator_id=_current().id)
+                db.session.add(car)
+            for key, value in values.items():
+                setattr(car, key, value)
+            # Every changed listing is reviewed; posted owner/publish fields are ignored.
+            car.is_active = False
+            if car.id:
+                DriverState.query.filter_by(vehicle_id=car.id).update({"available": False})
+            db.session.commit()
+            flash("Car saved. Staff will check it before it appears to customers.", "success")
+            return redirect(url_for("operator.cars"))
+        for error in errors:
+            flash(error, "error")
+    return render_template("operator/car_form.html", car=car,
+        form=request.form if request.method == "POST" else None,
+        categories=CATEGORIES, transmissions=TRANSMISSIONS, fuels=FUELS)

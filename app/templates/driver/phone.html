@@ -1,0 +1,13 @@
+{% extends "driver/base.html" %}
+{% block driver_title %}My phone number{% endblock %}
+{% block driver_content %}
+  <h1>My phone number</h1>
+  {% if account and account.phone_e164 %}
+    <p class="lede">You sign in with <strong>{{ account.phone_e164 | phone_pretty }}</strong>.</p>
+    <p>To use a different number, enter it below. We will text a code to the new number, and your old number will stop working for sign-in.</p>
+  {% else %}
+    <p class="lede">Add your phone number so you can sign in with a text message.</p>
+  {% endif %}
+  {% include "driver/phone_form.html" %}
+  <p style="margin-top:18px"><a href="{{ url_for('operator.dashboard') if account and account.is_approved else url_for('driver_auth.status') }}">Back</a></p>
+{% endblock %}

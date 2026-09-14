@@ -1,5 +1,72 @@
 {% extends 'base.html' %}
-{% block title %}{{ profile.contact_name or profile.name }} — Jatta driver{% endblock %}
+{% block title %}{{ profile.display_name }} — driver on {{ company_name }}{% endblock %}
 {% block content %}
-<section class="section"><div class="wrap"><p class="eyebrow">Driver profile</p><h1>{{ profile.contact_name or profile.name }}</h1><p>{{ profile.name }}{% if profile.service_area %} · {{ profile.service_area }}{% endif %}</p>{% set summary=review_summary(operator_id=profile.id) %}<p class="lede">{{ summary.rating or 'New partner' }}{% if summary.rating %} / 5{% endif %} from {{ summary.review_count }} review{{ 's' if summary.review_count != 1 }}</p><h2>Cars available</h2><div class="grid grid--2">{% for vehicle in cars %}{% include 'partials/vehicle_card.html' %}{% else %}<p>No cars are listed yet.</p>{% endfor %}</div><p style="margin-top:26px"><a href="{{ url_for('dispatch.ride') }}">Request a ride</a> · <a href="{{ url_for('dispatch.drivers') }}">Back to drivers</a></p></div></section>
+<section class="page-head">
+  <div class="wrap">
+    <p class="eyebrow">Driver</p>
+    <h1>{{ profile.display_name }}</h1>
+    {% if profile.contact_name and profile.name != profile.contact_name %}<p class="muted">{{ profile.name }}</p>{% endif %}
+    {% if profile.service_area %}<p>{{ profile.service_area }}</p>{% endif %}
+    <p>
+      {% if facts.available_now %}<span class="badge badge--good">Online now</span>{% endif %}
+      {% if facts.rating.rating %}<span class="badge">★ {{ facts.rating.rating }} / 5 · {{ facts.rating.review_count }} review{{ 's' if facts.rating.review_count != 1 }}</span>{% else %}<span class="badge">New driver — no reviews yet</span>{% endif %}
+    </p>
+    {% if facts.offers_rides %}
+      <a class="btn btn--primary btn--lg" href="{{ url_for('dispatch.ride', driver=profile.id) }}">Request a ride with {{ profile.display_name }}</a>
+    {% endif %}
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap split">
+    <div>
+      {% if profile.terms %}
+        <h2 style="font-size:1.4rem">About {{ profile.display_name }}</h2>
+        <p style="white-space:pre-line">{{ profile.terms }}</p>
+      {% endif %}
+
+      <h2 style="font-size:1.4rem;margin-top:26px">Prices</h2>
+      {% if facts.ride_fares %}
+        {% for fare in facts.ride_fares %}
+          <p><strong>{{ fare.title }}</strong><br>
+            {{ fare.base_price | money }} to start, plus {{ fare.per_km | money }} per km{% if fare.minimum_price %}, at least {{ fare.minimum_price | money }}{% endif %}.
+            {% if fare.notes %}<br><span class="small muted">{{ fare.notes }}</span>{% endif %}</p>
+        {% endfor %}
+      {% endif %}
+      {% for fare in facts.scheduled_fares %}
+        <p><strong>{{ fare.title }}</strong> · {{ fare.from_location }} → {{ fare.to_location }}<br>
+          {% if fare.pricing_model == 'distance' %}{{ fare.base_price | money }} + {{ fare.per_km | money }} per km{% else %}{{ fare.price | money }}{% endif %}
+          · <a href="{{ url_for('public.ride_detail', fare_id=fare.id) }}">Book ahead</a></p>
+      {% endfor %}
+      {% if not facts.ride_fares and not facts.scheduled_fares %}<p class="muted">No trip prices listed yet.</p>{% endif %}
+
+      <h2 style="font-size:1.4rem;margin-top:26px">Cars</h2>
+      {% if cars %}
+        <div class="grid grid--2">{% for vehicle in cars %}{% include 'partials/vehicle_card.html' %}{% endfor %}</div>
+      {% else %}
+        <p class="muted">No cars listed yet.</p>
+      {% endif %}
+    </div>
+
+    <div>
+      <h2 style="font-size:1.4rem">Reviews</h2>
+      <p class="small muted">Only customers who finished a trip or rental with this driver can leave a review. Names are not shown.</p>
+      {% if review_list %}
+        <ul class="review-list">
+          {% for review in review_list %}
+            <li class="review-item">
+              <span class="stars" aria-hidden="true">{{ review_stars(review.rating) }}</span>
+              <strong>{{ review.rating }} / 5</strong>
+              <p>{{ review.comment }}</p>
+              <p class="small muted">{{ booking_type_label(review.booking.booking_type) }}{% if review.booking.booking_type == 'rental' and review.booking.vehicle %} · {{ review.booking.vehicle.name }}{% endif %} · {{ review.created_at.strftime('%B %Y') }}</p>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>No reviews yet.</p>
+      {% endif %}
+      <p style="margin-top:26px"><a href="{{ url_for('dispatch.drivers') }}">← All drivers</a></p>
+    </div>
+  </div>
+</section>
 {% endblock %}

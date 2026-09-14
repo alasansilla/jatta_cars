@@ -97,7 +97,8 @@ class DatabaseUrlTests(unittest.TestCase):
     def test_sqlite_gets_no_postgres_options(self):
         import config as config_module
         importlib.reload(config_module)
-        self.assertEqual(config_module.Config.SQLALCHEMY_ENGINE_OPTIONS, {})
+        self.assertEqual(config_module.Config.SQLALCHEMY_ENGINE_OPTIONS,
+                         {"hide_parameters": True})
 
 
 class ProductionGuardTests(unittest.TestCase):
@@ -183,6 +184,7 @@ class ProductionGuardTests(unittest.TestCase):
     def test_a_fully_configured_production_app_starts(self):
         class Good(TestConfig):
             ENV_NAME = "production"
+            SMS_BACKEND = None
             SECRET_KEY = "a" * 48
             SQLALCHEMY_DATABASE_URI = PG + "://u:p@h:6543/postgres"
             SQLALCHEMY_ENGINE_OPTIONS = {}

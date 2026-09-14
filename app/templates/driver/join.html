@@ -1,0 +1,35 @@
+{% extends "driver/base.html" %}
+{% from "partials/icons.html" import check %}
+{% block driver_title %}Become a driver{% endblock %}
+{% block driver_content %}
+  <p class="eyebrow" data-edit="operators_eyebrow">{{ site.operators_eyebrow }}</p>
+  <h1 data-edit="operators_heading">{{ site.operators_heading }}</h1>
+  <p class="lede">Start with your phone number. If you have joined before, this opens your account.</p>
+  {% include "driver/phone_form.html" %}
+  <p class="center" style="margin-top:18px">Already a driver? <a href="{{ url_for('driver_auth.sign_in') }}">Driver sign in</a></p>
+{% endblock %}
+{% block driver_after %}
+  <div class="split" style="margin-top:40px">
+    <div>
+      <div data-edit="operators_intro" data-edit-multiline>{{ site.operators_intro | paragraphs }}</div>
+      <h3 style="margin-top:26px">What happens next</h3>
+      <ol class="status-steps">
+        <li><span class="dot dot--now">1</span><span>Confirm your phone number with the code we text you.</span></li>
+        <li><span class="dot">2</span><span>Tell us your name.</span></li>
+        <li><span class="dot">3</span><span>{{ company_name }} checks your details. You can take trips once you are approved.</span></li>
+      </ol>
+      <p class="small muted" data-edit="operators_apply_note">{{ site.operators_apply_note }}</p>
+    </div>
+    <div>
+      <h3>What we need from you</h3>
+      <ul class="feature-list" data-edit-list="operators_requirements" style="grid-template-columns:1fr">
+        {% for item in site.operators_requirements %}
+          <li data-edit-item>{{ check(18) }} <span>{{ item }}</span></li>
+        {% endfor %}
+      </ul>
+      <h3 style="margin-top:26px">What it costs</h3>
+      <p data-edit="operators_commission_note">{{ site.operators_commission_note }}</p>
+      <p class="small muted">Today that is <strong>{{ site.commission_rate }}%</strong> of the fare on each completed trip or rental. Refundable deposits are never included.</p>
+    </div>
+  </div>
+{% endblock %}

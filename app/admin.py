@@ -16,7 +16,7 @@ from flask import (
     request, session, url_for
 )
 
-from . import commission
+from . import commission, sms
 from .media import delete_asset, save_upload
 from .storage import media_url
 from .models import (
@@ -32,6 +32,12 @@ from .settings import (
 bp = Blueprint("admin", __name__)
 
 BOOKING_STATUSES = ["pending", "confirmed", "completed", "cancelled"]
+
+# Extra states an on-demand ride passes through. Staff can filter by them, but
+# the ride itself is moved on by its driver in Driving mode; staff may only
+# complete or cancel one.
+RIDE_ONLY_STATUSES = ["accepted", "arriving", "in_progress", "declined", "expired"]
+STAFF_RIDE_STATUSES = ["completed", "cancelled"]
 
 
 @bp.before_request
@@ -57,6 +63,7 @@ def inject_admin_counts():
     if not session.get("admin_id"):
         return {}
     return {
+        "fake_sms_enabled": sms.is_fake(),
         "nav_pending": Booking.query.filter_by(status="pending").count(),
         "nav_unread": Enquiry.query.filter_by(is_read=False).count(),
         "nav_todo": len(outstanding_items()),
@@ -204,6 +211,15 @@ def vehicle_form(vehicle_id=None):
         if fuel not in FUELS:
             errors.append("Choose a fuel type.")
 
+        raw_driver = (form.get("operator_id") or "").strip()
+        driver_id = None
+        if raw_driver:
+            driver = db.session.get(Operator, int(raw_driver)) if raw_driver.isdigit() else None
+            if driver is None:
+                errors.append("Choose a driver from the list.")
+            else:
+                driver_id = driver.id
+
         if errors:
             for error in errors:
                 flash(error, "error")
@@ -215,12 +231,24 @@ def vehicle_form(vehicle_id=None):
                 transmissions=TRANSMISSIONS,
                 fuels=FUELS,
                 assets=MediaAsset.query.order_by(MediaAsset.uploaded_at.desc()).all(),
+                drivers=_driver_choices(),
             )
 
         if vehicle is None:
             vehicle = Vehicle()
             db.session.add(vehicle)
 
+        if vehicle.operator_id and vehicle.operator_id != driver_id:
+            from .models import DriverState
+            if DriverState.query.filter(DriverState.vehicle_id == vehicle.id,
+                                        DriverState.active_booking_id.isnot(None)).first():
+                flash("That car is on a trip right now. Change its driver after the trip.",
+                      "error")
+                return redirect(url_for("admin.vehicle_form", vehicle_id=vehicle.id))
+            # The previous driver can no longer go online in a car that is not theirs.
+            DriverState.query.filter_by(vehicle_id=vehicle.id).update(
+                {"vehicle_id": None, "available": False})
+        vehicle.operator_id = driver_id
         vehicle.make = make
         vehicle.model = model
         vehicle.year = year
@@ -243,6 +271,7 @@ def vehicle_form(vehicle_id=None):
                     "admin/vehicle_form.html", vehicle=vehicle, form=form,
                     categories=CATEGORIES, transmissions=TRANSMISSIONS, fuels=FUELS,
                     assets=MediaAsset.query.order_by(MediaAsset.uploaded_at.desc()).all(),
+                    drivers=_driver_choices(),
                 )
             vehicle.image = asset.path
         else:
@@ -263,7 +292,13 @@ def vehicle_form(vehicle_id=None):
         transmissions=TRANSMISSIONS,
         fuels=FUELS,
         assets=MediaAsset.query.order_by(MediaAsset.uploaded_at.desc()).all(),
+        drivers=_driver_choices(),
     )
+
+
+def _driver_choices():
+    return sorted(Operator.query.filter(Operator.status.in_(("approved", "pending"))).all(),
+                  key=lambda driver: driver.display_name.casefold())
 
 
 @bp.route("/vehicles/<int:vehicle_id>/toggle", methods=["POST"])
@@ -303,7 +338,7 @@ def delete_vehicle(vehicle_id):
 def bookings():
     status = request.args.get("status", "").strip()
     query = Booking.query
-    if status in BOOKING_STATUSES:
+    if status in BOOKING_STATUSES + RIDE_ONLY_STATUSES:
         query = query.filter(Booking.status == status)
     items = query.order_by(Booking.start_date.desc()).all()
     return render_template(
@@ -311,6 +346,8 @@ def bookings():
         bookings=items,
         status=status,
         statuses=BOOKING_STATUSES,
+        filter_statuses=BOOKING_STATUSES + RIDE_ONLY_STATUSES,
+        staff_ride_statuses=STAFF_RIDE_STATUSES,
     )
 
 
@@ -321,6 +358,10 @@ def update_booking_status(booking_id):
     new_status = request.form.get("status")
     if new_status not in BOOKING_STATUSES:
         abort(400)
+    if booking.is_on_demand and new_status not in STAFF_RIDE_STATUSES:
+        flash(f"{booking.reference} is a ride requested from a driver. Its driver moves "
+              f"it on in Driving mode; staff can only complete or cancel it.", "error")
+        return redirect(request.referrer or url_for("admin.bookings"))
 
     # Only a hire holds a car for a range of days. A ride or transfer may not
     # have a car against it at all, so there is nothing here to double-book —
@@ -469,6 +510,15 @@ def checklist():
         blockers.append(
             "No routing provider is configured, so ride distances are not measured "
             "and every journey falls back to a manual quote.")
+    sms_problems = sms.configuration_problems(current_app)
+    if sms.is_fake():
+        blockers.append(
+            "Driver sign-in uses the local test text-message transport. No real text "
+            "is sent, so drivers outside this computer cannot sign in.")
+    elif sms_problems:
+        blockers.append(
+            "No SMS provider is configured, so drivers cannot join or sign in with "
+            "their phone number. " + " ".join(sms_problems))
     if commission.totals() > 0:
         blockers.append(
             f"{commission.totals()} of commission has been recorded but nothing "
@@ -897,7 +947,11 @@ def operator_access(operator_id):
     """
     operator = db.session.get(Operator, operator_id) or abort(404)
     if not operator.is_approved:
-        flash("Approve the operator before giving them a sign-in.", "error")
+        flash("Approve the driver before giving them a sign-in.", "error")
+        return redirect(request.referrer or url_for("admin.operators"))
+    if not operator.email:
+        flash(f"{operator.name} has no email address. They sign in with their phone "
+              f"number, so they don't need a password.", "error")
         return redirect(request.referrer or url_for("admin.operators"))
 
     password = secrets.token_urlsafe(12)
@@ -909,3 +963,42 @@ def operator_access(operator_id):
         "success",
     )
     return redirect(request.referrer or url_for("admin.operators"))
+
+
+@bp.route("/operators/<int:operator_id>/phone/remove", methods=["POST"])
+@login_required
+def operator_phone_remove(operator_id):
+    """Take a phone number off a driver account. Never puts one on.
+
+    For a lost SIM, a number recycled to someone else, or an old unverified
+    contact number that blocks the real owner from joining. Staff can only
+    remove: a number gets onto an account only by its holder typing back a
+    texted code. Nothing is merged and no other account is touched.
+    """
+    operator = db.session.get(Operator, operator_id) or abort(404)
+    which = request.form.get("which")
+    if which == "verified" and operator.phone_e164:
+        operator.phone_e164 = None
+        operator.phone_verified_at = None
+        message = (f"Removed the sign-in number from {operator.name}. They can no "
+                   f"longer sign in with it until they verify a number again.")
+    elif which == "contact" and operator.phone:
+        operator.phone = None
+        message = f"Removed the unverified contact number from {operator.name}."
+    else:
+        abort(400)
+    db.session.commit()
+    current_app.logger.info("Staff removed a %s phone number from driver %s",
+                            which, operator.id)
+    flash(message, "success")
+    return redirect(request.referrer or url_for("admin.operators"))
+
+
+@bp.route("/dev/text-messages")
+@login_required
+def dev_text_messages():
+    """Codes the local fake transport would have texted. Development only."""
+    if not sms.is_fake():
+        abort(404)
+    return render_template("admin/dev_text_messages.html",
+                           messages=sms.read_fake_outbox_file(limit=20))

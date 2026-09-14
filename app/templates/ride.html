@@ -8,7 +8,7 @@
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
   {% endif %}
 {% endblock %}
-{% block description %}{{ fare.from_location }} to {{ fare.to_location }} with {{ fare.operator.name }}.{% endblock %}
+{% block description %}{{ fare.from_location }} to {{ fare.to_location }} with {{ fare.operator.display_name }}.{% endblock %}
 
 {% block content %}
 <section class="section">
@@ -19,23 +19,23 @@
       <p class="lede">{{ fare.from_location }} → {{ fare.to_location }}</p>
 
       <ul class="spec-list" style="margin-top:26px">
-        <li>{{ pin(20) }} <span>Operated by <strong>{{ fare.operator.name }}</strong></span></li>
+        <li>{{ pin(20) }} <span>Driver: <a href="{{ url_for('dispatch.driver_profile', operator_id=fare.operator.id) }}"><strong>{{ fare.operator.display_name }}</strong></a>{% set rated = review_summary(operator_id=fare.operator.id) %}{% if rated.rating %} · ★ {{ rated.rating }} / 5 ({{ rated.review_count }}){% endif %}</span></li>
         {% if fare.vehicle_class %}<li>{{ check_circle(20) }} <span>Vehicle: <strong>{{ fare.vehicle_class }}</strong></span></li>{% endif %}
         {% if fare.seats %}<li>{{ check_circle(20) }} <span>Seats up to <strong>{{ fare.seats }}</strong></span></li>{% endif %}
       </ul>
 
       {% if fare.notes %}
-        <h3 style="margin-top:30px">What the operator says</h3>
+        <h3 style="margin-top:30px">What the driver says</h3>
         <p class="muted">{{ fare.notes }}</p>
       {% endif %}
 
       {% if fare.operator.terms %}
-        <h3 style="margin-top:26px">Their terms</h3>
+        <h3 style="margin-top:26px">About this driver</h3>
         <p class="small muted">{{ fare.operator.terms }}</p>
       {% endif %}
 
       <p class="small muted" style="margin-top:26px">
-        This fare is set by {{ fare.operator.name }}, not by {{ company_name }}.
+        This price is set by {{ fare.operator.display_name }}, not by {{ company_name }}.
       </p>
     </div>
 
@@ -101,10 +101,10 @@
             <p class="hint" id="manual-note" style="margin-top:12px">
               We cannot measure this journey automatically, so
               {% if fare.is_distance_based %}
-                <strong>{{ fare.operator.name }} will confirm the fare</strong> when they
+                <strong>{{ fare.operator.display_name }} will confirm the price</strong> when they
                 answer your request.
               {% else %}
-                the fare above is the one {{ fare.operator.name }} charges for this route.
+                the price above is the one {{ fare.operator.display_name }} charges for this route.
               {% endif %}
               Write the addresses as clearly as you can so the driver can find you.
             </p>
@@ -191,6 +191,16 @@
 
   function field(name) { return document.getElementById(name); }
 
+  function setSummary(headline, detail) {
+    var strong = document.createElement("strong");
+    strong.textContent = headline;
+    var note = document.createElement("span");
+    note.className = "route-summary__source";
+    note.textContent = detail ? " " + detail : "";
+    summary.replaceChildren(strong, note);
+    summary.hidden = false;
+  }
+
   function setHidden(which, place) {
     field(which + "_lat").value = place ? place.lat : "";
     field(which + "_lng").value = place ? place.lng : "";
@@ -245,7 +255,7 @@
 
   function renderPlaces(which, places) {
     var box = field(which + "_places");
-    box.innerHTML = "";
+    box.replaceChildren();
     if (!places.length) { box.hidden = true; return; }
     places.forEach(function (place) {
       var option = document.createElement("button");
@@ -298,8 +308,8 @@
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (!data.route) {
-          summary.innerHTML = "<strong>We could not measure this journey.</strong> " +
-            "Your request still goes through, and the operator will confirm the fare.";
+          setSummary("We could not measure this journey.",
+            "Your request still goes through, and the driver will confirm the price.");
           return;
         }
         if (line) { map.removeLayer(line); line = null; }
@@ -307,32 +317,26 @@
           line = L.polyline(data.route.geometry, {weight: 5}).addTo(map);
           map.fitBounds(line.getBounds().pad(0.15));
         }
-        var shapeKnown = data.route.geometry_known;
-        summary.innerHTML =
-          "<strong>" + data.route.distance_km + " km</strong> · about <strong>" +
-          data.route.duration_minutes + " min</strong> by road" +
-          "<span class=\"route-summary__source\"> (estimate from " +
-          data.route.provider + ")</span>" +
-          /* The distance is the provider's road distance either way. Only the
-             drawn shape is missing, and saying so is better than leaving a bare
-             map that looks broken. */
-          (shapeKnown ? "" :
-            "<span class=\"route-summary__source\"><br>The exact roads are not " +
-            "available to draw, so only the two points are shown.</span>");
+        /* Built with textContent: the provider name and numbers come from an
+           outside service and are never parsed as HTML. The distance is the
+           provider's road distance either way; only a missing shape is noted. */
+        setSummary(data.route.distance_km + " km · about " + data.route.duration_minutes + " min by road",
+          "Estimate from " + data.route.provider + "." +
+          (data.route.geometry_known ? "" : " The exact roads are not available to draw, so only the two points are shown."));
 
         if (data.quote !== null && data.quote !== undefined) {
           fareAmount.textContent = money(data.quote);
           fareBasis.textContent = data.basis === "distance"
-            ? "for " + data.route.distance_km + " km, at this operator's rate"
+            ? "for " + data.route.distance_km + " km, at this driver's rate"
             : "for this journey";
         } else {
           fareAmount.textContent = "—";
-          fareBasis.textContent = "The operator will confirm the fare.";
+          fareBasis.textContent = "The driver will confirm the price.";
         }
       })
       .catch(function () {
-        summary.innerHTML = "<strong>We could not measure this journey.</strong> " +
-          "Your request still goes through, and the operator will confirm the fare.";
+        setSummary("We could not measure this journey.",
+          "Your request still goes through, and the driver will confirm the price.");
       });
   }
 

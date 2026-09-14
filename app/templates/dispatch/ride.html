@@ -1,38 +1,236 @@
 {% extends 'base.html' %}
-{% block title %}Request a ride in The Gambia{% endblock %}
-{% block head %}<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">{% endblock %}
-{% block content %}
-<section class="section"><div class="wrap"><p class="eyebrow">Ride • The Gambia</p><h1>Where are you going?</h1>
-<p>Choose your pickup and destination. Check the estimated fare before requesting a driver.</p>
-<div class="grid grid--2"><form id="ride-form" class="booking-panel">
-<label for="pickup_address">Pickup</label><input type="text" id="pickup_address" required placeholder="Hotel, address or landmark" autocomplete="off"><div id="pickup-results"></div>
-<label for="dropoff_address">Destination</label><input type="text" id="dropoff_address" required placeholder="Where to?" autocomplete="off"><div id="dropoff-results"></div>
-<label for="passengers">Passengers</label><input type="number" id="passengers" min="1" max="8" value="1">
-<button class="btn btn--primary" type="button" id="estimate">See estimated fare</button>
-<p id="ride-message" role="status" aria-live="polite">Select addresses from the search results.</p>
-<div id="driver-choices" hidden></div>
-<div id="contact-fields" hidden>
-<label for="customer_name">Your name</label><input type="text" id="customer_name" autocomplete="name">
-<label for="email">Email</label><input id="email" type="email" autocomplete="email">
-<label for="phone">Phone number</label><input id="phone" type="tel" autocomplete="tel">
-<button class="btn btn--primary" id="request">Request ride</button>
-</div>
-<p><a href="{{ url_for('dispatch.drivers') }}">Browse drivers and reviews</a> · <a href="{{ url_for('public.rides') }}">Schedule a journey or request an airport transfer</a></p>
-<p class="small">Address search and routing powered by <a href="https://www.geoapify.com/">Geoapify</a>.</p>
-</form><div><div id="ride-map" style="height:480px;border-radius:20px"></div><p>Driver availability and road estimates can change. No charge is collected online.</p></div></div></div></section>
+{% block title %}Request a ride — {{ company_name }}{% endblock %}
+{% block head %}
+  {% if map_settings.enabled %}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  {% endif %}
 {% endblock %}
-{% block scripts %}<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% block content %}
+<section class="section">
+  <div class="wrap">
+    <p class="eyebrow">Ride · The Gambia</p>
+    <h1>Where are you going?</h1>
+    <p>Enter your pickup and destination, then choose your driver. Each driver sets their own price.</p>
+    {% if preferred_driver %}
+      <p class="notice notice--good">You asked for <strong>{{ preferred_driver.display_name }}</strong>. If they are free for this trip, they are shown first.</p>
+    {% endif %}
+
+    <div class="grid grid--2">
+      <form id="ride-form" class="booking-panel" novalidate>
+        <label for="pickup_address">Pickup</label>
+        <input type="text" id="pickup_address" required placeholder="Hotel, address or landmark" autocomplete="off">
+        <div id="pickup-results" class="place-list" hidden></div>
+
+        <label for="dropoff_address" style="margin-top:14px">Destination</label>
+        <input type="text" id="dropoff_address" required placeholder="Where to?" autocomplete="off">
+        <div id="dropoff-results" class="place-list" hidden></div>
+
+        <label for="passengers" style="margin-top:14px">Passengers</label>
+        <input type="number" id="passengers" min="1" max="8" value="1" inputmode="numeric">
+
+        <button class="btn btn--primary btn--block btn--lg" type="button" id="estimate" style="margin-top:18px">See drivers and prices</button>
+        <p id="ride-message" class="notice" role="status" aria-live="polite">Choose your pickup and destination from the search results.</p>
+
+        <div id="driver-choices" hidden></div>
+
+        <div id="contact-fields" hidden>
+          <h3 style="margin-top:22px">Your details</h3>
+          <p class="small muted">Your driver sees your name and phone number once they accept.</p>
+          <label for="customer_name">Your name</label><input type="text" id="customer_name" autocomplete="name" maxlength="120">
+          <label for="email">Email</label><input id="email" type="email" autocomplete="email" maxlength="160">
+          <label for="phone">Phone number</label><input id="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="40">
+          <button class="btn btn--primary btn--block btn--lg" type="submit" id="request" style="margin-top:18px">Request this driver</button>
+        </div>
+
+        <p style="margin-top:18px"><a href="{{ url_for('dispatch.drivers') }}">Browse drivers and reviews</a> · <a href="{{ url_for('public.rides') }}">Book ahead or an airport transfer</a></p>
+      </form>
+      <div>
+        {% if map_settings.enabled %}<div id="ride-map" class="track-map" style="height:480px;margin-top:0"></div>{% endif %}
+        <p class="small muted">Prices come from each driver's own rate and the road distance. You pay your driver; nothing is charged on this website.</p>
+        {% if map_settings.geocoding or map_settings.routing %}<p class="small muted">Address search and road routes by <a href="https://www.geoapify.com/" rel="noopener">Geoapify</a>. Map data &copy; OpenStreetMap contributors.</p>{% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+{% if map_settings.enabled %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+{% endif %}
 <script>
-const cfg={{ map_settings|tojson }}, csrf={{ csrf_token|tojson }};
-const points={}, msg=document.getElementById('ride-message'), choicesBox=document.getElementById('driver-choices');let quoteToken=null, selected=null, line=null, revision=0;
-const map=typeof L!=='undefined'?L.map('ride-map').setView(cfg.centre,cfg.zoom):null;
-if(map)L.tileLayer(cfg.tile_url,{attribution:cfg.attribution,maxZoom:cfg.max_zoom}).addTo(map);
-const markers={};
-function invalidate(){quoteToken=null;selected=null;revision++;document.getElementById('contact-fields').hidden=true;choicesBox.hidden=true;choicesBox.replaceChildren();if(line&&map){map.removeLayer(line);line=null;}}
-function showChoices(choices, route){choicesBox.replaceChildren();choices.forEach(choice=>{const card=document.createElement('article');card.className='panel';card.style.margin='12px 0';const reviews=choice.rating?`${choice.rating} / 5 (${choice.review_count} review${choice.review_count===1?'':'s'})`:'New partner — no reviews yet';card.innerHTML=`<strong>${choice.driver}</strong><br><span class="small muted">${choice.operator} · ${choice.vehicle} · ${choice.seats} seats</span><br><span>${reviews}</span><br><strong>GMD ${Number(choice.price).toFixed(2)}</strong> · ${route.distance_km} km · about ${route.duration_minutes} min<br><a href="${choice.profile}">View driver profile</a> · <a href="${choice.car_profile}">View car</a>`;const button=document.createElement('button');button.type='button';button.className='btn btn--primary';button.style.marginTop='10px';button.textContent='Choose this driver';button.onclick=()=>{selected=choice;choicesBox.querySelectorAll('button').forEach(b=>b.disabled=false);button.disabled=true;document.getElementById('contact-fields').hidden=false;msg.textContent=`${choice.driver} selected · GMD ${Number(choice.price).toFixed(2)}. Enter your details to request the ride.`;};card.appendChild(button);choicesBox.appendChild(card);});choicesBox.hidden=choices.length===0;}
-async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(data)});return r.json();}
-['pickup','dropoff'].forEach(which=>{let timer,sequence=0;const input=document.getElementById(which+'_address'),box=document.getElementById(which+'-results');input.addEventListener('input',()=>{invalidate();delete points[which];box.replaceChildren();if(markers[which]&&map)map.removeLayer(markers[which]);clearTimeout(timer);const n=++sequence;if(input.value.trim().length<3)return;timer=setTimeout(async()=>{try{const r=await fetch('/api/geocode?q='+encodeURIComponent(input.value));const data=await r.json();if(n!==sequence)return;if(!data.available){msg.textContent='Address search is not configured yet. Use the scheduled journey option below.';return;}box.replaceChildren();(data.places||[]).forEach(place=>{const b=document.createElement('button');b.type='button';b.className='place-option';b.textContent=place.label;b.onclick=()=>{invalidate();input.value=place.label;points[which]=place;box.replaceChildren();if(map){if(markers[which])map.removeLayer(markers[which]);markers[which]=L.marker([place.lat,place.lng]).addTo(map);map.setView([place.lat,place.lng],14);}msg.textContent='Choose both points, then see your estimated fare.';};box.appendChild(b);});}catch(e){msg.textContent='Address search unavailable. Try again.';}},450);});});
-document.getElementById('passengers').onchange=invalidate;
-document.getElementById('estimate').onclick=async()=>{invalidate();if(!points.pickup||!points.dropoff){msg.textContent='Select both addresses from the search results first.';return;}const n=revision;msg.textContent='Checking route and available drivers…';try{const d=await post('/ride/estimate',{pickup_lat:points.pickup.lat,pickup_lng:points.pickup.lng,dropoff_lat:points.dropoff.lat,dropoff_lng:points.dropoff.lng,passengers:document.getElementById('passengers').value});if(n!==revision)return;if(d.route&&d.route.geometry&&d.route.geometry.length>1&&map){line=L.polyline(d.route.geometry,{weight:5}).addTo(map);map.fitBounds(line.getBounds().pad(.15));}if(!d.token||!d.choices?.length){msg.textContent=d.error||'No ride is available right now.';return;}quoteToken=d.token;showChoices(d.choices,d.route);msg.textContent='Choose a driver below. You pay the driver after the ride.';}catch(e){msg.textContent='Connection interrupted. Try again.';}};
-document.getElementById('ride-form').onsubmit=async e=>{e.preventDefault();if(!quoteToken||!selected){msg.textContent='Choose a driver first.';return;}const button=document.getElementById('request');button.disabled=true;try{const data={token:quoteToken,fare_id:selected.fare_id,vehicle_id:selected.vehicle_id,expected_price:selected.price};['pickup_address','dropoff_address','customer_name','email','phone'].forEach(k=>data[k]=document.getElementById(k).value);const d=await post('/ride/request',data);if(d.url)location.href=d.url;else msg.textContent=d.error||'Unable to request ride.';}catch(e){msg.textContent='Connection interrupted. Check My booking before requesting again.';}finally{button.disabled=false;}};
-</script>{% endblock %}
+(function () {
+  "use strict";
+  var CFG = {{ map_settings | tojson }};
+  var CSRF = {{ csrf_token | tojson }};
+  var PREFERRED = {{ (preferred_driver.id if preferred_driver else none) | tojson }};
+  var $ = function (id) { return document.getElementById(id); };
+  var points = {}, markers = {}, line = null, token = null, selected = null, revision = 0, lastRoute = null;
+  var msg = $("ride-message"), box = $("driver-choices");
+  var map = (CFG.enabled && typeof L !== "undefined") ? L.map("ride-map").setView(CFG.centre, CFG.zoom) : null;
+  if (map) L.tileLayer(CFG.tile_url, { attribution: CFG.attribution, maxZoom: CFG.max_zoom }).addTo(map);
+
+  function say(text, kind) { msg.textContent = text; msg.className = "notice" + (kind ? " notice--" + kind : ""); }
+
+  function sameOrigin(path) {
+    try { var url = new URL(path, location.origin); return url.origin === location.origin ? url.href : null; }
+    catch (e) { return null; }
+  }
+
+  function el(tag, text, className) {
+    var node = document.createElement(tag);
+    if (text !== undefined && text !== null) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+  }
+
+  function reset() {
+    token = null; selected = null; revision += 1;
+    $("contact-fields").hidden = true; box.hidden = true; box.replaceChildren();
+    if (line && map) { map.removeLayer(line); line = null; }
+  }
+
+  function showChoices(choices, route) {
+    box.replaceChildren();
+    selected = null;
+    $("contact-fields").hidden = true;
+    choices.forEach(function (choice) {
+      var card = el("article", null, "choice-card" + (choice.preferred ? " is-preferred" : ""));
+      if (choice.preferred) card.appendChild(el("span", "The driver you asked for", "badge badge--good"));
+      card.appendChild(el("h3", choice.driver));
+      card.appendChild(el("p", choice.vehicle + " · " + choice.seats + " seats", "meta"));
+      card.appendChild(el("p", choice.rating
+        ? "★ " + choice.rating + " / 5 from " + choice.review_count + " ride review" + (choice.review_count === 1 ? "" : "s")
+        : "New driver — no ride reviews yet", "meta"));
+      card.appendChild(el("p", choice.price_text, "price"));
+      if (route) card.appendChild(el("p", route.distance_km + " km · about " + route.duration_minutes + " min · " + choice.fare_title, "meta"));
+      var links = el("p", null, "links");
+      var profile = el("a", "See profile and reviews");
+      var href = sameOrigin(choice.profile);
+      if (href) { profile.href = href; profile.target = "_blank"; profile.rel = "noopener"; }
+      links.appendChild(profile);
+      card.appendChild(links);
+      var button = el("button", "Choose " + choice.driver, "btn btn--primary btn--block");
+      button.type = "button";
+      button.addEventListener("click", function () {
+        selected = choice;
+        box.querySelectorAll(".choice-card").forEach(function (other) { other.classList.remove("is-selected"); });
+        card.classList.add("is-selected");
+        $("contact-fields").hidden = false;
+        say("You chose " + choice.driver + " for " + choice.price_text + ". Add your details and send the request.", "good");
+        $("customer_name").focus();
+      });
+      card.appendChild(button);
+      box.appendChild(card);
+    });
+    box.hidden = choices.length === 0;
+  }
+
+  function post(url, data) {
+    return fetch(url, {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": CSRF },
+      body: JSON.stringify(data)
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; })
+        .then(function (body) { body._status = response.status; return body; });
+    });
+  }
+
+  ["pickup", "dropoff"].forEach(function (which) {
+    var timer, sequence = 0;
+    var input = $(which + "_address"), results = $(which + "-results");
+    input.addEventListener("input", function () {
+      reset();
+      delete points[which];
+      results.replaceChildren(); results.hidden = true;
+      if (markers[which] && map) { map.removeLayer(markers[which]); delete markers[which]; }
+      clearTimeout(timer);
+      var n = ++sequence;
+      if (input.value.trim().length < 3) return;
+      timer = setTimeout(function () {
+        fetch("/api/geocode?q=" + encodeURIComponent(input.value), { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (n !== sequence) return;
+            if (!data.available) { say("Address search isn't switched on yet. You can book ahead instead.", "warn"); return; }
+            results.replaceChildren();
+            (data.places || []).forEach(function (place) {
+              var option = el("button", place.label, "place-option");
+              option.type = "button";
+              option.addEventListener("click", function () {
+                reset();
+                input.value = place.label;
+                points[which] = place;
+                results.replaceChildren(); results.hidden = true;
+                if (map) {
+                  if (markers[which]) map.removeLayer(markers[which]);
+                  markers[which] = L.marker([place.lat, place.lng]).addTo(map)
+                    .bindTooltip(which === "pickup" ? "Pickup" : "Destination");
+                  map.setView([place.lat, place.lng], 14);
+                }
+                say(points.pickup && points.dropoff ? "Now tap See drivers and prices." : "Now choose the other address.");
+              });
+              results.appendChild(option);
+            });
+            results.hidden = !(data.places || []).length;
+          })
+          .catch(function () { say("Address search isn't working right now. Please try again.", "error"); });
+      }, 450);
+    });
+  });
+
+  $("passengers").addEventListener("change", reset);
+
+  $("estimate").addEventListener("click", function () {
+    reset();
+    if (!points.pickup || !points.dropoff) { say("Choose both addresses from the search results first.", "warn"); return; }
+    var n = revision;
+    say("Measuring the road and finding free drivers…");
+    post("/ride/estimate", {
+      pickup_lat: points.pickup.lat, pickup_lng: points.pickup.lng,
+      dropoff_lat: points.dropoff.lat, dropoff_lng: points.dropoff.lng,
+      passengers: Number($("passengers").value), driver: PREFERRED
+    }).then(function (data) {
+      if (n !== revision) return;
+      lastRoute = data.route;
+      if (data.route && data.route.geometry_known && map) {
+        line = L.polyline(data.route.geometry, { weight: 5 }).addTo(map);
+        map.fitBounds(line.getBounds().pad(0.15));
+      }
+      if (!data.token || !(data.choices || []).length) {
+        say((data.note ? data.note + " " : "") + (data.error || "No driver is free right now."), "warn");
+        return;
+      }
+      token = data.token;
+      showChoices(data.choices, data.route);
+      say((data.note ? data.note + " " : "") + "Choose your driver below.", data.note ? "warn" : null);
+    }).catch(function () { say("Connection lost. Please try again.", "error"); });
+  });
+
+  $("ride-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    if (!token || !selected) { say("Choose a driver first.", "warn"); return; }
+    var button = $("request");
+    button.disabled = true;
+    var body = { token: token, fare_id: selected.fare_id, vehicle_id: selected.vehicle_id,
+                 expected_price: selected.price };
+    ["pickup_address", "dropoff_address", "customer_name", "email", "phone"].forEach(function (key) {
+      body[key] = $(key).value;
+    });
+    post("/ride/request", body).then(function (data) {
+      if (data.url && sameOrigin(data.url)) { location.href = sameOrigin(data.url); return; }
+      if (data.choices) {
+        token = data.token || token;
+        showChoices(data.choices, lastRoute);
+        if (!data.choices.length) box.hidden = true;
+      }
+      say(data.error || "The request didn't go through. Please try again.", "error");
+    }).catch(function () {
+      say("Connection lost. Check My booking before you request again.", "error");
+    }).then(function () { button.disabled = false; });
+  });
+})();
+</script>
+{% endblock %}

@@ -1,10 +1,213 @@
 {% extends 'base.html' %}
-{% block head %}<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">{% endblock %}
-{% block content %}<section class="section"><div class="wrap"><h1>Your ride</h1><p>Reference: {{ booking.reference }}</p><p>{{ booking.pickup_address }} → {{ booking.dropoff_address }}</p><h2 id="status">Waiting for driver acceptance</h2><p id="driver"></p><p id="location-note"></p><div id="track-map" style="height:340px"></div><button class="btn" id="cancel">Cancel ride</button><p id="review-link" hidden><a class="btn btn--primary" href="{{ url_for('dispatch.review', reference=booking.reference) }}">Review your driver</a></p><p id="error" role="status"></p></div></section>{% endblock %}
-{% block scripts %}<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
-const cfg={{ map_settings|tojson }},ref={{ booking.reference|tojson }},csrf={{ csrf_token|tojson }};
-let marker=null;const map=typeof L!=='undefined'?L.map('track-map').setView(cfg.centre,cfg.zoom):null;if(map)L.tileLayer(cfg.tile_url,{attribution:cfg.attribution}).addTo(map);
-const labels={pending:'Waiting for driver acceptance',confirmed:'Driver accepted',arriving:'Driver is coming to your pickup',in_progress:'Trip in progress',completed:'Trip completed',cancelled:'Trip cancelled'};
-async function refresh(){try{const response=await fetch('/ride/status/'+ref);if(!response.ok)throw Error();const d=await response.json();document.getElementById('status').textContent=labels[d.status]||d.status;document.getElementById('driver').textContent=d.driver?d.driver.name+' · '+(d.driver.vehicle||'')+' · '+(d.driver.phone||''):'';document.getElementById('cancel').hidden=!['pending','confirmed','arriving'].includes(d.status);document.getElementById('review-link').hidden=d.status!=='completed';if(marker&&map){map.removeLayer(marker);marker=null;}if(d.driver&&d.driver.lat!==undefined&&d.driver.lat!==null&&map){marker=L.marker([d.driver.lat,d.driver.lng]).addTo(map);map.setView([d.driver.lat,d.driver.lng],15);document.getElementById('location-note').textContent='Last driver update: '+new Date(d.driver.updated_at).toLocaleTimeString();}else document.getElementById('location-note').textContent=d.driver?'Waiting for a fresh driver location.':'';if(['completed','cancelled'].includes(d.status))clearInterval(poll);}catch(e){document.getElementById('error').textContent='Connection interrupted. Reconnecting…';}}
-document.getElementById('cancel').onclick=async()=>{const r=await fetch('/ride/cancel/'+ref,{method:'POST',headers:{'X-CSRF-Token':csrf}});const d=await r.json();if(d.error)document.getElementById('error').textContent=d.error;refresh();};const poll=setInterval(refresh,5000);refresh();
-</script>{% endblock %}
+{% block title %}Your ride {{ booking.reference }} — {{ company_name }}{% endblock %}
+{% block head %}
+  {% if map_settings.enabled %}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  {% endif %}
+{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="wrap" style="max-width:760px">
+    <p class="eyebrow">Your ride · <span class="reference">{{ booking.reference }}</span></p>
+    <h1 id="status" style="font-size:clamp(1.8rem,4vw,2.4rem)">Checking your ride…</h1>
+    <p class="lede">{{ booking.pickup_address or booking.pickup_location }} → {{ booking.dropoff_address or booking.dropoff_location }}</p>
+    <p id="fare" class="muted"></p>
+    <p id="countdown" class="notice notice--warn" hidden></p>
+
+    <div id="driver-box" class="choice-card" hidden>
+      <h3 id="driver-name"></h3>
+      <p id="driver-car" class="meta"></p>
+      <p id="driver-phone-row" class="meta" hidden>Phone: <a id="driver-phone"></a></p>
+      <p class="links"><a id="driver-profile">See profile and reviews</a></p>
+    </div>
+
+    <p id="silent" class="notice notice--warn" hidden>Your driver hasn't shared their location for a few minutes. Call them, or choose another driver below.</p>
+    <p id="location-note" class="small muted"></p>
+    {% if map_settings.enabled %}<div id="track-map" class="track-map"></div>{% endif %}
+
+    <section id="rechoose" class="panel" hidden>
+      <h2 style="font-size:1.3rem">Choose another driver</h2>
+      <p class="muted">Your trip is still here. Pick a driver who is free now — you will see their price first.</p>
+      <button id="load-choices" class="btn btn--primary btn--lg" type="button">Show free drivers</button>
+      <div id="choices"></div>
+    </section>
+
+    <div class="actions" style="margin-top:22px">
+      <a id="review-link" class="btn btn--primary btn--lg" hidden>Review your trip</a>
+      <button class="btn btn--ghost" id="cancel" type="button" hidden>Cancel this ride</button>
+    </div>
+    <p id="error" class="notice notice--error" role="alert" hidden></p>
+    <p class="small muted" style="margin-top:22px">Keep your reference <span class="reference">{{ booking.reference }}</span>. You can open this trip again from My booking.</p>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+{% if map_settings.enabled %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+{% endif %}
+<script>
+(function () {
+  "use strict";
+  var CFG = {{ map_settings | tojson }};
+  var REF = {{ booking.reference | tojson }};
+  var CSRF = {{ csrf_token | tojson }};
+  var PICKUP = {{ ([booking.pickup_lat | float, booking.pickup_lng | float] if booking.pickup_lat is not none else none) | tojson }};
+  var DROPOFF = {{ ([booking.dropoff_lat | float, booking.dropoff_lng | float] if booking.dropoff_lat is not none else none) | tojson }};
+  var $ = function (id) { return document.getElementById(id); };
+  var map = null, driverMarker = null, countdownTimer = null, poll = null, rechoiceToken = null;
+
+  if (CFG.enabled && typeof L !== "undefined") {
+    map = L.map("track-map").setView(CFG.centre, CFG.zoom);
+    L.tileLayer(CFG.tile_url, { attribution: CFG.attribution, maxZoom: CFG.max_zoom }).addTo(map);
+    var bounds = [];
+    if (PICKUP) { L.marker(PICKUP).addTo(map).bindTooltip("Pickup"); bounds.push(PICKUP); }
+    if (DROPOFF) { L.marker(DROPOFF).addTo(map).bindTooltip("Destination"); bounds.push(DROPOFF); }
+    if (bounds.length > 1) map.fitBounds(L.latLngBounds(bounds).pad(0.25));
+  }
+
+  function sameOrigin(path) {
+    try { var url = new URL(path, location.origin); return url.origin === location.origin ? url.href : null; }
+    catch (e) { return null; }
+  }
+  function el(tag, text, className) {
+    var node = document.createElement(tag);
+    if (text !== undefined && text !== null) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+  }
+  function showError(text) { $("error").textContent = text || ""; $("error").hidden = !text; }
+  function post(path, body) {
+    return fetch(path, {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": CSRF },
+      body: JSON.stringify(body || {})
+    }).then(function (r) { return r.json().catch(function () { return {}; }); });
+  }
+
+  function headline(d) {
+    var name = d.chosen ? d.chosen.name : "your driver";
+    return {
+      pending: "Waiting for " + name + " to accept",
+      accepted: name + " accepted your ride",
+      confirmed: name + " accepted your ride",
+      arriving: name + " is on the way to you",
+      in_progress: "You are on your trip",
+      completed: "Trip finished",
+      declined: name + " can't take this ride",
+      expired: name + " didn't answer in time",
+      cancelled: "This ride is cancelled"
+    }[d.status] || "Your ride";
+  }
+
+  function render(d) {
+    $("status").textContent = headline(d);
+    $("fare").textContent = d.fare_text ? "Price: " + d.fare_text + " — pay your driver" : "";
+
+    clearInterval(countdownTimer);
+    var countdown = $("countdown");
+    if (d.status === "pending" && d.expires_in !== null) {
+      var left = d.expires_in;
+      var tick = function () {
+        countdown.textContent = left > 0 ? "They have " + left + " seconds to answer." : "Checking…";
+        left -= 1;
+      };
+      countdown.hidden = false; tick(); countdownTimer = setInterval(tick, 1000);
+    } else { countdown.hidden = true; }
+
+    var person = d.driver || d.chosen;
+    $("driver-box").hidden = !person;
+    if (person) {
+      $("driver-name").textContent = person.name;
+      $("driver-car").textContent = person.vehicle ? person.vehicle : "";
+      var phoneRow = $("driver-phone-row");
+      phoneRow.hidden = !(d.driver && d.driver.phone);
+      if (d.driver && d.driver.phone) {
+        $("driver-phone").textContent = d.driver.phone;
+        $("driver-phone").href = "tel:" + d.driver.phone.replace(/[^\d+]/g, "");
+      }
+      var profile = d.chosen && sameOrigin(d.chosen.profile);
+      if (profile) $("driver-profile").href = profile;
+    }
+
+    if (driverMarker && map) { map.removeLayer(driverMarker); driverMarker = null; }
+    if (d.driver && typeof d.driver.lat === "number" && map) {
+      driverMarker = L.circleMarker([d.driver.lat, d.driver.lng], { radius: 10, weight: 3 }).addTo(map)
+        .bindTooltip("Your driver", { permanent: true });
+      $("location-note").textContent = "Driver location updated at " + new Date(d.driver.updated_at).toLocaleTimeString() + ".";
+    } else {
+      $("location-note").textContent = d.driver ? "Waiting for your driver's location." : "";
+    }
+
+    $("silent").hidden = !d.driver_silent;
+    $("rechoose").hidden = !d.can_choose_again;
+    $("cancel").hidden = !d.can_cancel;
+    var review = $("review-link");
+    review.hidden = !d.review_url;
+    if (d.review_url && sameOrigin(d.review_url)) review.href = sameOrigin(d.review_url);
+
+    if (d.status === "completed" || d.status === "cancelled") { clearInterval(poll); poll = null; }
+  }
+
+  function refresh() {
+    return fetch("/ride/status/" + encodeURIComponent(REF), { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
+      .then(function (d) { showError(""); render(d); })
+      .catch(function () { showError("Connection lost. Trying again…"); });
+  }
+
+  function showChoices(data) {
+    var holder = $("choices");
+    holder.replaceChildren();
+    rechoiceToken = data.token || rechoiceToken;
+    if (data.error) holder.appendChild(el("p", data.error, "notice notice--warn"));
+    (data.choices || []).forEach(function (choice) {
+      var card = el("article", null, "choice-card");
+      card.appendChild(el("h3", choice.driver));
+      card.appendChild(el("p", choice.vehicle + " · " + choice.seats + " seats", "meta"));
+      card.appendChild(el("p", choice.rating ? "★ " + choice.rating + " / 5 from " + choice.review_count + " ride review" + (choice.review_count === 1 ? "" : "s") : "New driver — no ride reviews yet", "meta"));
+      card.appendChild(el("p", choice.price_text, "price"));
+      var link = el("a", "See profile and reviews"); var href = sameOrigin(choice.profile);
+      if (href) { link.href = href; link.target = "_blank"; link.rel = "noopener"; }
+      var links = el("p", null, "links"); links.appendChild(link); card.appendChild(links);
+      var button = el("button", "Request " + choice.driver + " for " + choice.price_text, "btn btn--primary btn--block");
+      button.type = "button";
+      button.addEventListener("click", function () {
+        button.disabled = true;
+        post("/ride/choose-again/" + encodeURIComponent(REF), {
+          token: rechoiceToken, fare_id: choice.fare_id, vehicle_id: choice.vehicle_id,
+          expected_price: choice.price
+        }).then(function (result) {
+          if (result.status === "pending") { holder.replaceChildren(); refresh(); if (!poll) poll = setInterval(refresh, 5000); return; }
+          if (result.choices) showChoices(result);
+          showError(result.error || "That didn't work. Please try again.");
+        }).catch(function () { showError("Connection lost. Please try again."); })
+          .then(function () { button.disabled = false; });
+      });
+      card.appendChild(button);
+      holder.appendChild(card);
+    });
+  }
+
+  $("load-choices").addEventListener("click", function () {
+    var button = this; button.disabled = true;
+    post("/ride/choices/" + encodeURIComponent(REF), {})
+      .then(showChoices)
+      .catch(function () { showError("Connection lost. Please try again."); })
+      .then(function () { button.disabled = false; });
+  });
+
+  $("cancel").addEventListener("click", function () {
+    if (!window.confirm("Cancel this ride?")) return;
+    post("/ride/cancel/" + encodeURIComponent(REF), {}).then(function (d) {
+      if (d.error) showError(d.error);
+      refresh();
+    });
+  });
+
+  poll = setInterval(refresh, 5000);
+  refresh();
+})();
+</script>
+{% endblock %}

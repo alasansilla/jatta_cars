@@ -1,14 +1,14 @@
 {% extends "admin/base.html" %}
-{% block title %}Operators — {{ company_name }} staff{% endblock %}
+{% block title %}Drivers — {{ company_name }} staff{% endblock %}
 
 {% block admin_content %}
 <div class="panel__head">
   <div>
-    <h1 style="font-size:2rem;margin:0">Operators</h1>
+    <h1 style="font-size:2rem;margin:0">Drivers</h1>
     <p class="small muted" style="margin:4px 0 0;max-width:64ch">
-      Nothing an operator enters reaches customers until you approve them.
-      Approving lists their vehicles and fares; suspending takes them down again
-      straight away and signs them out.
+      Nothing a driver enters reaches customers until you approve them. Confirming
+      a phone number does not approve anyone. Approving lists their cars and prices;
+      suspending takes them down again straight away and signs them out.
     </p>
   </div>
   <span class="small muted">Default commission: <strong>{{ default_rate }}%</strong></span>
@@ -33,10 +33,18 @@
       <div style="padding:20px 0;border-bottom:1px solid var(--line)">
         <div class="panel__head" style="margin-bottom:12px">
           <div>
-            <h2 style="font-size:1.25rem;margin:0">{{ operator.name }}</h2>
+            <h2 style="font-size:1.25rem;margin:0">{{ operator.display_name }}</h2>
             <p class="small muted" style="margin:4px 0 0">
-              {{ operator.email }}{% if operator.phone %} · {{ operator.phone }}{% endif %}
-              {% if operator.contact_name %} · {{ operator.contact_name }}{% endif %}
+              {% if operator.name != operator.display_name %}{{ operator.name }} · {% endif %}{{ operator.email or 'No email' }}
+            </p>
+            <p class="small" style="margin:4px 0 0">
+              {% if operator.phone_e164 %}
+                Sign-in number: <strong>{{ operator.phone_e164 | phone_pretty }}</strong>
+                <span class="tag tag--confirmed">verified {{ operator.phone_verified_at.strftime('%d %b %Y') if operator.phone_verified_at else '' }}</span>
+              {% else %}
+                <span class="muted">No verified sign-in number</span>
+              {% endif %}
+              {% if operator.phone %} · Contact number (not verified): {{ operator.phone }}{% endif %}
             </p>
             {% if operator.service_area %}
               <p class="small muted" style="margin:2px 0 0">Works in: {{ operator.service_area }}</p>
@@ -47,7 +55,7 @@
               {{ operator.status }}
             </span>
             <p class="small muted" style="margin:6px 0 0">
-              {{ operator.vehicles | length }} vehicle(s) · {{ operator.fares | length }} fare(s)<br>
+              {{ operator.vehicles | length }} car(s) · {{ operator.fares | length }} price(s)<br>
               Commission charged: {{ earned.get(operator.id, 0) | money }}
             </p>
           </div>
@@ -86,21 +94,38 @@
             <button class="btn btn--ghost btn--sm" type="submit">Save rate</button>
           </form>
 
-          {% if operator.is_approved %}
+          {% if operator.phone_e164 %}
+            <form method="post" action="{{ url_for('admin.operator_phone_remove', operator_id=operator.id) }}"
+                  onsubmit="return confirm('Remove the sign-in number from this driver? They will not be able to sign in with it until they verify a number again.')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="which" value="verified">
+              <button class="btn btn--ghost btn--sm" type="submit">Remove sign-in number</button>
+            </form>
+          {% endif %}
+          {% if operator.phone %}
+            <form method="post" action="{{ url_for('admin.operator_phone_remove', operator_id=operator.id) }}"
+                  onsubmit="return confirm('Remove the unverified contact number from this driver?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="which" value="contact">
+              <button class="btn btn--ghost btn--sm" type="submit">Remove contact number</button>
+            </form>
+          {% endif %}
+
+          {% if operator.is_approved and operator.email %}
             <form method="post" action="{{ url_for('admin.operator_access', operator_id=operator.id) }}"
-                  onsubmit="return confirm('Issue a new password for {{ operator.name }}? Any existing one stops working.')">
+                  onsubmit="return confirm('Issue a new email password for this driver? Any existing one stops working.')">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn btn--ghost btn--sm" type="submit">
-                {{ 'Reset sign-in' if operator.password_hash else 'Issue sign-in' }}
+                {{ 'Reset email password' if operator.password_hash else 'Issue email password' }}
               </button>
             </form>
           {% endif %}
         </div>
 
-        {% if operator.is_approved and not operator.password_hash %}
+        {% if operator.is_approved and not operator.password_hash and not operator.phone_e164 %}
           <p class="small" style="color:var(--warn);margin:12px 0 0">
-            Approved but cannot sign in yet — issue a sign-in above and pass it to
-            them directly.
+            Approved but cannot sign in yet — they have no verified phone number and no
+            email password.
           </p>
         {% endif %}
         {% if operator.notes %}
@@ -110,8 +135,8 @@
     {% endfor %}
   {% else %}
     <div class="empty">
-      <h3>No operators{{ ' with that status' if status }}</h3>
-      <p>Applications from the <a href="{{ url_for('public.operators') }}">operators page</a> arrive here.</p>
+      <h3>No drivers{{ ' with that status' if status }}</h3>
+      <p>Drivers who join on the <a href="{{ url_for('driver_auth.join') }}">Become a driver</a> page arrive here as pending.</p>
     </div>
   {% endif %}
 </div>

@@ -16,7 +16,7 @@
         <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">Thanks — we have your request</h1>
         <p class="lede">
           Your booking reference is <span class="reference">{{ booking.reference }}</span>.
-          Your request is awaiting staff confirmation. Keep this reference and use
+          Your request is waiting for {{ booking.operator.display_name if booking.operator else 'confirmation' }}. Keep this reference and use
           the booking lookup with your email address to check its status.
           No online payment has been taken.
         </p>
@@ -34,10 +34,13 @@
           Get in touch if that is not what you expected.
         </p>
       {% else %}
-        <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">Hire complete</h1>
+        <h1 style="font-size:clamp(1.8rem,3.6vw,2.5rem)">{% if booking.is_journey %}Trip complete{% else %}Rental complete{% endif %}</h1>
         <p class="lede">
-          Booking <span class="reference">{{ booking.reference }}</span> is closed. Thanks for driving with us.
+          Booking <span class="reference">{{ booking.reference }}</span> is finished. Thank you for travelling with {{ company_name }}.
         </p>
+        {% if booking.status == 'completed' and (booking.operator or booking.vehicle) %}
+          <p><a class="btn btn--primary btn--lg" href="{{ url_for('dispatch.review', reference=booking.reference) }}">{% if booking.booking_type == 'rental' %}Review this rental{% else %}Review your driver{% endif %}</a></p>
+        {% endif %}
       {% endif %}
 
       <div class="table-scroll" style="margin-top:32px">
@@ -53,10 +56,11 @@
                 </td>
               </tr>
               <tr>
-                <th>Operator</th>
-                <td>{{ booking.operator.name if booking.operator else 'To be assigned' }}</td>
+                <th>Driver</th>
+                <td>{% if booking.operator %}<a href="{{ url_for('dispatch.driver_profile', operator_id=booking.operator.id) }}">{{ booking.operator.display_name }}</a>{% else %}To be assigned{% endif %}</td>
               </tr>
             {% elif booking.vehicle %}
+              {% if booking.vehicle.operator %}<tr><th style="width:34%">Rented out by</th><td><a href="{{ url_for('dispatch.driver_profile', operator_id=booking.vehicle.operator.id) }}">{{ booking.vehicle.operator.display_name }}</a></td></tr>{% endif %}
               <tr>
                 <th style="width:34%">Car</th>
                 <td>

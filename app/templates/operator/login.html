@@ -1,14 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Operator sign in — {{ company_name }}{% endblock %}
+{% block title %}Driver email sign in — {{ company_name }}{% endblock %}
 {% block content %}
 <div class="wrap">
   <div class="panel auth-card">
-    <p class="eyebrow">For drivers and transport businesses</p>
-    <h1 style="font-size:1.8rem">Provider login</h1>
+    <p class="eyebrow">Driver sign in</p>
+    <h1 style="font-size:1.8rem">Sign in with email</h1>
     <p class="small muted">
-      Use this login to manage your transport service. Owners manage cars, fares
-      and bookings. A driver can then use Driver mode to go online and accept trips.
-      Only approved providers can sign in.
+      For driver accounts that were given an email and password.
+      Most drivers <a href="{{ url_for('driver_auth.sign_in') }}">sign in with their phone number</a>.
     </p>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -23,7 +22,7 @@
       <button class="btn btn--primary btn--block" type="submit" style="margin-top:24px">Sign in</button>
     </form>
     <p class="small muted center" style="margin:22px 0 0">
-      Not listed yet? <a href="{{ url_for('public.operators') }}">List your service</a>.
+      New here? <a href="{{ url_for('driver_auth.join') }}">Become a driver</a>.
     </p>
   </div>
 </div>

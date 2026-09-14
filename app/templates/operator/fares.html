@@ -4,22 +4,22 @@
 {% block operator_content %}
 <div class="panel__head">
   <div>
-    <h1 style="font-size:2rem;margin:0">Your fares</h1>
+    <h1 style="font-size:2rem;margin:0">My prices</h1>
     <p class="small muted" style="margin:4px 0 0">
-      You set these. Nothing is listed publicly until it is active and your account
-      is approved.
+      You set these. Customers see them when they choose a driver. For rides
+      requested now, add a price that is a base fare plus a rate per kilometre.
     </p>
   </div>
 </div>
 
 <div class="panel">
-  <h2 style="font-size:1.2rem">Add a route</h2>
+  <h2 style="font-size:1.2rem">Add a price</h2>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="field-row">
       <div class="field">
-        <label for="title">Route name</label>
-        <input type="text" id="title" name="title" required placeholder="Airport to Kololi">
+        <label for="title">Name</label>
+        <input type="text" id="title" name="title" required placeholder="Rides around Kololi, or Airport to Kololi">
       </div>
       <div class="field">
         <label for="kind">Type</label>
@@ -89,12 +89,12 @@
       <label for="notes">Notes <span class="muted" style="font-weight:400">(optional)</span></label>
       <textarea id="notes" name="notes" rows="2" placeholder="What the fare includes, waiting time, luggage limits"></textarea>
     </div>
-    <button class="btn btn--primary" type="submit" style="margin-top:20px">Add route</button>
+    <button class="btn btn--primary" type="submit" style="margin-top:20px">Add price</button>
   </form>
 </div>
 
 <div class="panel">
-  <h2 style="font-size:1.2rem">Listed routes</h2>
+  <h2 style="font-size:1.2rem">Your prices</h2>
   {% if fares %}
     <div class="table-scroll">
       <table>
@@ -136,8 +136,8 @@
     </div>
   {% else %}
     <div class="empty">
-      <h3>No routes yet</h3>
-      <p>Add the journeys you run and the fare you charge for each.</p>
+      <h3>No prices yet</h3>
+      <p>Add what you charge. Without a price per kilometre, customers can't request a ride from you.</p>
     </div>
   {% endif %}
 </div>

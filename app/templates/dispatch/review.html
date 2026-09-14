@@ -1,5 +1,40 @@
 {% extends 'base.html' %}
-{% block title %}Review your ride{% endblock %}
+{% set kind = {'ride': 'ride', 'transfer': 'airport transfer', 'rental': 'car rental'}.get(booking.booking_type, 'booking') %}
+{% set subject = booking.operator.display_name if booking.operator else (booking.vehicle.name if booking.vehicle else company_name) %}
+{% block title %}Review your {{ kind }} — {{ company_name }}{% endblock %}
 {% block content %}
-<section class="section"><div class="wrap"><div class="panel" style="max-width:620px"><p class="eyebrow">Ride completed</p><h1>How was your trip?</h1><p>Reference {{ booking.reference }}. Your review helps tourists choose reliable drivers.</p>{% if existing %}<p class="lede">You rated this trip {{ existing.rating }} / 5.</p><p>{{ existing.comment }}</p>{% else %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="field"><label for="rating">Rating</label><select id="rating" name="rating" required><option value="">Choose a rating</option>{% for n in range(5,0,-1) %}<option value="{{ n }}">{{ n }} / 5</option>{% endfor %}</select></div><div class="field"><label for="comment">Review</label><textarea id="comment" name="comment" rows="5" minlength="3" maxlength="2000" required></textarea></div>{% if error %}<p role="alert">{{ error }}</p>{% endif %}<button class="btn btn--primary" type="submit">Submit review</button></form>{% endif %}</div></div></section>
+<section class="section">
+  <div class="wrap">
+    <div class="panel driver-card" style="max-width:620px">
+      <p class="eyebrow">Booking <span class="reference">{{ booking.reference }}</span></p>
+      {% if not_ready %}
+        <h1>You can review this after it is finished</h1>
+        <p>Reviews open once your {{ kind }} is marked as completed.</p>
+      {% elif existing %}
+        <h1>Thank you for your review</h1>
+        <p><span class="stars" style="color:var(--accent)">{{ review_stars(existing.rating) }}</span> <strong>{{ existing.rating }} / 5</strong></p>
+        <p style="white-space:pre-line">{{ existing.comment }}</p>
+        {% if booking.operator %}<p><a href="{{ url_for('dispatch.driver_profile', operator_id=booking.operator.id) }}">See it on {{ subject }}'s profile</a></p>{% endif %}
+      {% else %}
+        <h1>How was your {{ kind }}{% if booking.operator %} with {{ subject }}{% endif %}?</h1>
+        <p>Your review is shown on {{ subject }}'s public profile{% if booking.booking_type == 'rental' and booking.vehicle %} and on the {{ booking.vehicle.name }} page{% endif %}, without your name.</p>
+        {% if error %}<p class="notice notice--error" role="alert">{{ error }}</p>{% endif %}
+        <form method="post" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <fieldset style="border:none;padding:0;margin:0 0 16px">
+            <legend class="big-label">Stars</legend>
+            <div class="rating-choice">
+              {% for n in range(5, 0, -1) %}
+                <label><input type="radio" name="rating" value="{{ n }}" required> {{ n }} ★</label>
+              {% endfor %}
+            </div>
+          </fieldset>
+          <label class="big-label" for="comment">What should other customers know?</label>
+          <textarea id="comment" name="comment" rows="5" maxlength="2000" required></textarea>
+          <button class="btn btn--primary btn--xl" type="submit">Send review</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</section>
 {% endblock %}

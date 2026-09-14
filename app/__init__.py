@@ -43,46 +43,35 @@ def create_app(config_object=Config):
 
     db.init_app(app)
 
+    # Behind a proxy, the visitor's address arrives in X-Forwarded-For. Sign-in
+    # rate limits count per address, so the header is trusted only as far as
+    # the number of proxies configured — never further.
+    if app.config.get("TRUSTED_PROXIES"):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        hops = int(app.config["TRUSTED_PROXIES"])
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops, x_host=hops)
+
     from .public import bp as public_bp
     from .admin import bp as admin_bp
     from .operator import bp as operator_bp
 
     from .dispatch import bp as dispatch_bp
+    from .driver_auth import bp as driver_auth_bp
+    app.register_blueprint(driver_auth_bp, url_prefix="/driver")
     app.register_blueprint(dispatch_bp)
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(operator_bp, url_prefix="/operator")
 
     register_template_helpers(app)
-    register_marketplace_helpers(app)
+    from . import reviews
+    reviews.register(app)
     register_error_handlers(app)
     register_health(app)
     register_cli(app)
 
     return app
-
-
-def register_marketplace_helpers(app):
-    """Make public driver and car review summaries available to every page."""
-    @app.context_processor
-    def marketplace_helpers():
-        from .models import Booking, BookingReview
-
-        def review_summary(operator_id=None, vehicle_id=None):
-            query = BookingReview.query.join(Booking).filter(Booking.status == "completed")
-            if vehicle_id is not None:
-                query = query.filter(Booking.vehicle_id == vehicle_id,
-                                      Booking.booking_type == "rental")
-            elif operator_id is not None:
-                query = query.filter(Booking.operator_id == operator_id)
-            rows = query.all()
-            return {
-                "review_count": len(rows),
-                "rating": round(sum(row.rating for row in rows) / len(rows), 1)
-                if rows else None,
-            }
-
-        return {"review_summary": review_summary}
 
 
 def register_health(app):
@@ -97,6 +86,8 @@ def register_health(app):
     live and start losing bookings.
     """
     from sqlalchemy import text
+
+    from . import sms
 
     @app.get("/healthz")
     def healthz():
@@ -127,6 +118,10 @@ def register_health(app):
                         or ("supabase" if app.config.get("SUPABASE_URL") else "local")),
             "geocoding": "configured" if app.config.get("GEOCODER_URL") else "not configured",
             "routing": "configured" if app.config.get("ROUTER_URL") else "not configured",
+            # "fake" means codes go nowhere; only a real provider counts.
+            "sms": ("fake (local only)" if (app.config.get("SMS_BACKEND") or "") == "fake"
+                    else "configured" if not sms.configuration_problems(app)
+                    else "not configured"),
         }), 200
 
 
@@ -172,6 +167,10 @@ def register_template_helpers(app):
 
     app.add_template_global(media_url, "media_url")
 
+    from .phone import pretty as phone_pretty
+
+    app.add_template_filter(phone_pretty, "phone_pretty")
+
     @app.template_filter("approx")
     def approx(value):
         """Rough foreign-currency equivalent, when a rate has been entered.
@@ -216,6 +215,8 @@ def register_template_helpers(app):
             "csrf_token": csrf_token(),
             # Used often enough across the templates to be worth the short names.
             "company_name": settings["company_name"],
+            # Whether this browser holds a driver sign-in, for the header links.
+            "driver_signed_in": bool(session.get("operator_id")),
             "company_tagline": settings["company_tagline"],
             "company_email": settings["company_email"],
             "company_phone": settings["company_phone"],

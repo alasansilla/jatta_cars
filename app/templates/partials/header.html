@@ -24,13 +24,17 @@
     <nav class="nav">
       {% set here = request.endpoint %}
       <a href="{{ url_for('public.index') }}" class="{{ 'is-active' if here == 'public.index' }}">Home</a>
-      <a href="{{ url_for('dispatch.ride') }}" class="{{ 'is-active' if here in ['public.rides', 'public.ride_detail'] }}">Rides</a>
+      <a href="{{ url_for('dispatch.ride') }}" class="{{ 'is-active' if here in ['dispatch.ride', 'dispatch.track'] }}">Ride</a>
+      <a href="{{ url_for('public.rides') }}#airport" class="{{ 'is-active' if here in ['public.rides', 'public.ride_detail'] }}">Airport transfer</a>
       <a href="{{ url_for('public.fleet') }}" class="{{ 'is-active' if here in ['public.fleet', 'public.vehicle_detail'] }}">Car rental</a>
-      <a href="{{ url_for('public.about') }}" class="{{ 'is-active' if here == 'public.about' }}">About</a>
-      <a href="{{ url_for('public.contact') }}" class="{{ 'is-active' if here == 'public.contact' }}">Contact</a>
+      <a href="{{ url_for('dispatch.drivers') }}" class="{{ 'is-active' if here in ['dispatch.drivers', 'dispatch.driver_profile'] }}">Drivers</a>
       <a href="{{ url_for('public.booking_lookup') }}" class="{{ 'is-active' if here in ['public.booking_lookup', 'public.booking_detail'] }}">My booking</a>
-      <a href="{{ url_for('public.operators') }}" class="{{ 'is-active' if here == 'public.operators' }}">List your service</a>
-      <a href="{{ url_for('operator.login') }}" class="{{ 'is-active' if here == 'operator.login' }}">Provider login</a>
+      {% if driver_signed_in %}
+        <a href="{{ url_for('operator.dashboard') }}" class="{{ 'is-active' if here and here.startswith('operator.') }}">Driver dashboard</a>
+      {% else %}
+        <a href="{{ url_for('driver_auth.join') }}" class="{{ 'is-active' if here == 'driver_auth.join' }}">Become a driver</a>
+        <a href="{{ url_for('driver_auth.sign_in') }}" class="{{ 'is-active' if here == 'driver_auth.sign_in' }}">Driver sign in</a>
+      {% endif %}
       <a class="btn btn--primary" href="{{ url_for('dispatch.ride') }}">Request a ride</a>
     </nav>
     {% endif %}

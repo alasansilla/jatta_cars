@@ -16,6 +16,17 @@
 
 <div class="panel" style="max-width:820px">
   <form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label for="operator_id">Driver who owns this car</label>
+      {% set current_driver = (form.get('operator_id') if form else ((vehicle.operator_id | string) if vehicle and vehicle.operator_id else '')) %}
+      <select id="operator_id" name="operator_id">
+        <option value="">No driver ({{ company_name }}'s own car)</option>
+        {% for driver in drivers %}
+          <option value="{{ driver.id }}" {{ 'selected' if current_driver == (driver.id | string) }}>{{ driver.display_name }}{% if driver.phone_e164 %} · {{ driver.phone_e164 | phone_pretty }}{% endif %}{% if driver.status != 'approved' %} ({{ driver.status }}){% endif %}</option>
+        {% endfor %}
+      </select>
+      <p class="hint">Link a car only after checking it. The driver can then choose it in Driving mode, and it is listed for rental under their name. A driver's car is only shown to customers while the driver is approved.</p>
+    </div>
     <div class="field-row">
       <div class="field">
         <label for="make">Make</label>

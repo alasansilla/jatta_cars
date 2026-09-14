@@ -5,18 +5,18 @@
 <p class="eyebrow" data-edit="market_home_eyebrow">{{ site.market_home_eyebrow }}</p>
 <h1 data-edit="market_home_heading">{{ site.market_home_heading }}</h1>
 <p class="lede" data-edit="market_home_intro">{{ site.market_home_intro }}</p>
-<div class="hero__actions"><a class="btn btn--primary btn--lg" href="{{ url_for('dispatch.ride') }}">Where to? →</a><a class="btn btn--dark" href="{{ url_for('operator.login') }}">Driver sign in</a></div>
+<div class="hero__actions"><a class="btn btn--primary btn--lg" href="{{ url_for('dispatch.ride') }}">Where to? →</a><a class="btn btn--dark" href="{{ url_for('dispatch.drivers') }}">Choose a driver</a></div>
 </div><div class="booking-panel"><h2>Choose your journey</h2><div style="display:grid;gap:18px">
 <a class="btn btn--primary btn--lg" href="{{ url_for('dispatch.ride') }}">Ride · pickup to destination</a>
 <a class="btn btn--dark btn--lg" href="{{ url_for('public.rides') }}#airport">Airport transfer · plan ahead</a>
 <a class="btn btn--dark btn--lg" href="{{ url_for('public.fleet') }}">Car rental · choose your dates</a>
-</div><p>Short rides have journey fares. Car rentals have daily rates.</p></div></div></section>
+</div><p>Each driver sets their own ride price. Car rentals have daily rates.</p></div></div></section>
 <section class="section section--soft"><div class="wrap"><h2 data-edit="market_steps_heading">{{ site.market_steps_heading }}</h2><div class="grid grid--3">
 <article class="card"><div class="card__body"><h3>1. Choose your route</h3><p>Enter your pickup and destination to check the road route and estimated fare.</p></div></article>
-<article class="card"><div class="card__body"><h3>2. Request a driver</h3><p>Available drivers are checked when you request. Your trip page confirms when a driver accepts.</p></div></article>
-<article class="card"><div class="card__body"><h3>3. Follow your trip</h3><p>See your assigned driver, contact details and current trip status. Location appears when your driver shares it.</p></div></article>
+<article class="card"><div class="card__body"><h3>2. Choose your driver</h3><p>Compare drivers by price, car and reviews — or pick someone you know. Your trip page shows when they accept.</p></div></article>
+<article class="card"><div class="card__body"><h3>3. Follow your trip</h3><p>See your driver's name, car and phone number once they accept, and where they are while they share their location.</p></div></article>
 </div></div></section>
-<section class="section"><div class="wrap split"><div><h2>Drive with us</h2><p>Taxi drivers and transport operators can apply, publish fares and manage trips from their operator account.</p><a class="btn btn--primary" href="{{ url_for('public.operators') }}">Apply as an operator</a></div><div><h2>Plan a longer stay</h2><p>Browse listed rental cars and choose dates for a separate daily rental quote. Each listing shows its rate and refundable deposit.</p><a class="btn btn--dark" href="{{ url_for('public.fleet') }}">Browse rental cars</a></div></div></section>
+<section class="section"><div class="wrap split"><div><h2>Drive with us</h2><p>Drivers join with their phone number — no email or password. {{ company_name }} checks every driver before they can take trips. Set your own prices, and rent out your car if you like.</p><div class="hero__actions"><a class="btn btn--primary" href="{{ url_for('driver_auth.join') }}">Become a driver</a><a class="btn btn--ghost" href="{{ url_for('driver_auth.sign_in') }}">Driver sign in</a></div></div><div><h2>Plan a longer stay</h2><p>Browse listed rental cars and choose dates for a separate daily rental quote. Each listing shows its rate and refundable deposit.</p><a class="btn btn--dark" href="{{ url_for('public.fleet') }}">Browse rental cars</a></div></div></section>
 {% if featured %}<section class="section"><div class="wrap"><h2>Available rental cars</h2><div class="grid grid--3">{% for vehicle in featured %}{% include 'partials/vehicle_card.html' %}{% endfor %}</div></div></section>{% endif %}
 {% if site.show_reviews %}<section class="wrap">{% for n in [1,2,3] %}{% set quote=site['review_'~n~'_quote'] %}{% set name=site['review_'~n~'_name'] %}{% if quote and name and '[TBC]' not in quote and '[TBC]' not in name %}<blockquote class="quote-card"><p data-edit="review_{{ n }}_quote">{{ quote }}</p><cite data-edit="review_{{ n }}_name">{{ name }}</cite></blockquote>{% endif %}{% endfor %}</section>{% endif %}
 {% endblock %}

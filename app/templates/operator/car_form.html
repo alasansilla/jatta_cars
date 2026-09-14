@@ -1,0 +1,37 @@
+{% extends "operator/base.html" %}
+{% block title %}{{ 'Edit car' if car else 'Add a car' }} — {{ company_name }}{% endblock %}
+{% macro value(key, fallback='') -%}
+{{ form.get(key, '') if form is not none else (car[key] if car and car[key] is not none else fallback) }}
+{%- endmacro %}
+{% block operator_content %}
+<h1>{{ 'Edit car' if car else 'Add a car' }}</h1>
+<p>Prices are in Dalasi. Saving hides the car until staff check it. Existing booking prices stay unchanged.</p>
+<form method="post" enctype="multipart/form-data" class="panel" style="max-width:760px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div class="field-row">
+  {% for key, label in [('make', 'Make'), ('model', 'Model')] %}
+    <div class="field"><label for="{{ key }}">{{ label }}</label><input id="{{ key }}" name="{{ key }}" value="{{ value(key) }}" maxlength="60" required></div>
+  {% endfor %}
+  </div>
+  <div class="field-row">
+  {% for key, label, options in [('category', 'Car type', categories), ('transmission', 'Transmission', transmissions), ('fuel', 'Fuel', fuels)] %}
+    <div class="field"><label for="{{ key }}">{{ label }}</label><select id="{{ key }}" name="{{ key }}" required>{% for option in options %}<option value="{{ option }}" {{ 'selected' if value(key) == option }}>{{ option }}</option>{% endfor %}</select></div>
+  {% endfor %}
+  </div>
+  <div class="field-row">
+  {% for key, label, low, high, fallback in [('year', 'Year', 1950, 2100, ''), ('seats', 'Seats', 1, 20, 5), ('doors', 'Doors', 1, 8, 4), ('luggage', 'Bags', 0, 20, 2)] %}
+    <div class="field"><label for="{{ key }}">{{ label }}</label><input type="number" id="{{ key }}" name="{{ key }}" value="{{ value(key, fallback) }}" min="{{ low }}" max="{{ high }}" required></div>
+  {% endfor %}
+  </div>
+  {% for key, label in [('daily_rate', 'Price per day (D)'), ('weekly_rate', 'Price per week (D, optional)'), ('deposit', 'Refundable deposit (D)')] %}
+    <div class="field"><label for="{{ key }}">{{ label }}</label><input type="number" id="{{ key }}" name="{{ key }}" value="{{ value(key) }}" min="{{ '0' if key == 'deposit' else '0.01' }}" max="99999999.99" step="0.01" {{ 'required' if key != 'weekly_rate' }}></div>
+  {% endfor %}
+  <div class="field"><label for="photo_file">Car photo</label>
+    {% if car %}<img src="{{ media_url(car.image_url) }}" alt="Current car photo" width="180" style="max-width:100%">{% endif %}
+    <input type="file" id="photo_file" name="photo_file" accept="image/png,image/jpeg,image/webp,image/gif"><p class="hint">Leave empty to keep your current photo.</p>
+  </div>
+  <div class="field"><label for="description">About this car</label><textarea id="description" name="description" maxlength="5000" rows="4">{{ value('description') }}</textarea></div>
+  <div class="field"><label for="features">Features (one per line)</label><textarea id="features" name="features" maxlength="5000" rows="4">{{ value('features') }}</textarea></div>
+  <div class="actions"><button type="submit" class="btn btn--primary">Save for review</button><a href="{{ url_for('operator.cars') }}">Cancel</a></div>
+</form>
+{% endblock %}

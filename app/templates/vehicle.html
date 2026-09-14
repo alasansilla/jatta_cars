@@ -35,7 +35,10 @@
         <p class="lede" data-edit="vehicle:{{ vehicle.id }}:description"
            data-edit-placeholder="Describe this car — who is it for, what is it like to drive?">{{ vehicle.description or '' }}</p>
         {% set summary=review_summary(vehicle_id=vehicle.id) %}
-        <p class="small muted">{% if summary.rating %}{{ summary.rating }} / 5{% else %}New listing{% endif %} · {{ summary.review_count }} rental review{{ 's' if summary.review_count != 1 }}</p>
+        <p class="small muted">{% if summary.rating %}★ {{ summary.rating }} / 5{% else %}New listing{% endif %} · {{ summary.review_count }} rental review{{ 's' if summary.review_count != 1 }}</p>
+        {% if vehicle.operator %}
+          <p>Rented out by <a href="{{ url_for('dispatch.driver_profile', operator_id=vehicle.operator.id) }}"><strong>{{ vehicle.operator.display_name }}</strong></a>{% if vehicle.operator.service_area %} · {{ vehicle.operator.service_area }}{% endif %}</p>
+        {% endif %}
       </div>
 
       {% if vehicle.feature_list or show_editbar %}
@@ -48,6 +51,24 @@
           </ul>
         </div>
       {% endif %}
+
+      {% set listing_reviews = recent_reviews(vehicle_id=vehicle.id, limit=10) %}
+      <div style="margin-top:36px">
+        <h3>Rental reviews</h3>
+        {% if listing_reviews %}
+          <ul class="review-list">
+            {% for review in listing_reviews %}
+              <li class="review-item">
+                <span class="stars" aria-hidden="true">{{ review_stars(review.rating) }}</span> <strong>{{ review.rating }} / 5</strong>
+                <p>{{ review.comment }}</p>
+                <p class="small muted">Completed rental · {{ review.created_at.strftime('%B %Y') }}</p>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted">No reviews yet. Only customers who finished a rental of this car can leave one.</p>
+        {% endif %}
+      </div>
 
       <div style="margin-top:36px">
         <h3 data-edit="vehicle_included_heading">{{ site.vehicle_included_heading }}</h3>
