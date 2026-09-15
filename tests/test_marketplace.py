@@ -14,6 +14,7 @@ from config import Config
 
 class TestConfig(Config):
     GEOCODER_URL = ''
+    REVERSE_GEOCODER_URL = ''
     ROUTER_URL = ''
     GEOCODER_API_KEY = ''
     ROUTER_API_KEY = ''

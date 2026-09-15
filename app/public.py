@@ -555,6 +555,30 @@ def api_geocode():
     return jsonify({"available": True, "places": [place.as_dict() for place in places]})
 
 
+@bp.route("/api/reverse-geocode")
+def api_reverse_geocode():
+    """A readable address for a point the traveller chose. Never fails the page.
+
+    Returns {"available": bool, "place": {...} | null}. The coordinates come from
+    the traveller's own tap or location, so they are not logged.
+    """
+    lat = _coordinate(request.args.get("lat"), 90)
+    lng = _coordinate(request.args.get("lng"), 180)
+    available = routing.reverse_geocoding_available()
+    if lat is None or lng is None:
+        return jsonify({"available": available, "place": None, "error": "bad_coordinates"}), 400
+    if not available:
+        return jsonify({"available": False, "place": None})
+    if not _within_rate_limit("_reverse_geocode_hits", limit=30):
+        return jsonify({"available": True, "place": None, "error": "too_many"}), 429
+    try:
+        place = routing.reverse_geocode(lat, lng)
+    except routing.RoutingUnavailable as error:
+        current_app.logger.warning("Reverse geocoding unavailable: %s", type(error).__name__)
+        return jsonify({"available": True, "place": None, "error": "lookup_failed"})
+    return jsonify({"available": True, "place": place.as_dict() if place else None})
+
+
 def _coordinate(raw, limit):
     try:
         value = float(raw)

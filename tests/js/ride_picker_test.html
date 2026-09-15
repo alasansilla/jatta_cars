@@ -1,0 +1,229 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ride-picker tests</title>
+<pre id="results">running</pre>
+<script src="../../app/static/js/ride-picker.js"></script>
+<script>
+(function () {
+  "use strict";
+  var results = [];
+  function check(name, ok, detail) { results.push({ name: name, ok: !!ok, detail: detail === undefined ? "" : String(detail) }); }
+
+  function harness(options) {
+    options = options || {};
+    var log = { markers: {}, removed: [], status: {}, address: { pickup: "", dropoff: "" }, modes: [],
+                locating: [], focused: 0, changed: 0, geoCalls: 0, reverseCalls: [] };
+    var geolocation = options.noGeolocation ? undefined : {
+      getCurrentPosition: function (success, failure, settings) {
+        log.geoCalls += 1; log.geoSettings = settings;
+        setTimeout(function () {
+          if (options.geoError) failure(options.geoError);
+          else success({ coords: options.coords || { latitude: 13.4432101, longitude: -16.7184455 } });
+        }, 0);
+      },
+      watchPosition: function () { log.watched = true; }
+    };
+    var picker = createRidePicker({
+      geolocation: geolocation,
+      reverseGeocode: function (lat, lng) {
+        log.reverseCalls.push([lat, lng]);
+        if (options.reverse === "reject") return Promise.reject(new Error("down"));
+        if (options.reverse === "none") return Promise.resolve(null);
+        if (typeof options.reverse === "function") return options.reverse(lat, lng);
+        return Promise.resolve({ label: "Near " + lat.toFixed(3) + "," + lng.toFixed(3), lat: lat, lng: lng });
+      },
+      map: {
+        available: options.mapAvailable !== false,
+        setMarker: function (which, lat, lng) { log.markers[which] = [lat, lng]; },
+        removeMarker: function (which) { delete log.markers[which]; log.removed.push(which); },
+        focus: function () { log.focused += 1; }
+      },
+      ui: {
+        setMode: function (which) { log.modes.push(which); },
+        setAddress: function (which, text) { log.address[which] = text; },
+        setStatus: function (which, text, kind) { log.status[which] = { text: text, kind: kind }; },
+        setLocating: function (busy) { log.locating.push(busy); },
+        changed: function () { log.changed += 1; }
+      }
+    });
+    return { picker: picker, log: log };
+  }
+
+  function settle() { return new Promise(function (resolve) { setTimeout(resolve, 20); }); }
+
+  var tests = [
+    function nothingIsReadUntilTheTravellerAsks() {
+      var h = harness();
+      check("no geolocation call on creation", h.log.geoCalls === 0);
+      check("no watch is ever started", !h.log.watched);
+      return Promise.resolve();
+    },
+
+    function choosingTheDestinationOnTheMap() {
+      var h = harness();
+      h.picker.chooseOnMap("dropoff");
+      check("choose-on-map selects the destination", h.picker.target() === "dropoff" && h.log.modes.pop() === "dropoff");
+      check("map is brought into view", h.log.focused === 1);
+      var which = h.picker.mapTapped(13.45123456, -16.57891234);
+      return settle().then(function () {
+        var p = h.picker.points();
+        check("tap sets the destination, not the pickup", which === "dropoff" && p.dropoff && !p.pickup);
+        check("coordinates kept to 6 decimals", p.dropoff.lat === 13.451235 && p.dropoff.lng === -16.578912,
+              JSON.stringify(p.dropoff));
+        check("destination marker placed at the point", JSON.stringify(h.log.markers.dropoff) === JSON.stringify([13.451235, -16.578912]));
+        check("address filled from reverse geocoding", h.log.address.dropoff === "Near 13.451,-16.579", h.log.address.dropoff);
+        check("status is positive", h.log.status.dropoff.kind === "good");
+        check("estimate is reset when a point changes", h.log.changed === 1);
+      });
+    },
+
+    function firstTapsFillPickupThenDestination() {
+      var h = harness();
+      h.picker.mapTapped(13.1, -16.1);
+      h.picker.mapTapped(13.2, -16.2);
+      return settle().then(function () {
+        var p = h.picker.points();
+        check("first tap is pickup", p.pickup && p.pickup.lat === 13.1);
+        check("second tap is destination", p.dropoff && p.dropoff.lat === 13.2);
+        check("with both set, a plain tap moves nothing", h.picker.mapTapped(13.9, -16.9) === null &&
+              h.picker.points().pickup.lat === 13.1 && h.picker.points().dropoff.lat === 13.2);
+        h.picker.chooseOnMap("dropoff");
+        h.picker.mapTapped(13.25, -16.25);
+        h.picker.mapTapped(13.26, -16.26);
+        return settle().then(function () {
+          var q = h.picker.points();
+          check("chosen point keeps moving with each tap", q.dropoff.lat === 13.26 && q.pickup.lat === 13.1);
+        });
+      });
+    },
+
+    function useMyLocationThenAdjustByTapping() {
+      var h = harness();
+      return h.picker.useMyLocation().then(function (ok) {
+        var p = h.picker.points();
+        check("location sets the pickup", ok && p.pickup && p.pickup.lat === 13.44321 && p.pickup.lng === -16.718446, JSON.stringify(p.pickup));
+        check("exactly one location reading", h.log.geoCalls === 1);
+        check("high accuracy, bounded wait", h.log.geoSettings.enableHighAccuracy === true && h.log.geoSettings.timeout > 0);
+        check("button shows busy then idle", JSON.stringify(h.log.locating) === "[true,false]");
+        check("pickup marker placed", !!h.log.markers.pickup);
+        check("pickup address reverse geocoded", h.log.address.pickup.indexOf("Near 13.443") === 0, h.log.address.pickup);
+        check("source recorded as location", p.pickup.source === "location");
+        h.picker.mapTapped(13.4440, -16.7190);
+        return settle().then(function () {
+          var q = h.picker.points();
+          check("a tap after locating adjusts the pickup", q.pickup.lat === 13.444 && q.pickup.lng === -16.719 && !q.dropoff);
+          check("adjusted pickup marker moved", JSON.stringify(h.log.markers.pickup) === JSON.stringify([13.444, -16.719]));
+        });
+      });
+    },
+
+    function locationPermissionDenied() {
+      var h = harness({ geoError: { code: 1, message: "User denied Geolocation" } });
+      return h.picker.useMyLocation().then(function (ok) {
+        check("denied: no pickup set", !ok && !h.picker.points().pickup);
+        check("denied: no marker", !h.log.markers.pickup);
+        check("denied: plain message with a fallback", /turned off/.test(h.log.status.pickup.text) &&
+              /tap the map or type/i.test(h.log.status.pickup.text), h.log.status.pickup.text);
+        check("denied: button usable again", h.log.locating[h.log.locating.length - 1] === false);
+        check("denied: map tapping still sets the pickup", h.picker.target() === "pickup");
+        h.picker.mapTapped(13.3, -16.3);
+        return settle().then(function () {
+          check("denied: fallback tap works", h.picker.points().pickup.lat === 13.3);
+        });
+      });
+    },
+
+    function locationTimeoutAndUnavailable() {
+      var slow = harness({ geoError: { code: 3 } });
+      var gone = harness({ geoError: { code: 2 } });
+      var none = harness({ noGeolocation: true });
+      return Promise.all([slow.picker.useMyLocation(), gone.picker.useMyLocation(), none.picker.useMyLocation()])
+        .then(function () {
+          check("timeout explained", /took too long/.test(slow.log.status.pickup.text));
+          check("unavailable explained", /isn't available/.test(gone.log.status.pickup.text));
+          check("no geolocation API explained", /can't share your location/.test(none.log.status.pickup.text));
+          check("no geolocation API: nothing asked", none.log.geoCalls === 0);
+        });
+    },
+
+    function reverseGeocodingFails() {
+      var h = harness({ reverse: "reject" });
+      h.picker.chooseOnMap("pickup");
+      h.picker.mapTapped(13.40001, -16.60002);
+      return settle().then(function () {
+        var p = h.picker.points();
+        check("lookup failed: point is kept", p.pickup && p.pickup.lat === 13.40001 && p.pickup.lng === -16.60002);
+        check("lookup failed: readable fallback text", h.log.address.pickup === "Pinned location (13.40001, -16.60002)", h.log.address.pickup);
+        check("lookup failed: asks for a landmark", /landmark/.test(h.log.status.pickup.text) && h.log.status.pickup.kind === "warn");
+      });
+    },
+
+    function reverseGeocodingFindsNothing() {
+      var h = harness({ reverse: "none" });
+      h.picker.chooseOnMap("dropoff");
+      h.picker.mapTapped(13.5, -16.5);
+      return settle().then(function () {
+        check("no address: pin kept with fallback", h.picker.points().dropoff.lat === 13.5 &&
+              h.log.address.dropoff.indexOf("Pinned location") === 0);
+        check("no address: says so", /couldn't find an address/.test(h.log.status.dropoff.text));
+      });
+    },
+
+    function aLateLookupNeverOverwritesANewerChoice() {
+      var resolvers = [];
+      var h = harness({ reverse: function () { return new Promise(function (resolve) { resolvers.push(resolve); }); } });
+      h.picker.chooseOnMap("pickup");
+      h.picker.mapTapped(13.1, -16.1);
+      h.picker.mapTapped(13.2, -16.2);
+      return settle().then(function () {
+        resolvers[1]({ label: "Second spot" });
+        resolvers[0]({ label: "First spot (stale)" });
+        return settle();
+      }).then(function () {
+        check("latest tap wins the address", h.log.address.pickup === "Second spot", h.log.address.pickup);
+        check("latest tap wins the point", h.picker.points().pickup.lat === 13.2);
+      });
+    },
+
+    function searchSelectionAndEditingTheText() {
+      var h = harness();
+      h.picker.searchSelected("pickup", { label: "Senegambia Hotel", lat: "13.44", lng: "-16.72" });
+      h.picker.labelEdited("pickup", "Senegambia Hotel, main gate");
+      var p = h.picker.points();
+      check("search result sets exact coordinates", p.pickup.lat === 13.44 && p.pickup.lng === -16.72);
+      check("editing the text keeps the pin", p.pickup.label === "Senegambia Hotel, main gate" && p.pickup.lat === 13.44);
+      check("search does not reverse geocode", h.log.reverseCalls.length === 0);
+      h.picker.clear("pickup");
+      check("clear removes point and marker", !h.picker.points().pickup && h.log.removed.indexOf("pickup") >= 0 && h.log.address.pickup === "");
+      return Promise.resolve();
+    },
+
+    function invalidPointsAreRefused() {
+      var h = harness();
+      h.picker.chooseOnMap("pickup");
+      check("NaN refused", h.picker.mapTapped(NaN, 10) === null && !h.picker.points().pickup);
+      check("out of range refused", h.picker.mapTapped(95, 10) === null && !h.picker.points().pickup);
+      var bad = harness({ coords: { latitude: 200, longitude: 0 } });
+      return bad.picker.useMyLocation().then(function (ok) {
+        check("unusable device location refused", ok === false && !bad.picker.points().pickup);
+      });
+    },
+
+    function mapUnavailable() {
+      var h = harness({ mapAvailable: false });
+      h.picker.chooseOnMap("dropoff");
+      check("no map: tells the traveller to type", /isn't available/.test(h.log.status.dropoff.text) && h.picker.target() === null);
+      return Promise.resolve();
+    }
+  ];
+
+  tests.reduce(function (chain, test) {
+    return chain.then(function () {
+      return Promise.resolve().then(test).catch(function (error) { check(test.name + " threw", false, error && error.stack); });
+    });
+  }, Promise.resolve()).then(function () {
+    document.getElementById("results").textContent = JSON.stringify(results);
+    document.title = "done";
+  });
+})();
+</script>

@@ -46,6 +46,7 @@ class ConcurrencyTests(unittest.TestCase):
             SECRET_KEY = "test-only-" + "r" * 40
             STORAGE_BACKEND = "local"
             GEOCODER_URL = ""
+            REVERSE_GEOCODER_URL = ""
             ROUTER_URL = ""
 
         self.app = create_app(FileConfig)

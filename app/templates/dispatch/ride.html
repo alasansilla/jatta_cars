@@ -11,7 +11,7 @@
   <div class="wrap">
     <p class="eyebrow">Ride · The Gambia</p>
     <h1>Where are you going?</h1>
-    <p>Enter your pickup and destination, then choose your driver. Each driver sets their own price.</p>
+    <p>Type your pickup and destination, tap them on the map, or use your location. Then choose your driver — each driver sets their own price.</p>
     {% if preferred_driver %}
       <p class="notice notice--good">You asked for <strong>{{ preferred_driver.display_name }}</strong>. If they are free for this trip, they are shown first.</p>
     {% endif %}
@@ -19,18 +19,33 @@
     <div class="grid grid--2">
       <form id="ride-form" class="booking-panel" novalidate>
         <label for="pickup_address">Pickup</label>
-        <input type="text" id="pickup_address" required placeholder="Hotel, address or landmark" autocomplete="off">
+        <input type="text" id="pickup_address" required placeholder="Hotel, address or landmark" autocomplete="off"
+               aria-describedby="pickup-status" maxlength="240">
         <div id="pickup-results" class="place-list" hidden></div>
+        <div class="location-actions">
+          <button type="button" class="btn btn--ghost btn--sm" id="pickup-locate">Use my location</button>
+          <button type="button" class="btn btn--ghost btn--sm js-choose" data-which="pickup" aria-pressed="false"
+                  aria-controls="ride-map">Choose pickup on map</button>
+          <button type="button" class="link-button js-clear" data-which="pickup" hidden>Clear pickup</button>
+        </div>
+        <p id="pickup-status" class="field-status" role="status" aria-live="polite"></p>
 
         <label for="dropoff_address" style="margin-top:14px">Destination</label>
-        <input type="text" id="dropoff_address" required placeholder="Where to?" autocomplete="off">
+        <input type="text" id="dropoff_address" required placeholder="Where to?" autocomplete="off"
+               aria-describedby="dropoff-status" maxlength="240">
         <div id="dropoff-results" class="place-list" hidden></div>
+        <div class="location-actions">
+          <button type="button" class="btn btn--ghost btn--sm js-choose" data-which="dropoff" aria-pressed="false"
+                  aria-controls="ride-map">Choose destination on map</button>
+          <button type="button" class="link-button js-clear" data-which="dropoff" hidden>Clear destination</button>
+        </div>
+        <p id="dropoff-status" class="field-status" role="status" aria-live="polite"></p>
 
         <label for="passengers" style="margin-top:14px">Passengers</label>
         <input type="number" id="passengers" min="1" max="8" value="1" inputmode="numeric">
 
         <button class="btn btn--primary btn--block btn--lg" type="button" id="estimate" style="margin-top:18px">See drivers and prices</button>
-        <p id="ride-message" class="notice" role="status" aria-live="polite">Choose your pickup and destination from the search results.</p>
+        <p id="ride-message" class="notice" role="status" aria-live="polite">Set your pickup and destination: pick an address from the list, tap the map, or use your location.</p>
 
         <div id="driver-choices" hidden></div>
 
@@ -46,7 +61,13 @@
         <p style="margin-top:18px"><a href="{{ url_for('dispatch.drivers') }}">Browse drivers and reviews</a> · <a href="{{ url_for('public.rides') }}">Book ahead or an airport transfer</a></p>
       </form>
       <div>
-        {% if map_settings.enabled %}<div id="ride-map" class="track-map" style="height:480px;margin-top:0"></div>{% endif %}
+        {% if map_settings.enabled %}
+          <p id="map-mode" class="notice" hidden aria-live="polite"></p>
+          <div id="ride-map" class="track-map ride-map" style="height:480px;margin-top:0" role="application"
+               aria-label="Map. Tap to set your pickup or destination." tabindex="0"></div>
+        {% else %}
+          <p class="notice notice--warn">The map isn't available. Type your pickup and destination and pick them from the list.</p>
+        {% endif %}
         <p class="small muted">Prices come from each driver's own rate and the road distance. You pay your driver; nothing is charged on this website.</p>
         {% include "partials/map_attribution.html" %}
       </div>
@@ -59,6 +80,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 {% endif %}
+<script src="{{ url_for('static', filename='js/ride-picker.js') }}"></script>
 <script>
 (function () {
   "use strict";
@@ -66,10 +88,12 @@
   var CSRF = {{ csrf_token | tojson }};
   var PREFERRED = {{ (preferred_driver.id if preferred_driver else none) | tojson }};
   var $ = function (id) { return document.getElementById(id); };
-  var points = {}, markers = {}, line = null, token = null, selected = null, revision = 0, lastRoute = null;
+  var line = null, token = null, selected = null, revision = 0, lastRoute = null;
   var msg = $("ride-message"), box = $("driver-choices");
+  var LABELS = { pickup: "Pickup", dropoff: "Destination" };
   var map = (CFG.enabled && typeof L !== "undefined") ? L.map("ride-map").setView(CFG.centre, CFG.zoom) : null;
   if (map) L.tileLayer(CFG.tile_url, { attribution: CFG.attribution, maxZoom: CFG.max_zoom }).addTo(map);
+  var markers = {};
 
   function say(text, kind) { msg.textContent = text; msg.className = "notice" + (kind ? " notice--" + kind : ""); }
 
@@ -90,6 +114,117 @@
     $("contact-fields").hidden = true; box.hidden = true; box.replaceChildren();
     if (line && map) { map.removeLayer(line); line = null; }
   }
+
+  /* ---- the picker: typed search, map taps and "Use my location" ---- */
+
+  var picker = createRidePicker({
+    geolocation: navigator.geolocation,
+    reverseGeocode: function (lat, lng) {
+      return fetch("/api/reverse-geocode?lat=" + encodeURIComponent(lat) + "&lng=" + encodeURIComponent(lng),
+                   { credentials: "same-origin" })
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+          if (!data.available || data.error) throw new Error("unavailable");
+          return data.place;
+        });
+    },
+    map: {
+      available: !!map,
+      setMarker: function (which, lat, lng) {
+        if (!map) return;
+        if (markers[which]) map.removeLayer(markers[which]);
+        markers[which] = L.marker([lat, lng], {
+          title: LABELS[which], alt: LABELS[which] + " marker", keyboard: true,
+          icon: L.divIcon({ className: "pin pin--" + which, html: "<span>" + (which === "pickup" ? "A" : "B") + "</span>",
+                            iconSize: [30, 30], iconAnchor: [15, 30] })
+        }).addTo(map).bindTooltip(LABELS[which], { permanent: true, direction: "top", offset: [0, -28] });
+        var both = [markers.pickup, markers.dropoff].filter(Boolean).map(function (m) { return m.getLatLng(); });
+        if (both.length > 1) map.fitBounds(L.latLngBounds(both).pad(0.25));
+        else map.setView([lat, lng], Math.max(map.getZoom(), 15));
+        document.querySelector('.js-clear[data-which="' + which + '"]').hidden = false;
+      },
+      removeMarker: function (which) {
+        if (map && markers[which]) { map.removeLayer(markers[which]); delete markers[which]; }
+        document.querySelector('.js-clear[data-which="' + which + '"]').hidden = true;
+      },
+      focus: function () {
+        var holder = $("ride-map");
+        if (holder && holder.scrollIntoView) holder.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    },
+    ui: {
+      setMode: function (which) {
+        document.querySelectorAll(".js-choose").forEach(function (button) {
+          button.setAttribute("aria-pressed", String(button.dataset.which === which));
+        });
+        var note = $("map-mode");
+        if (note) {
+          note.hidden = !which;
+          note.textContent = which ? "Tap the map to set the " + (which === "pickup" ? "pickup" : "destination") + "." : "";
+        }
+        var holder = $("ride-map");
+        if (holder) holder.setAttribute("aria-label", which
+          ? "Map. Tap to set the " + (which === "pickup" ? "pickup" : "destination") + "."
+          : "Map. Tap to set your pickup or destination.");
+      },
+      setAddress: function (which, text) { $(which + "_address").value = text; },
+      setStatus: function (which, text, kind) {
+        var node = $(which + "-status");
+        node.textContent = text || "";
+        node.className = "field-status" + (kind ? " field-status--" + kind : "");
+      },
+      setLocating: function (busy) {
+        var button = $("pickup-locate");
+        button.disabled = busy;
+        button.textContent = busy ? "Finding your location…" : "Use my location";
+      },
+      changed: reset
+    }
+  });
+
+  if (map) map.on("click", function (event) { picker.mapTapped(event.latlng.lat, event.latlng.lng); });
+
+  /* Nothing asks for location until the traveller taps this. */
+  $("pickup-locate").addEventListener("click", function () { picker.useMyLocation(); });
+  document.querySelectorAll(".js-choose").forEach(function (button) {
+    button.addEventListener("click", function () { picker.chooseOnMap(button.dataset.which); });
+  });
+  document.querySelectorAll(".js-clear").forEach(function (button) {
+    button.addEventListener("click", function () { picker.clear(button.dataset.which); });
+  });
+
+  ["pickup", "dropoff"].forEach(function (which) {
+    var timer, sequence = 0;
+    var input = $(which + "_address"), results = $(which + "-results");
+    input.addEventListener("input", function () {
+      picker.labelEdited(which, input.value);
+      results.replaceChildren(); results.hidden = true;
+      clearTimeout(timer);
+      var n = ++sequence;
+      if (input.value.trim().length < 3 || !CFG.geocoding) return;
+      timer = setTimeout(function () {
+        fetch("/api/geocode?q=" + encodeURIComponent(input.value), { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (n !== sequence) return;
+            results.replaceChildren();
+            (data.places || []).forEach(function (place) {
+              var option = el("button", place.label, "place-option");
+              option.type = "button";
+              option.addEventListener("click", function () {
+                picker.searchSelected(which, place);
+                results.replaceChildren(); results.hidden = true;
+              });
+              results.appendChild(option);
+            });
+            results.hidden = !(data.places || []).length;
+          })
+          .catch(function () { $(which + "-status").textContent = "Address search isn't working right now. Tap the map instead."; });
+      }, 450);
+    });
+  });
+
+  /* ---- drivers and prices ---- */
 
   function showChoices(choices, route) {
     box.replaceChildren();
@@ -138,59 +273,20 @@
     });
   }
 
-  ["pickup", "dropoff"].forEach(function (which) {
-    var timer, sequence = 0;
-    var input = $(which + "_address"), results = $(which + "-results");
-    input.addEventListener("input", function () {
-      reset();
-      delete points[which];
-      results.replaceChildren(); results.hidden = true;
-      if (markers[which] && map) { map.removeLayer(markers[which]); delete markers[which]; }
-      clearTimeout(timer);
-      var n = ++sequence;
-      if (input.value.trim().length < 3) return;
-      timer = setTimeout(function () {
-        fetch("/api/geocode?q=" + encodeURIComponent(input.value), { credentials: "same-origin" })
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (n !== sequence) return;
-            if (!data.available) { say("Address search isn't switched on yet. You can book ahead instead.", "warn"); return; }
-            results.replaceChildren();
-            (data.places || []).forEach(function (place) {
-              var option = el("button", place.label, "place-option");
-              option.type = "button";
-              option.addEventListener("click", function () {
-                reset();
-                input.value = place.label;
-                points[which] = place;
-                results.replaceChildren(); results.hidden = true;
-                if (map) {
-                  if (markers[which]) map.removeLayer(markers[which]);
-                  markers[which] = L.marker([place.lat, place.lng]).addTo(map)
-                    .bindTooltip(which === "pickup" ? "Pickup" : "Destination");
-                  map.setView([place.lat, place.lng], 14);
-                }
-                say(points.pickup && points.dropoff ? "Now tap See drivers and prices." : "Now choose the other address.");
-              });
-              results.appendChild(option);
-            });
-            results.hidden = !(data.places || []).length;
-          })
-          .catch(function () { say("Address search isn't working right now. Please try again.", "error"); });
-      }, 450);
-    });
-  });
-
   $("passengers").addEventListener("change", reset);
 
   $("estimate").addEventListener("click", function () {
     reset();
-    if (!points.pickup || !points.dropoff) { say("Choose both addresses from the search results first.", "warn"); return; }
+    var chosen = picker.points();
+    if (!chosen.pickup || !chosen.dropoff) {
+      say("Set both the pickup and the destination first — from the list, on the map, or with your location.", "warn");
+      return;
+    }
     var n = revision;
     say("Measuring the road and finding free drivers…");
     post("/ride/estimate", {
-      pickup_lat: points.pickup.lat, pickup_lng: points.pickup.lng,
-      dropoff_lat: points.dropoff.lat, dropoff_lng: points.dropoff.lng,
+      pickup_lat: chosen.pickup.lat, pickup_lng: chosen.pickup.lng,
+      dropoff_lat: chosen.dropoff.lat, dropoff_lng: chosen.dropoff.lng,
       passengers: Number($("passengers").value), driver: PREFERRED
     }).then(function (data) {
       if (n !== revision) return;

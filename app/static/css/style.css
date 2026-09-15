@@ -970,3 +970,17 @@ body.is-editing [data-edit-choice].is-changed { outline-color: var(--good); }
 .search-row__controls { display: flex; gap: 10px; }
 .search-row__controls input { flex: 1; min-width: 0; }
 .search-row__controls .btn { flex: none; }
+
+/* --- Choosing points on the ride map --- */
+.location-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.field-status { min-height: 1.2em; margin: 6px 0 0; font-size: .9rem; color: var(--body); }
+.field-status--good { color: var(--good); }
+.field-status--warn { color: var(--warn); }
+.ride-map { cursor: crosshair; }
+.pin { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50% 50% 50% 0;
+       transform: rotate(-45deg); color: #fff; font-weight: 700; border: 2px solid #fff;
+       box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.pin--pickup { background: var(--good); }
+.pin--dropoff { background: var(--accent); }
+.leaflet-marker-icon.pin { line-height: 26px; text-align: center; }
+.pin span { transform: rotate(45deg); }

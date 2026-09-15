@@ -293,6 +293,11 @@ class Config:
         "https://api.geoapify.com/v1/geocode/search?text={query}&filter=countrycode:{country}&limit={limit}&apiKey={key}"
         if GEOAPIFY_KEY else "")).strip()
     GEOCODER_API_KEY = os.environ.get("JATTA_GEOCODER_API_KEY", GEOAPIFY_KEY)
+    # Turns a point the traveller tapped on the map (or their own location)
+    # into a readable address. Gets {lat} and {lon}; uses GEOCODER_API_KEY.
+    REVERSE_GEOCODER_URL = os.environ.get("JATTA_REVERSE_GEOCODER_URL", (
+        "https://api.geoapify.com/v1/geocode/reverse?lat={lat}&lon={lon}&format=json&apiKey={key}"
+        if GEOAPIFY_KEY else "")).strip()
     GEOCODER_COUNTRY = os.environ.get("JATTA_GEOCODER_COUNTRY", "gm").strip()
     ROUTER_URL = os.environ.get("JATTA_ROUTER_URL", (
         "https://api.geoapify.com/v1/routing?waypoints={lat1},{lon1}|{lat2},{lon2}&mode=drive&apiKey={key}"

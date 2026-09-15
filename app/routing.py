@@ -206,6 +206,32 @@ def geocode(query, limit=5):
     return _as_places(payload, limit)
 
 
+def reverse_geocoding_available():
+    return bool(_config("MAP_ENABLED") and _config("REVERSE_GEOCODER_URL"))
+
+
+def reverse_geocode(lat, lng):
+    """The nearest readable address to a point, or None when there is none.
+
+    Raises RoutingUnavailable when the provider cannot be reached, so the caller
+    can tell "nothing there" from "could not ask". The point is the traveller's
+    own location, so, like typed addresses, it is never logged.
+    """
+    lat, lng = _finite(lat), _finite(lng)
+    if lat is None or lng is None or abs(lat) > 90 or abs(lng) > 180:
+        return None
+    if not reverse_geocoding_available():
+        return None
+    template = _config("REVERSE_GEOCODER_URL")
+    url = _fill(template, {
+        "lat": f"{lat:.6f}", "lon": f"{lng:.6f}", "lng": f"{lng:.6f}",
+        "key": _config("GEOCODER_API_KEY", ""),
+    })
+    payload = _fetch(url, _config("GEOCODER_API_KEY"), "{key}" in template)
+    places = _as_places(payload, 1)
+    return places[0] if places else None
+
+
 def _as_route(payload, provider):
     """Read a routing response. OSRM's shape, or anything close to it."""
     candidate = None
@@ -297,5 +323,6 @@ def map_settings():
         "centre": [_config("MAP_CENTRE_LAT", 0.0), _config("MAP_CENTRE_LNG", 0.0)],
         "zoom": _config("MAP_ZOOM", 8),
         "geocoding": geocoding_available(),
+        "reverse_geocoding": reverse_geocoding_available(),
         "routing": routing_available(),
     }

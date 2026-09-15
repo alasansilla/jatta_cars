@@ -30,6 +30,7 @@ class TestConfig(Config):
     STORAGE_BACKEND = "local"
     # Never let a test reach a real provider or spend a real key.
     GEOCODER_URL = ""
+    REVERSE_GEOCODER_URL = ""
     ROUTER_URL = ""
 
 
