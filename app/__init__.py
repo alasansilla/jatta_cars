@@ -64,6 +64,9 @@ def create_app(config_object=Config):
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(operator_bp, url_prefix="/operator")
 
+    from .seo import bp as seo_bp
+    app.register_blueprint(seo_bp)
+
     register_template_helpers(app)
     from . import reviews
     reviews.register(app)
@@ -259,15 +262,15 @@ def csrf_token():
 def register_error_handlers(app):
     @app.errorhandler(404)
     def not_found(error):
-        return render_template("404.html"), 404
+        return render_template("404.html", seo_canonical=None), 404
 
     @app.errorhandler(413)
     def too_large(error):
-        return render_template("413.html"), 413
+        return render_template("413.html", seo_canonical=None), 413
 
     @app.errorhandler(500)
     def server_error(error):
-        return render_template("500.html"), 500
+        return render_template("500.html", seo_canonical=None), 500
 
 
 def register_cli(app):

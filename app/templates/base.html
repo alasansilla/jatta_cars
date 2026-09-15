@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ company_name }}{% endblock %}</title>
   <meta name="description" content="{% block description %}{{ site.seo_description }}{% endblock %}">
+  {% if seo_canonical %}
+  <link rel="canonical" href="{{ seo_canonical }}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ company_name }}">
+  <meta property="og:title" content="{{ self.title() | trim }}">
+  <meta property="og:description" content="{{ self.description() | trim }}">
+  <meta property="og:url" content="{{ seo_canonical }}">
+  {% endif %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">

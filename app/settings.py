@@ -102,8 +102,8 @@ SCHEMA = [
             Field("opening_hours", "Opening hours",
                   default=f"{TBC} add the days and hours you are open"),
             Field("seo_description", "Search-engine description", type="textarea", rows=2,
-                  default="Self-drive car hire in The Gambia. Book online in a couple of "
-                          "minutes — nothing to pay on the website.",
+                  default="Rides, airport transfers and car rental in The Gambia. Compare drivers "
+                          "and cars by price, profile and reviews — nothing to pay on the website.",
                   help="The sentence search engines show under your site's name."),
         ],
     ),

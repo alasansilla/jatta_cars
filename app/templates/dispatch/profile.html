@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}{{ profile.display_name }} — driver on {{ company_name }}{% endblock %}
+{% block description %}{{ profile.display_name }}{% if profile.service_area %}, {{ profile.service_area }}{% endif %}: prices, cars and reviews for rides and rentals in The Gambia on {{ company_name }}.{% endblock %}
 {% block content %}
 <section class="page-head">
   <div class="wrap">

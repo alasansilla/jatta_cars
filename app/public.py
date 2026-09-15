@@ -37,7 +37,7 @@ def hold_until_published():
         return None
     if session.get("admin_id"):
         return None
-    response = make_response(render_template("holding.html", minimal=True))
+    response = make_response(render_template("holding.html", minimal=True, seo_canonical=None))
     # Nothing here should be cached: it changes the moment the site goes live.
     response.headers["Cache-Control"] = "no-store"
     return response

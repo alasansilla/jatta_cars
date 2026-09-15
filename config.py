@@ -197,6 +197,13 @@ class Config:
     # address that sign-in rate limits count against.
     TRUSTED_PROXIES = _int_env("JATTA_TRUSTED_PROXIES", 0)
 
+    # --- Search engines -----------------------------------------------------
+    #
+    # The one address canonical links and the sitemap use, whatever Host header
+    # a request arrived with. See app/seo.py.
+    PUBLIC_SITE_URL = os.environ.get("JATTA_PUBLIC_SITE_URL", "https://gogo-taxi.com").strip().rstrip("/")
+    SITEMAP_CACHE_SECONDS = _int_env("JATTA_SITEMAP_CACHE_SECONDS", 600)
+
     # --- Driver sign-in by text message ------------------------------------
     #
     # See app/sms.py. Development defaults to the fake transport, which sends
