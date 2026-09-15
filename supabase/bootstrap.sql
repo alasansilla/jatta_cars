@@ -373,7 +373,8 @@ insert into public.schema_migrations (version, name, applied_at) values
   ('0006', 'driver availability and dispatch', now()),
   ('0007', 'verified completed booking reviews', now()),
   ('0008', 'driver phone sign-in and one request per estimate', now()),
-  ('0009', 'verified Gambian numbers in 9-digit form', now())
+  ('0009', 'verified Gambian numbers in 9-digit form', now()),
+  ('0010', 'public API lockdown and index parity', now())
 on conflict (version) do nothing;
 
 alter table public.schema_migrations enable row level security;

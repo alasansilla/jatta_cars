@@ -1,8 +1,8 @@
-"""Set up an empty production database when the app starts, and nothing more.
+"""Prepare the database before the web workers start.
 
-Render's free plan has no shell and no pre-deploy step, so a brand-new Supabase
-database would otherwise need someone to paste supabase/bootstrap.sql into the
-SQL Editor by hand before a single page could load. Instead, on start:
+Render's free plan has no shell and no pre-deploy step, so the start command is
+`python -m migrations && gunicorn ...`, and `python -m migrations` uses this
+module:
 
 * If the database has **no application tables at all**, the app runs that same
   generated file. It is one transaction (the file has its own BEGIN/COMMIT), so
@@ -10,8 +10,9 @@ SQL Editor by hand before a single page could load. Instead, on start:
 * If the database already has tables, it is **never touched**. Pending
   migrations are only reported in the log and on /healthz; an existing database
   is upgraded deliberately, after a backup, with `python -m migrations`.
-* A Postgres advisory lock makes sure two web workers starting together cannot
-  both run it.
+* A Postgres advisory lock makes sure two processes starting together cannot
+  both run it. The web workers themselves never change the schema; they only
+  report its state.
 
 Optionally, the first staff account is created from JATTA_ADMIN_USER and
 JATTA_ADMIN_PASSWORD, but only while no staff account exists. Set them in the
@@ -137,22 +138,23 @@ def create_first_admin(app):
     return "created"
 
 
-def prepare(app):
-    """Called once per process at start-up, in production on Postgres only."""
-    if not app.config.get("AUTO_BOOTSTRAP"):
+def report(app):
+    """At web start-up: say whether the schema is current. Never changes anything.
+
+    Schema changes happen in `python -m migrations`, which runs before the
+    workers start. A worker that finds the schema out of date only logs it (and
+    /healthz reports it), rather than racing other workers to alter it.
+    """
+    if not app.config.get("SCHEMA_REPORT_ON_START"):
         return
     with app.app_context():
-        engine = db.engine
-        if engine.dialect.name != "postgresql":
+        if db.engine.dialect.name != "postgresql":
             return
         try:
-            apply_bootstrap_if_empty(app, engine)
-            state = schema_state(engine)
-            if state != "ok":
-                app.logger.error("Database schema is not current (%s). Back up, then run "
-                                 "`python -m migrations` against it.", state)
-                return
-            create_first_admin(app)
+            state = schema_state(db.engine)
         except Exception as error:  # noqa: BLE001 — start anyway; /healthz reports it
-            db.session.rollback()
-            app.logger.error("Database setup failed: %s", type(error).__name__)
+            app.logger.error("Could not read the database schema: %s", type(error).__name__)
+            return
+        if state != "ok":
+            app.logger.error("Database schema is not current (%s). Run `python -m migrations` "
+                             "before starting the web workers.", state)

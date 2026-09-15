@@ -72,7 +72,7 @@ def create_app(config_object=Config):
     register_cli(app)
 
     from . import schema_setup
-    schema_setup.prepare(app)
+    schema_setup.report(app)
 
     return app
 

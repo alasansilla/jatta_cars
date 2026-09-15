@@ -41,8 +41,49 @@ def pending(connection):
     return [step for step in discover() if step.VERSION not in done]
 
 
+LOCK_ID = 72419010
+
+
+class _MigrationLock:
+    """A Postgres session-level advisory lock held for the whole upgrade.
+
+    Two deploys starting at once (or a deploy and a manual run) would otherwise
+    both see step N as pending and both try to apply it. The lock is held on its
+    own connection, so each step can still commit in its own transaction.
+    """
+
+    def __init__(self, engine):
+        self.engine = engine
+        self.connection = None
+
+    def __enter__(self):
+        if self.engine.dialect.name == "postgresql":
+            from sqlalchemy import text
+
+            self.connection = self.engine.connect()
+            self.connection.execute(text("SELECT pg_advisory_lock(:id)"), {"id": LOCK_ID})
+            self.connection.commit()
+        return self
+
+    def __exit__(self, *exc):
+        if self.connection is not None:
+            from sqlalchemy import text
+
+            try:
+                self.connection.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": LOCK_ID})
+                self.connection.commit()
+            finally:
+                self.connection.close()
+        return False
+
+
 def upgrade(engine, metadata, log=print):
-    """Run everything not yet applied. Returns the versions it ran."""
+    """Run everything not yet applied, one step per transaction. Returns the versions run."""
+    with _MigrationLock(engine):
+        return _upgrade(engine, metadata, log)
+
+
+def _upgrade(engine, metadata, log):
     with engine.begin() as connection:
         _tracking_metadata.create_all(connection)
 

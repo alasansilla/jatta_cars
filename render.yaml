@@ -28,7 +28,11 @@ services:
     # gthread rather than the default sync worker: these requests spend their
     # time waiting on Postgres, so threads are worth more than processes on a
     # small instance.
+    # Migrations run first, before any web worker exists: an empty database gets
+    # the schema, pending steps are applied under an advisory lock, and a
+    # failure stops here so Render keeps the previous version serving.
     startCommand: >-
+      python -m migrations &&
       gunicorn wsgi:app
       --bind 0.0.0.0:$PORT
       --workers 2

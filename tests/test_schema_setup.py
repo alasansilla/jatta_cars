@@ -34,14 +34,16 @@ class SchemaSetupTests(unittest.TestCase):
         self.assertNotIn("commit;", storage)
 
     def test_sqlite_is_never_bootstrapped(self):
-        self.app.config["AUTO_BOOTSTRAP"] = True
-        with patch.object(schema_setup, "apply_bootstrap_if_empty") as apply:
-            schema_setup.prepare(self.app)
-        apply.assert_not_called()
         self.assertEqual(schema_setup.apply_bootstrap_if_empty(self.app, db.engine), "skipped")
 
-    def test_off_by_default_outside_production(self):
-        self.assertFalse(TestConfig.AUTO_BOOTSTRAP)
+    def test_web_start_only_reports_and_never_changes_the_schema(self):
+        self.app.config["SCHEMA_REPORT_ON_START"] = True
+        with patch.object(schema_setup, "apply_bootstrap_if_empty") as apply, \
+                patch("migrations.runner.upgrade") as upgrade:
+            schema_setup.report(self.app)
+        apply.assert_not_called()
+        upgrade.assert_not_called()
+        self.assertFalse(TestConfig.SCHEMA_REPORT_ON_START)
 
     def test_first_admin_only_when_asked_long_enough_and_none_exists(self):
         with patch.dict(os.environ, {}, clear=False):
