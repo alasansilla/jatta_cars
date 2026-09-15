@@ -23,9 +23,15 @@
                aria-describedby="pickup-status" maxlength="240">
         <div id="pickup-results" class="place-list" hidden></div>
         <div class="location-actions">
-          <button type="button" class="btn btn--ghost btn--sm" id="pickup-locate">Use my location</button>
-          <button type="button" class="btn btn--ghost btn--sm js-choose" data-which="pickup" aria-pressed="false"
-                  aria-controls="ride-map">Choose pickup on map</button>
+          <button type="button" class="btn-liquid" id="pickup-locate" aria-describedby="pickup-status">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.7 2.3a1 1 0 0 0-1.05-.23l-18 7a1 1 0 0 0 .09 1.9l7.4 2.1 2.1 7.4a1 1 0 0 0 1.9.09l7-18a1 1 0 0 0-.24-1.06Z"/></svg>
+            <span id="pickup-locate-label">Use my location</span>
+          </button>
+          <button type="button" class="btn-liquid js-choose" data-which="pickup" aria-pressed="false"
+                  aria-controls="ride-map">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5.5-8 12-8 12s-8-6.5-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Choose pickup on map</span>
+          </button>
           <button type="button" class="link-button js-clear" data-which="pickup" hidden>Clear pickup</button>
         </div>
         <p id="pickup-status" class="field-status" role="status" aria-live="polite"></p>
@@ -35,16 +41,25 @@
                aria-describedby="dropoff-status" maxlength="240">
         <div id="dropoff-results" class="place-list" hidden></div>
         <div class="location-actions">
-          <button type="button" class="btn btn--ghost btn--sm js-choose" data-which="dropoff" aria-pressed="false"
-                  aria-controls="ride-map">Choose destination on map</button>
+          <button type="button" class="btn-liquid js-choose" data-which="dropoff" aria-pressed="false"
+                  aria-controls="ride-map">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5.5-8 12-8 12s-8-6.5-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Choose destination on map</span>
+          </button>
           <button type="button" class="link-button js-clear" data-which="dropoff" hidden>Clear destination</button>
         </div>
         <p id="dropoff-status" class="field-status" role="status" aria-live="polite"></p>
 
-        <label for="passengers" style="margin-top:14px">Passengers</label>
-        <input type="number" id="passengers" min="1" max="8" value="1" inputmode="numeric">
+        <label for="passengers" id="passengers-label" style="margin-top:14px">Passengers</label>
+        <div class="stepper" role="group" aria-labelledby="passengers-label">
+          <button type="button" class="btn-liquid js-step" data-step="-1" aria-controls="passengers"
+                  aria-label="Fewer passengers">&minus;</button>
+          <input type="number" id="passengers" min="1" max="8" value="1" inputmode="numeric" step="1">
+          <button type="button" class="btn-liquid js-step" data-step="1" aria-controls="passengers"
+                  aria-label="More passengers">+</button>
+        </div>
 
-        <button class="btn btn--primary btn--block btn--lg" type="button" id="estimate" style="margin-top:18px">See drivers and prices</button>
+        <button class="btn-liquid btn-liquid--primary btn-liquid--lg btn-liquid--block" type="button" id="estimate" style="margin-top:18px">See drivers and prices</button>
         <p id="ride-message" class="notice" role="status" aria-live="polite">Set your pickup and destination: pick an address from the list, tap the map, or use your location.</p>
 
         <div id="driver-choices" hidden></div>
@@ -176,7 +191,8 @@
       setLocating: function (busy) {
         var button = $("pickup-locate");
         button.disabled = busy;
-        button.textContent = busy ? "Finding your location…" : "Use my location";
+        button.setAttribute("aria-busy", String(busy));
+        $("pickup-locate-label").textContent = busy ? "Finding your location…" : "Use my location";
       },
       changed: reset
     }
@@ -273,7 +289,38 @@
     });
   }
 
-  $("passengers").addEventListener("change", reset);
+  /* Passenger stepper: the buttons change the number field and fire the same
+     "change" the field would, so the estimate is reset exactly as before. */
+  var passengers = $("passengers");
+  function clampPassengers(value) {
+    var min = Number(passengers.min) || 1, max = Number(passengers.max) || 8;
+    var n = Math.round(Number(value));
+    if (!isFinite(n)) n = min;
+    return Math.min(max, Math.max(min, n));
+  }
+  function syncStepper() {
+    var n = clampPassengers(passengers.value);
+    document.querySelectorAll(".js-step").forEach(function (button) {
+      var step = Number(button.dataset.step);
+      button.disabled = (step < 0 && n <= Number(passengers.min)) || (step > 0 && n >= Number(passengers.max));
+    });
+  }
+  document.querySelectorAll(".js-step").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var next = clampPassengers(Number(passengers.value) + Number(button.dataset.step));
+      if (String(next) === passengers.value) return;
+      passengers.value = String(next);
+      passengers.dispatchEvent(new Event("change", { bubbles: true }));
+      if (button.disabled) passengers.focus();
+    });
+  });
+  passengers.addEventListener("change", function () {
+    passengers.value = String(clampPassengers(passengers.value));
+    syncStepper();
+    reset();
+  });
+  passengers.addEventListener("input", syncStepper);
+  syncStepper();
 
   $("estimate").addEventListener("click", function () {
     reset();

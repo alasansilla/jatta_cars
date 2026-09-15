@@ -984,3 +984,209 @@ body.is-editing [data-edit-choice].is-changed { outline-color: var(--good); }
 .pin--dropoff { background: var(--accent); }
 .leaflet-marker-icon.pin { line-height: 26px; text-align: center; }
 .pin span { transform: rotate(45deg); }
+
+/* --- Liquid buttons ----------------------------------------------------------
+   Soft, layered controls for the ride form and driver sign-in, in the style of
+   iOS: rounded corners, a light top highlight, stacked translucent shadows, a
+   gentle press. The coral is deepened where white text sits on it, so the label
+   keeps at least 4.5:1 contrast; the brighter brand coral stays in the gloss
+   and the glow. */
+:root {
+  --liquid-coral-top: #e24026;
+  --liquid-coral-bottom: #c8321a;
+  --liquid-coral-text: #c8321a;      /* 5.35:1 on white */
+  --liquid-coral-ink: #b52d17;       /* pressed / focus, 6.26:1 on white */
+  --liquid-radius: 16px;
+  --liquid-ease: cubic-bezier(.2, .8, .2, 1);
+}
+
+.btn-liquid {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;                  /* comfortable touch target */
+  padding: 12px 20px;
+  border-radius: var(--liquid-radius);
+  border: 1px solid rgba(1, 1, 3, .08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .98) 0%, rgba(250, 250, 252, .86) 100%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  color: var(--liquid-coral-text);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    0 1px 2px rgba(1, 1, 3, .06),
+    0 8px 18px -8px rgba(1, 1, 3, .18);
+  transition:
+    transform .18s var(--liquid-ease),
+    box-shadow .18s ease,
+    background .18s ease,
+    border-color .18s ease,
+    color .18s ease;
+}
+.btn-liquid svg { flex: none; width: 18px; height: 18px; }
+.btn-liquid:hover {
+  text-decoration: none;
+  border-color: rgba(200, 50, 26, .28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    0 2px 4px rgba(1, 1, 3, .06),
+    0 12px 24px -10px rgba(1, 1, 3, .22);
+}
+.btn-liquid:active {
+  transform: scale(.97);
+  box-shadow:
+    inset 0 1px 3px rgba(1, 1, 3, .12),
+    0 1px 1px rgba(1, 1, 3, .05);
+}
+.btn-liquid:focus { outline: none; }
+.btn-liquid:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 0 6px var(--liquid-coral-ink),
+    0 8px 18px -8px rgba(1, 1, 3, .18);
+}
+.btn-liquid[aria-pressed="true"] {
+  background: linear-gradient(180deg, #fff5f2 0%, #ffe7e1 100%);
+  border-color: rgba(200, 50, 26, .45);
+  color: var(--liquid-coral-ink);
+  box-shadow:
+    inset 0 1px 3px rgba(200, 50, 26, .16),
+    0 1px 2px rgba(1, 1, 3, .05);
+}
+.btn-liquid[aria-pressed="true"]:focus-visible {
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--liquid-coral-ink), inset 0 1px 3px rgba(200, 50, 26, .16);
+}
+.btn-liquid:disabled,
+.btn-liquid[aria-disabled="true"] {
+  cursor: not-allowed;
+  color: #605f69;
+  background: #f1f1f3;
+  border-color: rgba(1, 1, 3, .06);
+  box-shadow: none;
+  transform: none;
+  text-shadow: none;
+}
+
+.btn-liquid--primary {
+  color: #fff;
+  border-color: rgba(120, 25, 10, .18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .20) 0%, rgba(255, 255, 255, 0) 46%),
+    linear-gradient(180deg, var(--liquid-coral-top) 0%, var(--liquid-coral-bottom) 100%);
+  text-shadow: 0 1px 0 rgba(90, 20, 8, .22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .38),
+    inset 0 -1px 0 rgba(90, 20, 8, .18),
+    0 2px 4px rgba(200, 50, 26, .18),
+    0 14px 28px -12px rgba(255, 77, 48, .55);
+}
+.btn-liquid--primary:hover {
+  color: #fff;
+  border-color: rgba(120, 25, 10, .22);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .26) 0%, rgba(255, 255, 255, 0) 50%),
+    linear-gradient(180deg, #e8452a 0%, #cc341b 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .42),
+    inset 0 -1px 0 rgba(90, 20, 8, .18),
+    0 3px 6px rgba(200, 50, 26, .2),
+    0 18px 32px -12px rgba(255, 77, 48, .6);
+}
+.btn-liquid--primary:active {
+  transform: scale(.975);
+  box-shadow:
+    inset 0 2px 6px rgba(90, 20, 8, .3),
+    0 1px 2px rgba(200, 50, 26, .2);
+}
+.btn-liquid--primary:focus-visible {
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 0 6px #1c1c1e,
+    0 14px 28px -12px rgba(255, 77, 48, .55);
+}
+.btn-liquid--primary:disabled,
+.btn-liquid--primary[aria-disabled="true"] {
+  color: #7a3322;
+  background: #f5d6ce;
+  border-color: rgba(120, 25, 10, .1);
+}
+
+.btn-liquid--lg {
+  min-height: 56px;
+  padding: 15px 26px;
+  font-size: 1.08rem;
+  border-radius: 18px;
+}
+.btn-liquid--block { width: 100%; }
+
+/* The ride form's location actions sit side by side, and stack on a phone. */
+.location-actions { gap: 10px; margin-top: 10px; }
+.location-actions .btn-liquid { flex: 0 1 auto; }
+
+/* Passenger stepper: − [ 2 ] + */
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 20px;
+  background: rgba(1, 1, 3, .035);
+  box-shadow: inset 0 1px 2px rgba(1, 1, 3, .06);
+}
+.stepper .btn-liquid {
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 14px;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.stepper input[type="number"] {
+  width: 4.2rem;
+  min-height: 48px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(1, 1, 3, .08);
+  background: #fff;
+  text-align: center;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--ink);
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.stepper input[type="number"]::-webkit-outer-spin-button,
+.stepper input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper input[type="number"]:focus-visible {
+  outline: none;
+  border-color: var(--liquid-coral-ink);
+  box-shadow: 0 0 0 3px rgba(181, 45, 23, .25);
+}
+
+@media (max-width: 560px) {
+  .location-actions .btn-liquid { flex: 1 1 100%; }
+  .btn-liquid--lg { min-height: 54px; font-size: 1.08rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-liquid { transition: none; }
+  .btn-liquid:active, .btn-liquid--primary:active { transform: none; }
+}
+
+@media (forced-colors: active) {
+  .btn-liquid { border: 1px solid ButtonText; }
+  .btn-liquid:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+  .btn-liquid[aria-pressed="true"] { border-width: 2px; }
+}
