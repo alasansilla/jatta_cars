@@ -14,9 +14,12 @@ some country wrong.
 Only numbers that can receive a text are accepted: a fixed landline cannot get
 the sign-in code, so saying so up front is kinder than sending nothing.
 """
+from functools import lru_cache
+
 import phonenumbers
 from phonenumbers import NumberParseException, PhoneNumberFormat, PhoneNumberType
 from phonenumbers import carrier as _carrier
+from phonenumbers import geocoder as _geocoder
 
 DEFAULT_COUNTRY_CODE = "+220"  # The Gambia
 
@@ -34,14 +37,57 @@ _TEXTABLE = {
 }
 
 
+# libphonenumber's example for The Gambia is still an old 7-digit number; show
+# the 9-digit form that keeps working after 30 November 2026.
+EXAMPLE_OVERRIDES = {220: "87 770 1234"}
+
+
 class InvalidPhone(ValueError):
     """The input is not a mobile number we could text. The message is for people."""
 
 
+@lru_cache(maxsize=None)
+def country_hint(calling_code):
+    """Name and a mobile example for a calling code, from libphonenumber. None if unknown."""
+    region = phonenumbers.region_code_for_country_code(int(calling_code))
+    if region in (None, "ZZ"):
+        return None
+    example = phonenumbers.example_number_for_type(region, PhoneNumberType.MOBILE)
+    if example is None:
+        return None
+    name = _geocoder.country_name_for_number(example, "en") or region
+    if name == "Gambia":
+        name = "The Gambia"
+    national = EXAMPLE_OVERRIDES.get(int(calling_code)) or \
+        phonenumbers.format_number(example, PhoneNumberFormat.NATIONAL)
+    return {"code": f"+{int(calling_code)}", "region": region, "name": name, "example": national}
+
+
+@lru_cache(maxsize=1)
+def country_hints():
+    """Every calling code's hint, for the phone form to switch examples as you type."""
+    hints = {}
+    for code in sorted(phonenumbers.COUNTRY_CODE_TO_REGION_CODE):
+        hint = country_hint(code)
+        if hint:
+            hints[str(code)] = {"name": hint["name"], "example": hint["example"]}
+    return hints
+
+
+def _for_country(calling_code):
+    hint = country_hint(calling_code)
+    if hint is None:
+        return "", ""
+    return f" for {hint['name']} ({hint['code']})", f" For example: {hint['example']}."
+
+
 def _country_digits(country_code):
     digits = "".join(ch for ch in str(country_code or "") if ch.isdigit())
+    if digits.startswith("00"):          # "0049" typed the way it is dialled
+        digits = digits[2:]
     if not digits or len(digits) > 3:
-        raise InvalidPhone("Check the country code. For The Gambia it is +220.")
+        raise InvalidPhone("Check the country code, for example +220 for The Gambia or "
+                           "+49 for Germany.")
     return int(digits)
 
 
@@ -61,7 +107,8 @@ def normalise(country_code, number):
     calling_code = _country_digits(country_code)
     region = phonenumbers.region_code_for_country_code(calling_code)
     if region in (None, "ZZ"):
-        raise InvalidPhone("Check the country code. For The Gambia it is +220.")
+        raise InvalidPhone("Check the country code, for example +220 for The Gambia or "
+                           "+49 for Germany.")
 
     compact = raw.replace(" ", "")
     if compact.startswith("00"):
@@ -75,21 +122,27 @@ def normalise(country_code, number):
     if not raw.lstrip().startswith("+") and digits_only.startswith("0"):
         candidates.append(digits_only[1:])
 
+    # A number typed with its own +code is judged against that country.
+    judged_as = calling_code
     for candidate in candidates:
         try:
             parsed = phonenumbers.parse(candidate, region)
         except NumberParseException:
             continue
+        judged_as = parsed.country_code
         if parsed.extension:
             raise InvalidPhone("Enter the phone number only, without an extension.")
         if not phonenumbers.is_valid_number(parsed):
             continue
         if phonenumbers.number_type(parsed) not in _TEXTABLE:
-            raise InvalidPhone("That looks like a landline. Use a mobile number that "
-                               "can receive text messages.")
+            where, example = _for_country(parsed.country_code)
+            raise InvalidPhone("That looks like a landline. Use a mobile number that can "
+                               f"receive text messages.{example}")
         return phonenumbers.format_number(_gambian_nine_digit(parsed), PhoneNumberFormat.E164)
 
-    raise InvalidPhone("That doesn't look like a mobile number. Check it and try again.")
+    where, example = _for_country(judged_as)
+    raise InvalidPhone(f"That doesn't look like a mobile number{where}. Check it and "
+                       f"try again.{example}")
 
 
 def _gambian_nine_digit(parsed):

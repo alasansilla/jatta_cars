@@ -1,16 +1,43 @@
-{# Expects: intent, country_code, number. #}
+{# Expects: intent, country_code, number, country (hint for the code shown), country_hints. #}
 <form method="post" action="{{ url_for('driver_auth.send_code') }}" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="intent" value="{{ intent }}">
   <label class="big-label" for="phone">Your phone number</label>
   <div class="phone-input">
     <input id="country_code" name="country_code" type="tel" inputmode="tel"
-           autocomplete="tel-country-code" value="{{ country_code }}" maxlength="5"
-           aria-label="Country code" required>
+           autocomplete="tel-country-code" value="{{ country_code }}" maxlength="6"
+           aria-label="Country code" aria-describedby="phone-example" required>
+    {# No per-country length limit: numbers are 7 to 15 digits depending on the
+       country, typed with spaces, and the server checks them properly. #}
     <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel-national"
-           value="{{ number }}" maxlength="20" placeholder="770 1234" required autofocus>
+           value="{{ number }}" maxlength="24" placeholder="{{ country.example }}"
+           aria-describedby="phone-example" required autofocus>
   </div>
-  <p class="hint">+220 is The Gambia. Change it if your number is from another country.</p>
+  <p id="phone-example" class="hint" aria-live="polite">
+    Example for {{ country.name }}: {{ country.example }}. Change {{ country.code }} if your number is from another country.
+  </p>
   <button class="btn-liquid btn-liquid--primary btn-liquid--lg btn-liquid--block" type="submit" style="margin-top:18px">Send me a code</button>
   <p class="hint center" style="margin-top:12px">We will text you a 6-digit code. You don't need a password.</p>
 </form>
+<script>
+(function () {
+  "use strict";
+  var HINTS = {{ country_hints | tojson }};
+  var code = document.getElementById("country_code");
+  var phone = document.getElementById("phone");
+  var note = document.getElementById("phone-example");
+  function update() {
+    var digits = code.value.replace(/\D/g, "").replace(/^00/, "");
+    var hint = HINTS[digits];
+    if (hint) {
+      phone.placeholder = hint.example;
+      note.textContent = "Example for " + hint.name + ": " + hint.example +
+        ". Change +" + digits + " if your number is from another country.";
+    } else {
+      phone.placeholder = "Your mobile number";
+      note.textContent = "Check the country code, for example +220 for The Gambia or +49 for Germany.";
+    }
+  }
+  code.addEventListener("input", update);
+})();
+</script>

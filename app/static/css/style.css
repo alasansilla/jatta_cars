@@ -898,7 +898,7 @@ body.is-editing [data-edit-choice].is-changed { outline-color: var(--good); }
   font-size: 1.2rem;
   margin-top: 18px;
 }
-.phone-input { display: grid; grid-template-columns: 6.2rem 1fr; gap: 10px; }
+.phone-input { display: grid; grid-template-columns: minmax(4.6rem, 5.4rem) minmax(0, 1fr); gap: 10px; }
 .phone-input input { font-size: 1.35rem; padding: 14px 12px; letter-spacing: .02em; }
 .code-input {
   font-size: 2.1rem !important;
@@ -1189,4 +1189,11 @@ body.is-editing [data-edit-choice].is-changed { outline-color: var(--good); }
   .btn-liquid { border: 1px solid ButtonText; }
   .btn-liquid:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
   .btn-liquid[aria-pressed="true"] { border-width: 2px; }
+}
+/* Long numbers (a German mobile is 11 digits nationally) must stay readable on
+   a small phone: the number box takes all remaining width and the type steps
+   down a little rather than cutting digits off. */
+.phone-input input { min-width: 0; width: 100%; }
+@media (max-width: 420px) {
+  .phone-input input { font-size: 1.15rem; padding: 13px 10px; letter-spacing: 0; }
 }

@@ -27,7 +27,7 @@ from flask import (
 
 from . import phone_auth, sms
 from .operator import _account, _current, end_session, signed_in_recently, start_session
-from .phone import DEFAULT_COUNTRY_CODE, InvalidPhone, normalise, pretty
+from .phone import DEFAULT_COUNTRY_CODE, InvalidPhone, country_hint, country_hints, normalise, pretty
 
 bp = Blueprint("driver_auth", __name__)
 
@@ -73,9 +73,12 @@ def _phone_page(intent, error=None, country_code=DEFAULT_COUNTRY_CODE, number=""
                 status=200):
     template = {JOIN: "driver/join.html", SIGN_IN: "driver/sign_in.html",
                 ADD: "driver/phone.html"}[intent]
+    digits = "".join(ch for ch in str(country_code) if ch.isdigit()).lstrip("0")[:3]
+    hint = country_hint(int(digits)) if digits else None
     return render_template(
         template, intent=intent, error=error, country_code=country_code,
         number=number, account=_account(),
+        country=hint or country_hint(220), country_hints=country_hints(),
     ), status
 
 
