@@ -61,7 +61,7 @@ def bookable_vehicles():
     """Cars a customer may see and book: listed, and not belonging to a driver
     who is unapproved or suspended. One query, so no page forgets the second half."""
     return (Vehicle.query.outerjoin(Operator, Vehicle.operator_id == Operator.id)
-            .filter(Vehicle.is_active.is_(True),
+            .filter(Vehicle.is_active.is_(True), Vehicle.service_mode.in_(("rental", "both")),
                     or_(Vehicle.operator_id.is_(None), Operator.status == "approved")))
 
 

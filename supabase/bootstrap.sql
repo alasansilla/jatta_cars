@@ -151,6 +151,8 @@ CREATE TABLE IF NOT EXISTS vehicles (
 	seats INTEGER NOT NULL,
 	doors INTEGER NOT NULL,
 	luggage INTEGER NOT NULL,
+	review_pending BOOLEAN DEFAULT false NOT NULL,
+	service_mode VARCHAR(10) DEFAULT 'both' NOT NULL,
 	daily_rate NUMERIC(10, 2) NOT NULL,
 	weekly_rate NUMERIC(10, 2),
 	deposit NUMERIC(10, 2) NOT NULL,
@@ -161,6 +163,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
 	operator_id INTEGER,
 	PRIMARY KEY (id),
+	CONSTRAINT vehicle_service_mode CHECK (service_mode IN ('taxi', 'rental', 'both')),
 	FOREIGN KEY(operator_id) REFERENCES operators (id)
 );
 CREATE INDEX IF NOT EXISTS ix_vehicles_operator_id ON vehicles (operator_id);
@@ -376,7 +379,9 @@ insert into public.schema_migrations (version, name, applied_at) values
   ('0008', 'driver phone sign-in and one request per estimate', now()),
   ('0009', 'verified Gambian numbers in 9-digit form', now()),
   ('0010', 'public API lockdown and index parity', now()),
-  ('0011', 'driver location only during an accepted trip', now())
+  ('0011', 'driver location only during an accepted trip', now()),
+  ('0012', 'vehicle taxi and rental service mode', now()),
+  ('0013', 'driver car review queue', now())
 on conflict (version) do nothing;
 
 alter table public.schema_migrations enable row level security;

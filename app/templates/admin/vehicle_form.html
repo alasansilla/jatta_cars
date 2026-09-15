@@ -16,6 +16,13 @@
 
 <div class="panel" style="max-width:820px">
   <form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<div class="field"><label for="service_mode">Use this car for</label>
+<select id="service_mode" name="service_mode" required>
+{% for mode, label in [('taxi', 'Taxi rides with a driver'), ('rental', 'Car rental'), ('both', 'Both taxi rides and car rental')] %}
+<option value="{{ mode }}" {{ 'selected' if value('service_mode', 'both') | trim == mode }}>{{ label }}</option>
+{% endfor %}</select><p class="hint">Taxi prices are set in My prices. Rental prices apply per day or week.</p></div>
+<script src="{{ url_for('static', filename='js/vehicle-service.js') }}" defer></script>
+
     <div class="field">
       <label for="operator_id">Driver who owns this car</label>
       {% set current_driver = (form.get('operator_id') if form else ((vehicle.operator_id | string) if vehicle and vehicle.operator_id else '')) %}
@@ -25,7 +32,7 @@
           <option value="{{ driver.id }}" {{ 'selected' if current_driver == (driver.id | string) }}>{{ driver.display_name }}{% if driver.phone_e164 %} · {{ driver.phone_e164 | phone_pretty }}{% endif %}{% if driver.status != 'approved' %} ({{ driver.status }}){% endif %}</option>
         {% endfor %}
       </select>
-      <p class="hint">Link a car only after checking it. The driver can then choose it in Driving mode, and it is listed for rental under their name. A driver's car is only shown to customers while the driver is approved.</p>
+      <p class="hint">Link a car only after checking it. Its selected use controls whether it appears in Driving mode, car rental, or both. A driver's car is only shown to customers while the driver is approved.</p>
     </div>
     <div class="field-row">
       <div class="field">

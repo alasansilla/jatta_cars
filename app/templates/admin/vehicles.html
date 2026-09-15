@@ -7,6 +7,7 @@
   <a class="btn btn--primary" href="{{ url_for('admin.vehicle_form') }}">Add a vehicle</a>
 </div>
 
+<p><a href="{{ url_for('admin.vehicles', review='pending') }}">Cars awaiting review ({{ nav_car_reviews }})</a> · <a href="{{ url_for('admin.vehicles') }}">All cars</a></p>
 <div class="panel">
   {% if vehicles %}
     <div class="table-scroll">
@@ -22,19 +23,20 @@
               </td>
               <td>
                 <strong style="color:var(--ink)">{{ vehicle.name }}</strong><br>
+                {% if vehicle.operator %}<span class="small">Driver: {{ vehicle.operator.display_name }}</span><br>{% endif %}
                 <span class="small muted">{{ vehicle.year }} &middot; {{ vehicle.transmission }} &middot; {{ vehicle.fuel }}</span>
               </td>
-              <td>{{ vehicle.category }}</td>
-              <td class="nowrap">{{ vehicle.daily_rate | money }}</td>
+              <td>{{ vehicle.category }}<br>{{ {"taxi":"Taxi rides", "rental":"Car rental", "both":"Taxi and rental"}[vehicle.service_mode] }}</td>
+              <td class="nowrap">{{ vehicle.daily_rate | money if vehicle.service_mode != "taxi" else "—" }}</td>
               <td class="nowrap">{{ vehicle.weekly_rate | money if vehicle.weekly_rate else '—' }}</td>
               <td>{{ vehicle.seats }}</td>
-              <td><span class="tag tag--{{ 'on' if vehicle.is_active else 'off' }}">{{ 'Listed' if vehicle.is_active else 'Hidden' }}</span></td>
+              <td><span class="tag tag--{{ 'on' if vehicle.is_active else 'off' }}">{{ 'Awaiting review' if vehicle.review_pending else ('Listed' if vehicle.is_active else 'Hidden') }}</span></td>
               <td>{{ vehicle.bookings | length }}</td>
               <td>
                 <div class="actions">
-                  <a class="btn btn--ghost btn--sm" href="{{ url_for('admin.vehicle_form', vehicle_id=vehicle.id) }}">Edit</a>
+                  <a class="btn btn--ghost btn--sm" href="{{ url_for('admin.vehicle_form', vehicle_id=vehicle.id) }}">{{ 'Review details' if vehicle.review_pending else 'Edit' }}</a>
                   <form class="inline-form" method="post" action="{{ url_for('admin.toggle_vehicle', vehicle_id=vehicle.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button class="btn btn--ghost btn--sm" type="submit">{{ 'Hide' if vehicle.is_active else 'List' }}</button>
+                    <button class="btn btn--ghost btn--sm" type="submit">{{ 'Approve and publish' if vehicle.review_pending else ('Hide' if vehicle.is_active else 'List') }}</button>
                   </form>
                   <form class="inline-form" method="post" action="{{ url_for('admin.delete_vehicle', vehicle_id=vehicle.id) }}"
                         onsubmit="return confirm('Delete {{ vehicle.name }}? This cannot be undone.')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -49,8 +51,8 @@
     </div>
   {% else %}
     <div class="empty">
-      <h3>No vehicles yet</h3>
-      <p>Add your first car and it will appear on the website straight away.</p>
+      <h3>{{ "No cars awaiting review" if request.args.get("review") == "pending" else "No vehicles yet" }}</h3>
+      <p>{{ "New driver submissions will appear here." if request.args.get("review") == "pending" else "Add your first car to get started." }}</p>
       <a class="btn btn--primary" href="{{ url_for('admin.vehicle_form') }}">Add a vehicle</a>
     </div>
   {% endif %}

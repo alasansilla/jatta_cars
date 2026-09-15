@@ -10,6 +10,7 @@
   <a class="btn btn--primary" href="{{ url_for('admin.vehicle_form') }}">Add a vehicle</a>
 </div>
 
+{% if nav_car_reviews %}<div class="panel"><h2>Cars awaiting review ({{ nav_car_reviews }})</h2><p>Drivers have submitted new cars or changes. Review their details and allowed use before approval.</p><a class="btn btn--primary" href="{{ url_for('admin.vehicles', review='pending') }}">Review cars</a></div>{% endif %}
 <div class="stat-cards">
   <div class="stat"><div class="stat__label">Awaiting confirmation</div><div class="stat__value">{{ stats.pending }}</div></div>
   <div class="stat"><div class="stat__label">Confirmed</div><div class="stat__value">{{ stats.confirmed }}</div></div>

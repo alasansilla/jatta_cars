@@ -8,6 +8,13 @@
 <p>Prices are in Dalasi. Saving hides the car until staff check it. Existing booking prices stay unchanged.</p>
 <form method="post" enctype="multipart/form-data" class="panel" style="max-width:760px">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<div class="field"><label for="service_mode">Use this car for</label>
+<select id="service_mode" name="service_mode" required>
+{% for mode, label in [('taxi', 'Taxi rides with a driver'), ('rental', 'Car rental'), ('both', 'Both taxi rides and car rental')] %}
+<option value="{{ mode }}" {{ 'selected' if value('service_mode', 'both') | trim == mode }}>{{ label }}</option>
+{% endfor %}</select><p class="hint">Taxi prices are set in My prices. Rental prices apply per day or week.</p></div>
+<script src="{{ url_for('static', filename='js/vehicle-service.js') }}" defer></script>
+
   <div class="field-row">
   {% for key, label in [('make', 'Make'), ('model', 'Model')] %}
     <div class="field"><label for="{{ key }}">{{ label }}</label><input id="{{ key }}" name="{{ key }}" value="{{ value(key) }}" maxlength="60" required></div>

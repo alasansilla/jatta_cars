@@ -5,7 +5,7 @@
   <div class="wrap">
     {% set here = request.endpoint %}
     <a href="{{ url_for('admin.dashboard') }}" class="{{ 'is-active' if here == 'admin.dashboard' }}">Dashboard</a>
-    <a href="{{ url_for('admin.vehicles') }}" class="{{ 'is-active' if here in ['admin.vehicles', 'admin.vehicle_form'] }}">Fleet</a>
+    <a href="{{ url_for('admin.vehicles') }}" class="{{ 'is-active' if here in ['admin.vehicles', 'admin.vehicle_form'] }}">Fleet{% if nav_car_reviews %}<span class="pill-count">{{ nav_car_reviews }} awaiting review</span>{% endif %}</a>
     <a href="{{ url_for('admin.bookings') }}" class="{{ 'is-active' if here == 'admin.bookings' }}">
       Bookings{% if nav_pending %}<span class="pill-count">{{ nav_pending }}</span>{% endif %}
     </a>

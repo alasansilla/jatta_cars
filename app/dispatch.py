@@ -184,6 +184,7 @@ def offers(distance_m, passengers, now=None, exclude_operator_id=None):
             DriverState.active_booking_id.is_(None),
             DriverState.updated_at >= now - FRESH_FIX,
             Vehicle.is_active.is_(True),
+            Vehicle.service_mode.in_(("taxi", "both")),
             Vehicle.operator_id == OperatorFare.operator_id,
             Vehicle.seats >= passengers,
             OperatorFare.kind == "ride",
@@ -717,8 +718,8 @@ def _driver_facts(driver, now):
         "scheduled_fares": [fare for fare in driver.fares
                             if fare.is_active and not (fare.kind == "ride"
                                                        and fare.pricing_model == "distance")],
-        "cars": cars,
-        "offers_rides": bool(ride_fares and cars),
+        "cars": [car for car in cars if car.service_mode in ("rental", "both")],
+        "offers_rides": bool(ride_fares and any(car.service_mode in ("taxi", "both") for car in cars)),
         "available_now": bool(state and state.available and state.active_booking_id is None
                               and state.updated_at and state.updated_at >= now - FRESH_FIX),
         "rating": reviews.summary(reviews.for_driver(driver.id)),
@@ -839,7 +840,7 @@ def drive():
     driver = _current()
     return render_template(
         "dispatch/drive.html", map_settings=routing.map_settings(),
-        vehicles=Vehicle.query.filter_by(operator_id=driver.id, is_active=True)
+        vehicles=Vehicle.query.filter_by(operator_id=driver.id, is_active=True).filter(Vehicle.service_mode.in_(("taxi", "both")))
         .order_by(Vehicle.make, Vehicle.model).all(),
         state=db.session.get(DriverState, driver.id),
         has_ride_fare=any(fare.is_active and fare.kind == "ride" and fare.pricing_model == "distance"
@@ -899,7 +900,7 @@ def heartbeat():
     if not state.active_booking_id:
         vehicle_id = _whole(data.get("vehicle_id"))
         vehicle = Vehicle.query.filter_by(id=vehicle_id, operator_id=driver.id,
-                                          is_active=True).first() if vehicle_id else None
+                                          is_active=True).filter(Vehicle.service_mode.in_(("taxi", "both"))).first() if vehicle_id else None
         if vehicle is None:
             db.session.rollback()
             return jsonify(error="Choose your car first."), 400

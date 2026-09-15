@@ -64,6 +64,7 @@ def inject_admin_counts():
         return {}
     return {
         "fake_sms_enabled": sms.is_fake(),
+        "nav_car_reviews": Vehicle.query.filter_by(review_pending=True).count(),
         "nav_pending": Booking.query.filter_by(status="pending").count(),
         "nav_unread": Enquiry.query.filter_by(is_read=False).count(),
         "nav_todo": len(outstanding_items()),
@@ -156,8 +157,11 @@ def dashboard():
 @bp.route("/vehicles")
 @login_required
 def vehicles():
-    items = Vehicle.query.order_by(
-        Vehicle.is_active.desc(), Vehicle.make.asc(), Vehicle.model.asc()
+    query = Vehicle.query
+    if request.args.get("review") == "pending":
+        query = query.filter_by(review_pending=True)
+    items = query.order_by(
+        Vehicle.review_pending.desc(), Vehicle.is_active.desc(), Vehicle.make.asc(), Vehicle.model.asc()
     ).all()
     return render_template("admin/vehicles.html", vehicles=items)
 
@@ -193,10 +197,17 @@ def vehicle_form(vehicle_id=None):
                 return None
             return value
 
+        service_mode = form.get("service_mode", vehicle.service_mode if vehicle else "both")
+        if service_mode not in ("taxi", "rental", "both"):
+            errors.append("Choose taxi rides, car rental, or both.")
+        if vehicle and vehicle.service_mode != service_mode:
+            from .models import DriverState
+            if Booking.query.filter(Booking.vehicle_id == vehicle.id, Booking.status.in_(("pending", "confirmed", "accepted", "arriving", "in_progress"))).first() or DriverState.query.filter_by(vehicle_id=vehicle.id, available=True).first():
+                errors.append("Go offline and finish open bookings before changing this car’s use.")
         year = number("year", "Year", int, minimum=1950)
-        daily_rate = number("daily_rate", "Daily rate", float, minimum=0)
-        weekly_rate = number("weekly_rate", "Weekly rate", float, required=False, minimum=0)
-        deposit = number("deposit", "Deposit", float, minimum=0)
+        daily_rate = 0 if service_mode == "taxi" else number("daily_rate", "Daily rate", float, minimum=0.01)
+        weekly_rate = None if service_mode == "taxi" else number("weekly_rate", "Weekly rate", float, required=False, minimum=0.01)
+        deposit = 0 if service_mode == "taxi" else number("deposit", "Deposit", float, minimum=0)
         seats = number("seats", "Seats", int, minimum=1)
         doors = number("doors", "Doors", int, minimum=1)
         luggage = number("luggage", "Luggage", int, required=False, minimum=0)
@@ -258,6 +269,7 @@ def vehicle_form(vehicle_id=None):
         vehicle.seats = seats
         vehicle.doors = doors
         vehicle.luggage = luggage or 0
+        vehicle.service_mode = service_mode
         vehicle.daily_rate = daily_rate
         vehicle.weekly_rate = weekly_rate
         vehicle.deposit = deposit
@@ -279,6 +291,8 @@ def vehicle_form(vehicle_id=None):
         vehicle.description = (form.get("description") or "").strip() or None
         vehicle.features = (form.get("features") or "").strip() or None
         vehicle.is_active = form.get("is_active") == "on"
+        if vehicle.is_active:
+            vehicle.review_pending = False
 
         db.session.commit()
         flash(f"Saved {vehicle.name}.", "success")
@@ -306,6 +320,8 @@ def _driver_choices():
 def toggle_vehicle(vehicle_id):
     vehicle = Vehicle.query.get_or_404(vehicle_id)
     vehicle.is_active = not vehicle.is_active
+    if vehicle.is_active:
+        vehicle.review_pending = False
     db.session.commit()
     state = "listed" if vehicle.is_active else "hidden"
     flash(f"{vehicle.name} is now {state}.", "success")
@@ -831,6 +847,8 @@ def api_vehicle_listed(vehicle_id):
     if vehicle is None:
         return jsonify({"error": "That vehicle no longer exists."}), 404
     vehicle.is_active = not vehicle.is_active
+    if vehicle.is_active:
+        vehicle.review_pending = False
     db.session.commit()
     return jsonify({"listed": vehicle.is_active})
 

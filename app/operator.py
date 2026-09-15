@@ -438,6 +438,9 @@ def car_form(vehicle_id=None):
             flash("Go offline and finish your open bookings before changing this car.", "error")
             return redirect(url_for("operator.cars"))
         values, errors = {}, []
+        values["service_mode"] = request.form.get("service_mode", car.service_mode if car else "both")
+        if values["service_mode"] not in ("taxi", "rental", "both"):
+            errors.append("Choose taxi rides, car rental, or both.")
         for key, label in (("make", "Make"), ("model", "Model")):
             value = request.form.get(key, "").strip()
             if not 1 <= len(value) <= 60:
@@ -457,6 +460,9 @@ def car_form(vehicle_id=None):
             except ValueError:
                 errors.append(f"Enter {key} between {low} and {high}.")
         for key in ("daily_rate", "weekly_rate", "deposit"):
+            if values["service_mode"] == "taxi":
+                values[key] = None if key == "weekly_rate" else 0
+                continue
             raw = request.form.get(key, "").strip().replace(",", "")
             if key == "weekly_rate" and not raw:
                 values[key] = None
@@ -489,6 +495,7 @@ def car_form(vehicle_id=None):
                 setattr(car, key, value)
             # Every changed listing is reviewed; posted owner/publish fields are ignored.
             car.is_active = False
+            car.review_pending = True
             if car.id:
                 DriverState.query.filter_by(vehicle_id=car.id).update({"available": False})
             db.session.commit()

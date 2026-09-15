@@ -225,6 +225,7 @@ class OperatorFare(db.Model):
 
 class Vehicle(db.Model):
     __tablename__ = "vehicles"
+    __table_args__ = (db.CheckConstraint("service_mode IN ('taxi', 'rental', 'both')", name="vehicle_service_mode"),)
 
     id = db.Column(db.Integer, primary_key=True)
     make = db.Column(db.String(60), nullable=False)
@@ -237,6 +238,9 @@ class Vehicle(db.Model):
     seats = db.Column(db.Integer, nullable=False, default=5)
     doors = db.Column(db.Integer, nullable=False, default=5)
     luggage = db.Column(db.Integer, nullable=False, default=2)
+
+    review_pending = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    service_mode = db.Column(db.String(10), nullable=False, default="both", server_default="both")
 
     daily_rate = db.Column(db.Numeric(10, 2), nullable=False)
     weekly_rate = db.Column(db.Numeric(10, 2), nullable=True)
@@ -310,7 +314,7 @@ class Vehicle(db.Model):
         Suspending an operator takes their cars off the site immediately,
         without anyone having to remember to unlist each one.
         """
-        if not self.is_active:
+        if not self.is_active or self.service_mode not in ("rental", "both"):
             return False
         if self.operator_id is None:
             return True
