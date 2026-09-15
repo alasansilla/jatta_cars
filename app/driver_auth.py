@@ -1,7 +1,12 @@
 """Become a driver, and driver sign in, with a phone number.
 
 The whole flow is: type your number -> type the code we text you -> (first time
-only) type your name -> see your dashboard or where your application stands.
+only) your name and where you drive -> your dashboard, or where your application
+stands.
+
+Nothing on these pages says whether a number is registered. Sending a code
+looks the same for every number; what happens next is decided only after the
+code has been typed back.
 
 No email, no password. Joining and signing in are the same steps, because the
 code is what proves who you are: a number that already has an account signs
@@ -70,7 +75,7 @@ def _phone_page(intent, error=None, country_code=DEFAULT_COUNTRY_CODE, number=""
                 ADD: "driver/phone.html"}[intent]
     return render_template(
         template, intent=intent, error=error, country_code=country_code,
-        number=number, sms_ready=sms.available(), account=_account(),
+        number=number, account=_account(),
     ), status
 
 
@@ -118,17 +123,16 @@ def send_code():
     if intent == ADD and phone == account.phone_e164:
         return _phone_page(intent, "That is already your number.", country_code, number,
                            status=400)
-    if intent == ADD and phone_auth.driver_for_phone(phone) is not None:
-        # Don't text a code to a number another driver signs in with: it could
-        # never be attached, and it would only pester that driver.
-        return _phone_page(intent, "That number is already used by another driver account. "
-                                   f"If it is yours, please contact {phone_auth.brand()}.",
-                           country_code, number, status=409)
+    # A number another driver already signs in with gets no text: it could never
+    # be attached, and texting it would pester that driver. But the page must not
+    # say so either, or it becomes a way to test which numbers are registered.
+    # The flow carries on exactly as normal with a code that cannot match.
+    deliver = not (intent == ADD and phone_auth.driver_for_phone(phone) is not None)
 
     purpose = phone_auth.ADD_PHONE if intent == ADD else phone_auth.SIGN_IN
     nonce = phone_auth.new_nonce()
     try:
-        phone_auth.request_code(phone, purpose, nonce, _ip())
+        phone_auth.request_code(phone, purpose, nonce, _ip(), deliver=deliver)
     except phone_auth.Refused as error:
         return _phone_page(intent, str(error), country_code, number,
                            status=429 if error.retry_after else 400)
@@ -206,8 +210,11 @@ def resend():
     flow = _flow()
     if flow is None:
         return redirect(url_for("driver_auth.sign_in"))
+    deliver = not (flow["purpose"] == phone_auth.ADD_PHONE
+                   and phone_auth.driver_for_phone(flow["phone"]) is not None)
     try:
-        phone_auth.request_code(flow["phone"], flow["purpose"], flow["nonce"], _ip())
+        phone_auth.request_code(flow["phone"], flow["purpose"], flow["nonce"], _ip(),
+                                deliver=deliver)
     except phone_auth.Refused as error:
         return _code_page(flow, str(error), status=429 if error.retry_after else 400)
     flow["started"] = int(time.time())
@@ -224,15 +231,16 @@ def change_number():
     return redirect(_landing(flow.get("intent")))
 
 
-def _clean_name(raw):
-    name = re.sub(r"\s+", " ", str(raw or "")).strip()
-    if len(name) < 2 or len(name) > 80 or not any(ch.isalpha() for ch in name):
+def _clean_text(raw, low, high, need_letter=True):
+    text = re.sub(r"\s+", " ", str(raw or "")).strip()
+    if not low <= len(text) <= high or (need_letter and not any(ch.isalpha() for ch in text)):
         return None
-    return name
+    return text
 
 
 @bp.route("/name", methods=["GET", "POST"])
 def name():
+    """First sign-in with a verified number: the driver's details, then pending."""
     verified = session.get("phone_verified")
     fresh = isinstance(verified, dict) and verified.get("phone") and \
         time.time() - int(verified.get("at", 0)) <= current_app.config["PHONE_VERIFIED_SECONDS"]
@@ -250,22 +258,30 @@ def name():
 
     if phone_auth.unverified_claims(phone):
         return render_template("driver/name.html", phone=pretty(phone), blocked=True,
-                               error=None, value="")
+                               errors={}, values={})
 
-    error, value = None, ""
+    errors, values = {}, {"name": "", "service_area": "", "about": ""}
     if request.method == "POST":
-        value = str(request.form.get("name") or "")[:120]
-        cleaned = _clean_name(value)
-        if cleaned is None:
-            error = "Please type your name."
-        else:
-            driver, _created = phone_auth.find_or_create_driver(phone, cleaned)
+        values = {key: str(request.form.get(key) or "")[:1200]
+                  for key in ("name", "service_area", "about")}
+        full_name = _clean_text(values["name"], 2, 80)
+        area = _clean_text(values["service_area"], 2, 200)
+        about = re.sub(r"[ \t]+", " ", values["about"]).strip()
+        if full_name is None:
+            errors["name"] = "Please type your full name."
+        if area is None:
+            errors["service_area"] = "Please say where you drive, for example Kololi or Brikama."
+        if len(about) > 1000:
+            errors["about"] = "Please keep this under 1,000 characters."
+        if not errors:
+            driver, _created = phone_auth.find_or_create_driver(
+                phone, full_name, service_area=area, about=about or None)
             session.pop("phone_verified", None)
             start_session(driver, "phone")
             return _after_sign_in(driver)
 
     return render_template("driver/name.html", phone=pretty(phone), blocked=False,
-                           error=error, value=value), (400 if error else 200)
+                           errors=errors, values=values), (400 if errors else 200)
 
 
 @bp.get("/status")

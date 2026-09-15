@@ -7,7 +7,7 @@ in this flow.
 Become a driver / Driver sign in
   → type your phone number (+220 is filled in, and can be changed)
   → type the 6-digit code we text you
-  → first time only: type your name
+  → first time only: full name, where you drive, and (optionally) about you
   → your dashboard (approved) or your application status (not approved yet)
 ```
 
@@ -29,7 +29,9 @@ account signs into that account. A number with no account gets a new one.
 | Verifying a phone never approves anyone. New accounts are `pending` and see only their application status | `app/operator.py` `login_required` |
 | Adding or changing a sign-in number needs a sign-in from the last 15 minutes **and** the code texted to the new number; no code is texted to a number another account already uses. There is no other way to put a number on an account | `app/driver_auth.py`, `phone_auth.attach_phone` |
 | Staff can only **remove** a number (lost SIM, wrong owner). Staff cannot attach one | `admin.operator_phone_remove` |
-| Production fails closed: no SMS backend means phone sign-in says it is unavailable; `JATTA_SMS_BACKEND=fake` in production stops the app from starting | `app/sms.py`, `config.check_production_config` |
+| Nothing reveals whether a number is registered: sending a code looks the same for every number; adding a number another account already uses carries on like any other (code page, cooldown, attempts) but sends no text and the code can never match | `app/driver_auth.py`, `phone_auth.request_code(deliver=False)` |
+| One message for every failed send — no provider configured, provider refusal, network error: "We couldn't send a code just now…". The form stays usable; nothing on the page describes the site's configuration | `phone_auth.cannot_send_message` |
+| Production fails closed: with no SMS backend no code is created, no account is made and nobody is signed in; `/healthz` and the admin checklist report the missing provider to staff. `JATTA_SMS_BACKEND=fake` in production stops the app from starting | `app/sms.py`, `config.check_production_config` |
 
 ## Existing accounts and duplicate numbers
 
@@ -53,6 +55,9 @@ account signs into that account. A number with no account gets a new one.
 python tools/upgrade_local.py          # backs up instance/jatta.db, then migrates
 JATTA_SMS_BACKEND=fake python run.py   # local test transport
 ```
+
+The provider is chosen by `JATTA_SMS_BACKEND` (`app/sms.py`): `twilio` for real
+delivery, `fake` for a local computer or tests, unset for "no provider".
 
 With `fake`, no text leaves the computer. Codes go to
 `instance/dev_sms_outbox.jsonl` (git-ignored, owner-only permissions). Signed-in

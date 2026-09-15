@@ -140,7 +140,7 @@ class PhoneSecurityCase(unittest.TestCase):
         e164 = normalise("+220", number)
         response = self.post(client, "/driver/code", code=self.last_code(e164))
         self.assertEqual(response.status_code, 302)
-        response = self.post(client, "/driver/name", name=name)
+        response = self.post(client, "/driver/name", name=name, service_area='Kololi')
         self.assertEqual(response.status_code, 302)
         return Operator.query.filter_by(phone_e164=e164).one()
 
@@ -194,8 +194,8 @@ class SameNumberSameAccountTests(PhoneSecurityCase):
         self.assertEqual(self.send(second, "00220 770-1234").status_code, 302)
         self.post(second, "/driver/code", code=self.last_code(NUMBER))
         self.assertEqual(Operator.query.count(), 0)
-        self.post(first, "/driver/name", name="First Person")
-        self.post(second, "/driver/name", name="Second Person")
+        self.post(first, "/driver/name", name="First Person", service_area='Kololi')
+        self.post(second, "/driver/name", name="Second Person", service_area='Kololi')
         self.assertEqual(Operator.query.count(), 1)
         account = Operator.query.one()
         self.assertEqual(self.signed_in_id(first), account.id)
@@ -213,7 +213,7 @@ class NumberAloneTests(PhoneSecurityCase):
             self.assertEqual(Operator.query.count(), 0)
             # Skipping the code step gets nowhere either.
             self.assertIn("/driver/join", client.get("/driver/name").location)
-            response = self.post(client, "/driver/name", name="Pretend Driver")
+            response = self.post(client, "/driver/name", name="Pretend Driver", service_area='Kololi')
             self.assertEqual(response.status_code, 302)
             self.assertIn("/driver/join", response.location)
             self.assertIn("/driver/sign-in", client.get("/driver/status").location)
@@ -453,7 +453,7 @@ class SecretsStayOutOfLogsTests(PhoneSecurityCase):
             self.post(client, "/driver/code/resend")
             self.post(client, "/driver/code", code=self.last_code(NUMBER))
             client.get("/driver/name")
-            self.post(client, "/driver/name", name="Lamin Jallow")
+            self.post(client, "/driver/name", name="Lamin Jallow", service_area='Kololi')
             client.get("/driver/status")
             client.get("/operator/")
             client.get("/driver/sign-out")
@@ -629,15 +629,14 @@ class ProductionFailsClosedTests(unittest.TestCase):
                 client = app.test_client()
                 page = client.get("/driver/join")
                 self.assertEqual(page.status_code, 200)
-                self.assertRegex(page.get_data(as_text=True), r"isn(&#39;|')t switched on")
+                self.assertNotIn("switched on", page.get_data(as_text=True))
                 with client.session_transaction() as session:
                     token = session["_csrf_token"]
                 response = client.post("/driver/send-code", data={
                     "csrf_token": token, "country_code": "+220", "phone": "770 1234",
                     "intent": "join"})
                 self.assertNotEqual(response.status_code, 302)
-                self.assertRegex(response.get_data(as_text=True),
-                                 r"isn(&#39;|')t working|switched on")
+                self.assertRegex(response.get_data(as_text=True), r"couldn(&#39;|')t send a code")
                 self.assertEqual(PhoneCode.query.count(), 0)
                 self.assertEqual(Operator.query.count(), 0)
                 self.assertEqual(sms.outbox(), [])
@@ -679,10 +678,10 @@ class CsrfTests(PhoneSecurityCase):
         self.assertEqual(len(sms.outbox()), 1)
 
         self.post(self.client, "/driver/code", code=code)
-        self.client.post("/driver/name", data={"name": "No Token"})
+        self.client.post("/driver/name", data={"name": "No Token", "service_area": "Kololi"})
         self.assertEqual(Operator.query.count(), 0)
         self.assertIsNone(self.signed_in_id(self.client))
-        self.post(self.client, "/driver/name", name="With Token")
+        self.post(self.client, "/driver/name", name="With Token", service_area='Kololi')
         self.assertEqual(Operator.query.count(), 1)
 
 
@@ -714,7 +713,7 @@ class SessionTests(PhoneSecurityCase):
         self.send(self.client, "770 1234")
         self.post(self.client, "/driver/code", code=self.last_code(NUMBER))
         before = self.token(self.client)
-        self.post(self.client, "/driver/name", name="Fatou Ceesay")
+        self.post(self.client, "/driver/name", name="Fatou Ceesay", service_area='Kololi')
         data, permanent = self.session_of(self.client)
         self.assertIsNotNone(data.get("operator_id"))
         self.assertNotEqual(data.get("_csrf_token"), before)
@@ -791,8 +790,13 @@ class ChangeNumberTests(PhoneSecurityCase):
         holder = self.driver(OTHER, name="Other Holder")
         holder_verified = holder.phone_verified_at
         response = self.send(self.client, "770 1235", intent="add")
-        if response.status_code == 302 and "/driver/code" in response.location:
-            self.post(self.client, "/driver/code", code=self.last_code(OTHER))
+        # The flow looks normal (so nothing is revealed), but no text reaches
+        # the other driver and no guess can attach their number.
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/driver/code", response.location)
+        self.assertEqual(self.codes_to(OTHER), [])
+        for guess in ("000000", "123456"):
+            self.post(self.client, "/driver/code", code=guess)
         db.session.expire_all()
         mine = db.session.get(Operator, self.account.id)
         theirs = db.session.get(Operator, holder.id)
@@ -833,7 +837,7 @@ class LegacyContactNumberTests(PhoneSecurityCase):
                 page = client.get("/driver/name")
                 self.assertEqual(page.status_code, 200)
                 self.assertNotIn(b'name="name"', page.data)
-                self.post(client, "/driver/name", name="Someone New")
+                self.post(client, "/driver/name", name="Someone New", service_area='Kololi')
                 self.assertEqual(Operator.query.count(), 1)
                 self.assertIsNone(self.signed_in_id(client))
 

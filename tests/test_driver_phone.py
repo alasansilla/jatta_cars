@@ -44,7 +44,7 @@ class DriverPhoneTests(unittest.TestCase):
         self.assertEqual(self.client.get('/driver/code').status_code, 200)
         self.post('/driver/code', code=code)
         self.assertEqual(self.client.get('/driver/name').status_code, 200)
-        self.post('/driver/name', name='Test Driver')
+        self.post('/driver/name', name='Test Driver', service_area='Kololi')
         driver = Operator.query.one()
         self.assertEqual(driver.status, 'pending')
         self.assertIsNone(driver.email)
@@ -98,7 +98,7 @@ class DriverPhoneTests(unittest.TestCase):
         db.session.add(Operator(name='Existing', slug='existing', phone='+220877701234', status='approved'))
         db.session.commit()
         self.post('/driver/code', code=self.code())
-        response = self.post('/driver/name', name='Someone Else')
+        response = self.post('/driver/name', name='Someone Else', service_area='Kololi')
         self.assertIn(b'You may already have an account', response.data)
         self.assertEqual(Operator.query.count(), 1)
         with self.client.session_transaction() as session:
@@ -167,9 +167,10 @@ class AddNumberHeldElsewhereTests(DriverPhoneTests):
             session['operator_id'] = asker.id
             session['driver_signed_in_at'] = int(__import__('time').time())
         response = self.post('/driver/send-code', country_code='+220', phone='770 1234', intent='add')
-        self.assertEqual(response.status_code, 409)
+        # Carries on like any number, so nothing is revealed, but texts nobody.
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/driver/code', response.location)
         self.assertEqual(len(sms.outbox()), 0)
-        self.assertEqual(PhoneCode.query.count(), 0)
 
 
 class SqlParametersHiddenTests(unittest.TestCase):

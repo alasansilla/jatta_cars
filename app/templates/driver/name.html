@@ -1,5 +1,5 @@
 {% extends "driver/base.html" %}
-{% block driver_title %}Your name{% endblock %}
+{% block driver_title %}Your details{% endblock %}
 {% block driver_content %}
   {% if blocked %}
     <h1>You may already have an account</h1>
@@ -9,14 +9,32 @@
     <p style="margin-top:18px">Not your account, or can't sign in? <a href="{{ url_for('public.contact') }}">Contact {{ company_name }}</a> and we will sort it out with you.</p>
   {% else %}
     <p class="notice notice--good" role="status">Your number {{ phone }} is confirmed.</p>
-    <h1>What is your name?</h1>
-    <p>Customers see this name when they choose a driver.</p>
+    <h1>Tell us about you</h1>
+    <p>This starts your driver application. {{ company_name }} checks every driver before they can take trips.</p>
     <form method="post" novalidate>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label class="big-label" for="name">Your name</label>
-      <input id="name" name="name" value="{{ value }}" autocomplete="name" maxlength="80"
-             style="font-size:1.3rem;padding:14px 12px" required autofocus>
-      <button class="btn btn--primary btn--xl" type="submit">Continue</button>
+
+      <label class="big-label" for="name">Your full name</label>
+      <input id="name" name="name" value="{{ values.name }}" autocomplete="name" maxlength="80"
+             style="font-size:1.2rem;padding:14px 12px" required autofocus
+             {% if errors.name %}aria-invalid="true" aria-describedby="name-error"{% endif %}>
+      <p class="hint">Customers see this name when they choose a driver.</p>
+      {% if errors.name %}<p id="name-error" class="field-status field-status--warn" role="alert">{{ errors.name }}</p>{% endif %}
+
+      <label class="big-label" for="service_area" style="margin-top:18px">Where do you drive?</label>
+      <input id="service_area" name="service_area" value="{{ values.service_area }}" maxlength="200"
+             placeholder="For example Kololi, Serrekunda, the airport" style="font-size:1.2rem;padding:14px 12px" required
+             {% if errors.service_area %}aria-invalid="true" aria-describedby="area-error"{% endif %}>
+      {% if errors.service_area %}<p id="area-error" class="field-status field-status--warn" role="alert">{{ errors.service_area }}</p>{% endif %}
+
+      <label class="big-label" for="about" style="margin-top:18px">About you <span class="muted" style="font-weight:400">(optional)</span></label>
+      <textarea id="about" name="about" rows="4" maxlength="1000"
+                placeholder="Languages you speak, how long you have driven, your car"
+                {% if errors.about %}aria-invalid="true" aria-describedby="about-error"{% endif %}>{{ values.about }}</textarea>
+      <p class="hint">Shown on your public profile once you are approved.</p>
+      {% if errors.about %}<p id="about-error" class="field-status field-status--warn" role="alert">{{ errors.about }}</p>{% endif %}
+
+      <button class="btn btn--primary btn--xl" type="submit">Send my application</button>
     </form>
   {% endif %}
 {% endblock %}

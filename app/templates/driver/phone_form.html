@@ -1,9 +1,4 @@
-{# Expects: intent, country_code, number, sms_ready. #}
-{% if not sms_ready %}
-  <p class="notice notice--warn" role="status">
-    Signing in with a text message isn't switched on yet. Please try again later.
-  </p>
-{% endif %}
+{# Expects: intent, country_code, number. #}
 <form method="post" action="{{ url_for('driver_auth.send_code') }}" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="intent" value="{{ intent }}">
@@ -16,8 +11,6 @@
            value="{{ number }}" maxlength="20" placeholder="770 1234" required autofocus>
   </div>
   <p class="hint">+220 is The Gambia. Change it if your number is from another country.</p>
-  <button class="btn btn--primary btn--xl" type="submit" {% if not sms_ready %}disabled{% endif %}>
-    Send me a code
-  </button>
+  <button class="btn btn--primary btn--xl" type="submit">Send me a code</button>
   <p class="hint center" style="margin-top:12px">We will text you a 6-digit code. You don't need a password.</p>
 </form>

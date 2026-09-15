@@ -466,16 +466,12 @@ SCHEMA = [
             Field("operators_eyebrow", "Small label", default="For drivers"),
             Field("operators_heading", "Page heading", default="Become a driver"),
             Field("operators_intro", "Page intro", type="textarea", rows=4,
-                  default=f"Customers choose you for rides, airport transfers and car "
-                          f"rental. You set your own prices.\n\n"
-                          f"{TBC} add a sentence about who you are looking for."),
+                  default="Customers choose you for rides, airport transfers and car "
+                          "rental. You set your own prices."),
             Field("operators_requirements", "What a driver needs", type="lines", rows=7,
-                  default=f"{TBC} vehicle documents you require\n"
-                          f"{TBC} driver licence and permit requirements\n"
-                          f"{TBC} insurance you require a driver to hold\n"
-                          f"{TBC} vehicle age or condition standards",
+                  default="",
                   help="One per line. These are your rules, so nothing is filled in for "
-                       "you."),
+                       "you; the section stays hidden until you add some."),
             Field("operators_commission_note", "How commission is explained",
                   type="textarea", rows=3,
                   default="Joining is free. We take a commission on the price of each "
@@ -483,9 +479,8 @@ SCHEMA = [
                           "included."),
             Field("operators_apply_note", "Note about approval",
                   type="textarea", rows=3,
-                  default=f"Confirming your phone number does not approve you straight "
-                          f"away — we check every driver first. {TBC} say how long a check "
-                          f"usually takes."),
+                  default="Confirming your phone number does not approve you straight "
+                          "away — we check every driver first."),
             Field("operators_empty", "Shown when no drivers are approved yet",
                   type="textarea", rows=2,
                   default="No drivers are listed yet."),

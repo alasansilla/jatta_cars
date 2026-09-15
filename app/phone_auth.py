@@ -167,15 +167,32 @@ def message_text(code):
     return body
 
 
-def request_code(phone_e164, purpose, nonce, ip, now=None):
-    """Create a code for this number and text it. Raises Refused with a reason."""
+def cannot_send_message():
+    """One message for every reason a code did not go out.
+
+    No provider configured, the provider refusing, or the network failing all
+    read the same to the person on the page, so the page says nothing about how
+    the site is set up — and nothing about whether the number is known.
+    """
+    return ("We couldn't send a code just now. Check the number and try again in a "
+            f"few minutes. If it keeps happening, contact {brand()}.")
+
+
+def request_code(phone_e164, purpose, nonce, ip, now=None, deliver=True):
+    """Create a code for this number and text it. Raises Refused with a reason.
+
+    With `deliver=False` everything happens exactly as for a real code — the
+    same checks, limits, counters and code row — except that no text is sent and
+    the stored hash can never match any code. Callers use it where sending would
+    reveal something (a number that already belongs to another account), so both
+    cases look identical from the outside.
+    """
     if purpose not in PURPOSES:
         raise ValueError(purpose)
     now = now or datetime.utcnow()
 
     if not sms.available():
-        raise Refused("Sign-in by text message isn't working at the moment. "
-                      f"Please try again later or contact {brand()}.")
+        raise Refused(cannot_send_message())
 
     # Serialize send budgets across workers, not only within a Python process.
     if db.engine.dialect.name == "postgresql":
@@ -221,9 +238,13 @@ def request_code(phone_e164, purpose, nonce, ip, now=None):
 
     code = f"{secrets.randbelow(10 ** 6):06d}"
     binding = session_binding(nonce)
+    if not deliver:
+        # A random digest that no six-digit code can produce.
+        code = None
     row = PhoneCode(
         phone_e164=phone_e164, purpose=purpose, session_hash=binding,
-        code_hash=_code_digest(phone_e164, purpose, binding, code),
+        code_hash=(_code_digest(phone_e164, purpose, binding, code) if code is not None
+                   else secrets.token_hex(32)),
         created_at=now,
         expires_at=now + timedelta(seconds=_setting("SMS_CODE_TTL_SECONDS", 600)),
         attempts=0,
@@ -236,6 +257,8 @@ def request_code(phone_e164, purpose, nonce, ip, now=None):
     _record(SENT_ANYWHERE, "all", now)
     db.session.commit()
 
+    if code is None:
+        return row
     try:
         sms.send(phone_e164, message_text(code))
     except sms.SmsUnavailable:
@@ -243,8 +266,7 @@ def request_code(phone_e164, purpose, nonce, ip, now=None):
             PhoneCode.id == row.id, PhoneCode.closed_at.is_(None),
         ).values(closed_at=datetime.utcnow(), outcome="not_sent"))
         db.session.commit()
-        raise Refused("We couldn't send the text message. Please check the number "
-                      "and try again in a minute.")
+        raise Refused(cannot_send_message())
     return row
 
 
@@ -330,7 +352,7 @@ def unverified_claims(phone_e164):
     return [row for row in rows if try_normalise(row.phone) == phone_e164]
 
 
-def find_or_create_driver(phone_e164, name, now=None):
+def find_or_create_driver(phone_e164, name, now=None, service_area=None, about=None):
     """The driver account for a verified number: (operator, created).
 
     If the number already belongs to an account, that account is returned and
@@ -349,6 +371,7 @@ def find_or_create_driver(phone_e164, name, now=None):
             name=name, contact_name=name, slug=Operator.make_slug(base),
             phone_e164=phone_e164, phone_verified_at=now,
             status="pending", email=None,
+            service_area=service_area or None, terms=about or None,
         )
         db.session.add(driver)
         try:
