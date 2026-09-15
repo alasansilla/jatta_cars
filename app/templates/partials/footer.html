@@ -3,7 +3,6 @@
     {% if minimal %}
       <div class="footer-bottom" style="border:none;margin:0;padding:0">
         <span>&copy; {{ current_year }} {{ company_name }}.</span>
-        <a href="{{ url_for('admin.dashboard') }}">Staff login</a>
       </div>
     {% else %}
     <div class="footer-grid">
@@ -55,7 +54,6 @@
 
     <div class="footer-bottom">
       <span>&copy; {{ current_year }} {{ company_name }}. All rights reserved.</span>
-      <a href="{{ url_for('admin.dashboard') }}">Staff login</a>
     </div>
     {% endif %}
   </div>
