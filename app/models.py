@@ -599,7 +599,17 @@ class BookingReview(db.Model):
 
 
 class DriverState(db.Model):
-    """One dispatch vehicle per signed-in operator, with expiring GPS updates."""
+    """A signed-in driver's Driving mode: online or not, which car, which trip.
+
+    `updated_at` is the driver's heartbeat: Driving mode sends one while it is
+    open, with no location in it. A driver whose heartbeat is older than two
+    minutes is treated as offline.
+
+    `lat`, `lng` and `location_at` are the driver's position, and exist only
+    while the driver holds an accepted trip. Driving mode starts sending it when
+    the driver accepts, and every way a trip ends (finish, cancel, decline,
+    expiry, going offline) clears it. Nothing records where a driver has been.
+    """
     __tablename__ = "driver_states"
     operator_id = db.Column(db.Integer, db.ForeignKey("operators.id"), primary_key=True)
     vehicle_id = db.Column(db.Integer, db.ForeignKey("vehicles.id"), nullable=True)
@@ -607,7 +617,11 @@ class DriverState(db.Model):
     active_booking_id = db.Column(db.Integer, db.ForeignKey("bookings.id"), nullable=True, unique=True)
     lat = db.Column(db.Float, nullable=True)
     lng = db.Column(db.Float, nullable=True)
+    location_at = db.Column(db.DateTime, nullable=True)
     updated_at = db.Column(db.DateTime, nullable=True)
+
+    def forget_location(self):
+        self.lat = self.lng = self.location_at = None
 
 
 class PhoneCode(db.Model):

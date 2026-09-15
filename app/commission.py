@@ -118,7 +118,8 @@ def sync_for(booking, settings=None):
     if booking.status in (COMPLETED, 'cancelled'):
         from .models import DriverState
         DriverState.query.filter_by(active_booking_id=booking.id).update(
-            {'active_booking_id': None, 'available': False})
+            {'active_booking_id': None, 'available': False,
+             'lat': None, 'lng': None, 'location_at': None})
     if booking.status == COMPLETED:
         return record_for(booking, settings)
     reverse_for(booking)

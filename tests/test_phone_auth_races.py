@@ -623,6 +623,11 @@ class Migration0008Tests(unittest.TestCase):
                     if column == "__rowid__":
                         continue
                     self.assertIn(column, new, f"{table}.{column} disappeared")
+                    if table == "driver_states" and column in ("lat", "lng"):
+                        # Migration 0011 keeps a driver's position only during an
+                        # accepted trip; this fixture's driver holds none.
+                        self.assertIsNone(new[column])
+                        continue
                     self.assertEqual(new[column], value,
                                      f"{table} row {rowid} column {column} changed")
 

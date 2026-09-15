@@ -37,8 +37,9 @@
       <button id="online" class="btn btn--primary btn--xl" type="button">Go online</button>
       <button id="offline" class="btn btn--dark btn--xl" type="button" hidden>Go offline</button>
       <p class="hint">
-        While you are online, keep this page open. Your phone shares its location so
-        customers can choose you and see you coming. If your location stops for
+        While you are online, keep this page open. Going online does <strong>not</strong>
+        share your location. Your location is shared only after you accept a ride, with
+        that customer only, and it stops when the trip ends. If this page is closed for
         2 minutes, you go offline.
       </p>
     </div>
@@ -58,9 +59,15 @@
       <dt class="js-customer" hidden>Customer</dt><dd class="js-customer" id="job-customer" hidden></dd>
       <dt class="js-customer" hidden>Phone</dt><dd class="js-customer" hidden><a id="job-phone"></a></dd>
     </dl>
-    <div id="job-map" class="drive-map" hidden></div>
+    <div id="sharing" class="notice" hidden aria-live="polite">
+      <p id="sharing-text" style="margin:0 0 8px"></p>
+      <button id="share-stop" class="btn btn--ghost btn--sm" type="button" hidden>Stop sharing my location</button>
+      <button id="share-start" class="btn btn--primary btn--sm" type="button" hidden>Share my location with this customer</button>
+    </div>
+    <div id="job-map" class="drive-map" hidden role="img" aria-label="Map of the pickup and destination"></div>
     {% include "partials/map_attribution.html" %}
     <div class="drive-actions">
+      <p id="accept-note" class="hint" hidden>Accepting shares your live location with this customer until drop-off.</p>
       <button id="accept" class="btn btn--primary btn--xl" type="button" hidden>Accept this ride</button>
       <button id="next" class="btn btn--primary btn--xl" type="button" hidden></button>
       <button id="decline" class="btn btn--ghost btn--xl" type="button" hidden>Decline</button>
@@ -88,9 +95,9 @@
   var MAP = {{ map_settings | tojson }};
   var $ = function (id) { return document.getElementById(id); };
   var vehicle = $("vehicle");
-  var watchId = null, pollFix = null, lastFix = null, sending = false, lastSentAt = 0;
-  var lastJobKey = null, countdownTimer = null, map = null, layers = [];
-  var online = false;
+  var online = false, beat = null;
+  var lastJobKey = null, countdownTimer = null, map = null, layers = [], routeLayers = [], lastRouteAt = 0;
+  var share = { bookingId: null, watch: null, lastSentAt: 0, last: null, paused: {}, denied: {} };
 
   function say(text, kind) {
     var box = $("message");
@@ -106,39 +113,19 @@
       body: JSON.stringify(body || {})
     }).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (data) {
-        data._ok = response.ok; return data;
+        data._ok = response.ok; data._status = response.status; return data;
       });
     });
   }
 
-  /* ---- location ---- */
+  /* ---- online: a heartbeat, with no location in it ---- */
 
-  function sendFix() {
-    if (!online || !lastFix || sending || !vehicle) return;
-    if (Date.now() - lastFix.at > 30000) return;   // never report an old position as current
-    sending = true;
-    post("/operator/drive/location", {
-      lat: lastFix.lat, lng: lastFix.lng, vehicle_id: Number(vehicle.value), available: true
-    }).then(function (data) {
-      if (!data._ok) say(data.error || "Your location could not be sent.", "error");
-      else { lastSentAt = Date.now(); say(""); }
-    }).catch(function () {
-      say("No internet connection. Trying again…", "warn");
-    }).then(function () { sending = false; refresh(); });
-  }
-
-  function onFix(position) {
-    lastFix = { lat: position.coords.latitude, lng: position.coords.longitude, at: Date.now() };
-    if (Date.now() - lastSentAt > 5000) sendFix();
-  }
-
-  function onFixError(error) {
-    if (error && error.code === 1) {
-      say("Allow location for this site in your browser settings, then tap Go online again.", "error");
-      goOffline(true);
-    } else {
-      say("Looking for your location… Make sure location is switched on.", "warn");
-    }
+  function sendHeartbeat() {
+    if (!online || !vehicle) return;
+    post("/operator/drive/heartbeat", { vehicle_id: Number(vehicle.value), available: true })
+      .then(function (data) { if (!data._ok) say(data.error || "Couldn't stay online.", "error"); })
+      .catch(function () { say("No internet connection. Trying again…", "warn"); })
+      .then(refresh);
   }
 
   var wakeLock = null;
@@ -149,37 +136,94 @@
   }
 
   function goOnline() {
-    if (!navigator.geolocation) {
-      say("This browser can't share your location, so you can't go online here.", "error");
-      return;
-    }
     online = true;
     try { sessionStorage.setItem("drive-online", "1"); } catch (e) {}
-    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-    watchId = navigator.geolocation.watchPosition(onFix, onFixError,
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
-    clearInterval(pollFix);
-    pollFix = setInterval(function () {
-      navigator.geolocation.getCurrentPosition(onFix, onFixError,
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 });
-      sendFix();
-    }, 15000);
+    clearInterval(beat);
+    beat = setInterval(sendHeartbeat, 15000);
+    sendHeartbeat();
     $("online").hidden = true; $("offline").hidden = false;
-    say("Getting your location…", "warn");
+    say("");
     keepAwake(true);
   }
 
   function goOffline(quiet) {
     online = false;
     try { sessionStorage.removeItem("drive-online"); } catch (e) {}
-    if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
-    watchId = null; clearInterval(pollFix);
+    clearInterval(beat);
+    stopSharing();
     if ($("online")) { $("online").hidden = false; $("offline").hidden = true; }
     keepAwake(false);
     post("/operator/drive/offline", {}).then(function () {
       if (!quiet) say("You are offline.");
       refresh();
     });
+  }
+
+  /* ---- location: only for the accepted trip this driver holds ---- */
+
+  function showSharing(text, kind, canStop, canStart) {
+    $("sharing").hidden = !text;
+    $("sharing").className = "notice" + (kind ? " notice--" + kind : "");
+    $("sharing-text").textContent = text || "";
+    $("share-stop").hidden = !canStop;
+    $("share-start").hidden = !canStart;
+  }
+
+  function sendPosition() {
+    if (!share.bookingId || !share.last) return;
+    share.lastSentAt = Date.now();
+    post("/operator/drive/location", { booking_id: share.bookingId, lat: share.last.lat, lng: share.last.lng })
+      .then(function (data) {
+        if (data._status === 409) { stopSharing(); refresh(); }
+      }).catch(function () {});
+  }
+
+  function stopSharing() {
+    if (share.watch !== null && navigator.geolocation) navigator.geolocation.clearWatch(share.watch);
+    share.watch = null; share.bookingId = null; share.last = null;
+  }
+
+  function startSharing(bookingId) {
+    if (share.bookingId === bookingId && share.watch !== null) return;
+    stopSharing();
+    if (!navigator.geolocation) {
+      showSharing("This browser can't share your location, so your customer can't see you coming. Call them if you need to.", "warn", false, false);
+      return;
+    }
+    share.bookingId = bookingId;
+    showSharing("Sharing your location with this customer until drop-off.", "good", true, false);
+    share.watch = navigator.geolocation.watchPosition(function (position) {
+      share.last = { lat: position.coords.latitude, lng: position.coords.longitude };
+      if (Date.now() - share.lastSentAt > 5000) sendPosition();
+    }, function (error) {
+      var denied = error && error.code === 1;
+      if (denied) share.denied[bookingId] = true;
+      stopSharing();
+      showSharing(denied
+        ? "Location is blocked for this site, so your customer can't see you coming. Allow location in your browser settings and tap Share, or call your customer."
+        : "Your location isn't available right now. Your customer can't see you coming.", "warn", false, true);
+    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+  }
+
+  function syncSharing(data) {
+    var job = data.job;
+    if (!data.share_location || !job) {
+      stopSharing();
+      showSharing("", null, false, false);
+      return;
+    }
+    if (share.paused[job.id]) {
+      stopSharing();
+      showSharing("You stopped sharing your location. Your customer can't see where you are.", "warn", false, true);
+      return;
+    }
+    if (share.denied[job.id]) {
+      if (share.watch === null) {
+        showSharing("Location is blocked for this site, so your customer can't see you coming. Allow location in your browser settings and tap Share, or call your customer.", "warn", false, true);
+      }
+      return;
+    }
+    startSharing(job.id);
   }
 
   /* ---- what is happening now ---- */
@@ -202,21 +246,48 @@
     layers.forEach(function (layer) { map.removeLayer(layer); });
     layers = [];
     var points = [];
-    [[job.pickup_point, "Pick up"], [job.dropoff_point, "Drop off"],
-     [lastFix ? [lastFix.lat, lastFix.lng] : null, "You"]].forEach(function (pair) {
+    [[job.pickup_point, "Pickup"], [job.dropoff_point, "Destination"],
+     [share.last ? [share.last.lat, share.last.lng] : null, "You"]].forEach(function (pair) {
       if (!pair[0]) return;
-      layers.push(L.marker(pair[0]).addTo(map).bindTooltip(pair[1], { permanent: pair[1] === "You" }));
+      layers.push(L.marker(pair[0], { title: pair[1], alt: pair[1] }).addTo(map)
+        .bindTooltip(pair[1], { permanent: true }));
       points.push(pair[0]);
     });
-    if (points.length > 1) map.fitBounds(L.latLngBounds(points).pad(0.2));
-    else if (points.length) map.setView(points[0], 14);
+    if (points.length > 1 && !routeLayers.length) map.fitBounds(L.latLngBounds(points).pad(0.2));
+    else if (points.length === 1) map.setView(points[0], 14);
     setTimeout(function () { map.invalidateSize(); }, 50);
   }
 
-  function renderJob(job) {
+  function drawRoutes(job, active) {
+    if (!map || !active || Date.now() - lastRouteAt < 30000) {
+      if (!active && map) { routeLayers.forEach(function (l) { map.removeLayer(l); }); routeLayers = []; }
+      return;
+    }
+    lastRouteAt = Date.now();
+    fetch("/operator/drive/route?booking_id=" + encodeURIComponent(job.id), { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (routes) {
+        if (!routes || !map) return;
+        routeLayers.forEach(function (l) { map.removeLayer(l); });
+        routeLayers = [];
+        if (routes.trip && routes.trip.geometry.length > 1) {
+          routeLayers.push(L.polyline(routes.trip.geometry, { weight: 5, opacity: .8 }).addTo(map));
+        }
+        if (routes.to_pickup && routes.to_pickup.geometry.length > 1) {
+          routeLayers.push(L.polyline(routes.to_pickup.geometry, { weight: 4, dashArray: "8 8" }).addTo(map));
+        }
+        if (routeLayers.length) map.fitBounds(L.featureGroup(routeLayers).getBounds().pad(0.15));
+      }).catch(function () {});
+  }
+
+  function renderJob(job, data) {
     var section = $("job");
     clearInterval(countdownTimer);
-    if (!job) { section.hidden = true; lastJobKey = null; $("idle").hidden = false; return; }
+    if (!job) {
+      section.hidden = true; lastJobKey = null; $("idle").hidden = false;
+      if (map) { routeLayers.forEach(function (l) { map.removeLayer(l); }); routeLayers = []; }
+      return;
+    }
     $("idle").hidden = true;
     section.hidden = false;
     var key = job.id + ":" + job.status;
@@ -252,6 +323,7 @@
     } else { countdown.hidden = true; }
 
     $("accept").hidden = job.status !== "pending";
+    $("accept-note").hidden = job.status !== "pending";
     $("accept").dataset.id = job.id;
     var next = $("next");
     next.hidden = !job.next;
@@ -262,6 +334,7 @@
     decline.textContent = job.status === "pending" ? "Decline" : "I can't do this trip";
 
     drawMap(job);
+    drawRoutes(job, data.share_location);
   }
 
   function renderScheduled(items) {
@@ -295,7 +368,7 @@
         return response.json();
       })
       .then(function (data) {
-        renderStatus(data); renderJob(data.job); renderScheduled(data.scheduled || []);
+        renderStatus(data); syncSharing(data); renderJob(data.job, data); renderScheduled(data.scheduled || []);
         if (data.vehicle_id && vehicle && !online) vehicle.value = String(data.vehicle_id);
       })
       .catch(function () { say("Can't reach " + {{ company_name | tojson }} + ". Check your internet connection.", "warn"); });
@@ -313,7 +386,7 @@
   if ($("online")) {
     $("online").addEventListener("click", goOnline);
     $("offline").addEventListener("click", function () { goOffline(false); });
-    vehicle.addEventListener("change", sendFix);
+    vehicle.addEventListener("change", sendHeartbeat);
   }
   $("accept").addEventListener("click", function () {
     act("/operator/drive/accept", { booking_id: Number(this.dataset.id) }, this);
@@ -325,6 +398,22 @@
     var pending = this.textContent === "Decline";
     if (!pending && !window.confirm("Hand this trip back? The customer will choose another driver.")) return;
     act("/operator/drive/decline", { booking_id: Number(this.dataset.id) }, this);
+  });
+  $("share-stop").addEventListener("click", function () {
+    var id = share.bookingId;
+    if (id) share.paused[id] = true;
+    stopSharing();
+    post("/operator/drive/location/stop", {}).then(refresh);
+  });
+  $("share-start").addEventListener("click", function () {
+    var id = Number($("accept").dataset.id) || null;
+    fetch("/operator/drive/state", { credentials: "same-origin" }).then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.job || !data.share_location) return;
+        delete share.paused[data.job.id];
+        delete share.denied[data.job.id];
+        startSharing(data.job.id);
+      });
   });
 
   var wasOnline = false;

@@ -98,12 +98,24 @@ class LiveTrackingCase(unittest.TestCase):
         with client.session_transaction() as session:
             return session.get("_csrf_token")
 
-    def _post_fix(self, client, lat, lng, vehicle_id=None, available=True):
+    def _post_fix(self, client, lat, lng, booking=None):
+        booking = booking or self.booking
         return client.post("/operator/drive/location", json={
-            "lat": lat, "lng": lng,
-            "vehicle_id": vehicle_id if vehicle_id is not None else self.car.id,
-            "available": available,
+            "lat": lat, "lng": lng, "booking_id": booking.id,
         }, headers={"X-CSRF-Token": self._csrf(client)})
+
+    def _hold(self, booking=None):
+        """This driver holds the (confirmed) trip, with Driving mode open."""
+        booking = booking or self.booking
+        state = db.session.get(DriverState, self.operator.id)
+        if state is None:
+            state = DriverState(operator_id=self.operator.id)
+            db.session.add(state)
+        state.active_booking_id = booking.id
+        state.vehicle_id = self.car.id
+        state.updated_at = datetime.utcnow()
+        db.session.commit()
+        return state
 
     def _status(self, client, booking=None):
         booking = booking or self.booking
@@ -122,15 +134,8 @@ class PositionProvenanceTests(LiveTrackingCase):
 
     def test_the_position_shown_is_exactly_what_the_driver_posted(self):
         driver = self._driver(self.operator)
-        state = db.session.get(DriverState, self.operator.id)
-        if state is None:
-            state = DriverState(operator_id=self.operator.id)
-            db.session.add(state)
-        state.active_booking_id = self.booking.id
-        state.vehicle_id = self.car.id
-        db.session.commit()
-
-        self._post_fix(driver, 13.4412, -16.6890)
+        self._hold()
+        self.assertEqual(self._post_fix(driver, 13.4412, -16.6890).status_code, 200)
 
         body = self._status(self._customer(self.booking)).get_json()
         self.assertAlmostEqual(body["driver"]["lat"], 13.4412, places=4)
@@ -143,6 +148,7 @@ class PositionProvenanceTests(LiveTrackingCase):
         state = DriverState(operator_id=self.operator.id, vehicle_id=self.car.id,
                             active_booking_id=self.booking.id,
                             lat=13.44, lng=-16.68,
+                            location_at=datetime.utcnow() - timedelta(minutes=5),
                             updated_at=datetime.utcnow() - timedelta(minutes=5))
         db.session.add(state)
         db.session.commit()
@@ -213,19 +219,26 @@ class LocationAuthTests(LiveTrackingCase):
         db.session.add(rival_car)
         db.session.commit()
 
+        rival_trip = self._ride(self.rival, rival_car, status="confirmed")
+        db.session.add(DriverState(operator_id=self.rival.id, vehicle_id=rival_car.id,
+                                   active_booking_id=rival_trip.id, updated_at=datetime.utcnow()))
+        db.session.commit()
         driver = self._driver(self.operator)
-        response = self._post_fix(driver, 13.44, -16.68, vehicle_id=rival_car.id)
-        self.assertEqual(response.status_code, 400)
+        response = self._post_fix(driver, 13.44, -16.68, booking=rival_trip)
+        self.assertEqual(response.status_code, 409)
+        self.assertIsNone(db.session.get(DriverState, self.rival.id).lat)
 
     def test_a_real_fix_is_timestamped_by_the_server(self):
         """The clock is ours. A driver cannot backdate or postdate a fix."""
         driver = self._driver(self.operator)
+        self._hold()
         before = datetime.utcnow() - timedelta(seconds=1)
-        self._post_fix(driver, 13.44, -16.68)
+        self.assertEqual(self._post_fix(driver, 13.44, -16.68).status_code, 200)
+        db.session.expire_all()
         state = db.session.get(DriverState, self.operator.id)
-        self.assertIsNotNone(state.updated_at)
-        self.assertGreaterEqual(state.updated_at, before)
-        self.assertLessEqual(state.updated_at, datetime.utcnow() + timedelta(seconds=1))
+        self.assertIsNotNone(state.location_at)
+        self.assertGreaterEqual(state.location_at, before)
+        self.assertLessEqual(state.location_at, datetime.utcnow() + timedelta(seconds=1))
 
 
 # --- only the customer who booked may watch ---------------------------------

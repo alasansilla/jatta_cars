@@ -15,9 +15,12 @@ The rules this module keeps:
 * **One driver, one trip.** Reserving a driver is a single guarded UPDATE that
   must match exactly one row, so two customers cannot both get the same driver,
   and a driver can never hold two trips.
-* **Fresh positions only.** A driver whose last location is more than two
-  minutes old is neither offered nor reservable, and a customer is never shown a
-  position more than 45 seconds old.
+* **Location only on an accepted trip.** Being online is a heartbeat with no
+  position in it. A driver's position is accepted, stored and shown only while
+  they hold an accepted trip, to that trip's customer, and is cleared the moment
+  the trip ends in any way. A driver whose heartbeat is more than two minutes
+  old is offline, and a customer is never shown a position more than 45
+  seconds old.
 
 Customers are identified by the booking reference held in their own session.
 Drivers must be signed in and approved, and can only act on the trip they hold.
@@ -25,6 +28,8 @@ Drivers must be signed in and approved, and can only act on the trip they hold.
 import math
 import re
 import secrets
+import threading
+import time
 from collections import namedtuple
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -163,7 +168,7 @@ def _money_text(amount):
 def offers(distance_m, passengers, now=None, exclude_operator_id=None):
     """Every driver who could take this trip right now, priced by their own fare.
 
-    Approved, online with a fresh location, holding no trip, driving their own
+    Approved, online (a heartbeat in the last two minutes), holding no trip, driving their own
     active car with enough seats, and publishing an active per-kilometre ride
     fare. Cheapest first; the customer still chooses.
     """
@@ -178,7 +183,6 @@ def offers(distance_m, passengers, now=None, exclude_operator_id=None):
             DriverState.available.is_(True),
             DriverState.active_booking_id.is_(None),
             DriverState.updated_at >= now - FRESH_FIX,
-            DriverState.lat.isnot(None), DriverState.lng.isnot(None),
             Vehicle.is_active.is_(True),
             Vehicle.operator_id == OperatorFare.operator_id,
             Vehicle.seats >= passengers,
@@ -240,10 +244,14 @@ def reserve(booking_id, choice, now):
 
 
 def release(booking_id):
-    """Let go of whichever driver holds this trip. They go back online on their next location update."""
+    """Let go of whichever driver holds this trip, and forget where they were.
+
+    They go back online on their next heartbeat. Their position belonged to this
+    trip only, so it goes with it.
+    """
     db.session.execute(update(DriverState).where(
         DriverState.active_booking_id == booking_id,
-    ).values(active_booking_id=None, available=False))
+    ).values(active_booking_id=None, available=False, lat=None, lng=None, location_at=None))
 
 
 def _accept_window():
@@ -270,10 +278,75 @@ def settle(booking, now=None):
 
 
 def _silent(booking, state, now):
-    """An accepted driver who has stopped sending their location."""
+    """An accepted driver whose Driving mode has stopped sending heartbeats."""
     holding = state is not None and state.active_booking_id == booking.id
     return not (holding and state.updated_at is not None
                 and state.updated_at >= now - DRIVER_SILENT)
+
+
+def _location_state(state, holding, now):
+    """"live", "stale", "not_shared" or "offline", for the trip being looked at."""
+    if not holding:
+        return "not_shared"
+    if state.updated_at is None or state.updated_at < now - FRESH_FIX:
+        return "offline"
+    if state.lat is None or state.lng is None or state.location_at is None:
+        return "not_shared"
+    if state.location_at < now - SHOW_FIX:
+        return "stale"
+    return "live"
+
+
+# Road routes for the live trip map. Asking the routing provider on every poll
+# would spend its quota for nothing, so answers are kept briefly per process:
+# the pickup-to-destination route for the trip, and the route from the driver
+# to the pickup per rounded driver position.
+_ROUTE_CACHE = {}
+_ROUTE_LOCK = threading.Lock()
+TRIP_ROUTE_SECONDS = 600
+APPROACH_ROUTE_SECONDS = 60
+
+
+def _cached_route(key, seconds, origin, destination):
+    now = time.monotonic()
+    with _ROUTE_LOCK:
+        hit = _ROUTE_CACHE.get(key)
+        if hit and hit[0] > now:
+            return hit[1]
+    try:
+        leg = routing.route(origin, destination)
+    except routing.RoutingUnavailable:
+        leg = None
+    value = None
+    if leg is not None:
+        value = {"geometry": leg.geometry if leg.geometry_known else [],
+                 "distance_km": leg.distance_km, "duration_minutes": leg.duration_minutes}
+    with _ROUTE_LOCK:
+        if len(_ROUTE_CACHE) > 2000:
+            _ROUTE_CACHE.clear()
+        _ROUTE_CACHE[key] = (now + (seconds if value else 30), value)
+    return value
+
+
+def trip_routes(booking, state, now):
+    """The routes the live map draws for an accepted trip. Never raises."""
+    empty = {"available": routing.routing_available(), "trip": None, "to_pickup": None}
+    if booking.status not in RIDE_ACTIVE or not routing.routing_available():
+        return empty
+    if None in (booking.pickup_lat, booking.pickup_lng, booking.dropoff_lat, booking.dropoff_lng):
+        return empty
+    pickup = (float(booking.pickup_lat), float(booking.pickup_lng))
+    dropoff = (float(booking.dropoff_lat), float(booking.dropoff_lng))
+    result = dict(empty)
+    result["trip"] = _cached_route(("trip", booking.id, pickup, dropoff), TRIP_ROUTE_SECONDS,
+                                   pickup, dropoff)
+    holding = state is not None and state.active_booking_id == booking.id
+    if booking.status in ("accepted", "confirmed", "arriving") \
+            and _location_state(state, holding, now) == "live":
+        here = (round(state.lat, 3), round(state.lng, 3))
+        result["to_pickup"] = _cached_route(("approach", booking.id, here, pickup),
+                                            APPROACH_ROUTE_SECONDS, here, pickup)
+    return result
 
 
 def can_choose_again(booking, now=None):
@@ -496,10 +569,12 @@ def status(reference):
                   "phone": pretty(driver_account.phone_e164) or driver_account.phone,
                   "vehicle": booking.vehicle.name if booking.vehicle else None}
         holding = state is not None and state.active_booking_id == booking.id
-        if holding and state.updated_at is not None and state.updated_at >= now - SHOW_FIX \
-                and state.lat is not None and state.lng is not None:
+        driver["online"] = bool(holding and state.updated_at is not None
+                                and state.updated_at >= now - FRESH_FIX)
+        driver["location"] = _location_state(state, holding, now)
+        if driver["location"] == "live":
             driver.update(lat=state.lat, lng=state.lng,
-                          updated_at=state.updated_at.isoformat() + "Z")
+                          updated_at=state.location_at.isoformat() + "Z")
 
     expires_in = None
     if booking.status == "pending" and booking.requested_at is not None:
@@ -521,6 +596,16 @@ def status(reference):
         review_url=url_for("dispatch.review", reference=booking.reference)
         if booking.status == "completed" and not reviewed else None,
     )
+
+
+@bp.get("/ride/route/<reference>")
+def customer_route(reference):
+    """Road routes for this customer's accepted trip. Nothing before acceptance."""
+    booking = settle(customer_booking(reference))
+    if not _within_rate_limit("_trip_route", 30):
+        return jsonify(error="Please wait a moment."), 429
+    state = db.session.get(DriverState, booking.operator_id) if booking.operator_id else None
+    return jsonify(trip_routes(booking, state, datetime.utcnow()))
 
 
 @bp.post("/ride/cancel/<reference>")
@@ -772,6 +857,8 @@ def drive_state():
     booking = _held_booking(driver, state, now)
     fix_age = int((now - state.updated_at).total_seconds()) \
         if state is not None and state.updated_at is not None else None
+    location_age = int((now - state.location_at).total_seconds()) \
+        if state is not None and state.location_at is not None else None
 
     waiting = (Booking.query
                .filter(Booking.operator_id == driver.id, Booking.status == "pending",
@@ -781,7 +868,11 @@ def drive_state():
         online=bool(state is not None and state.available and fix_age is not None
                     and fix_age <= FRESH_FIX.total_seconds()),
         vehicle_id=state.vehicle_id if state is not None else None,
-        fix_age_s=fix_age,
+        heartbeat_age_s=fix_age,
+        location_age_s=location_age,
+        # True only while this driver holds an accepted trip: the one time
+        # Driving mode sends the phone's position.
+        share_location=booking is not None and booking.status in RIDE_ACTIVE,
         job=_job(booking, now) if booking is not None else None,
         scheduled=[{
             "reference": item.reference,
@@ -795,15 +886,12 @@ def drive_state():
     )
 
 
-@bp.post("/operator/drive/location")
+@bp.post("/operator/drive/heartbeat")
 @login_required
-def location():
+def heartbeat():
+    """Driving mode is open: keep this driver online. Carries no location."""
     driver = _current()
     data = payload()
-    lat, lng = _point(data.get("lat"), 90), _point(data.get("lng"), 180)
-    if lat is None or lng is None:
-        return jsonify(error="Your phone didn't send a usable location."), 400
-
     state = db.session.get(DriverState, driver.id)
     if state is None:
         state = DriverState(operator_id=driver.id, available=False)
@@ -817,10 +905,70 @@ def location():
             return jsonify(error="Choose your car first."), 400
         state.vehicle_id = vehicle.id
         state.available = data.get("available") is True
-    state.lat, state.lng = lat, lng
     state.updated_at = datetime.utcnow()
     db.session.commit()
     return jsonify(active_booking_id=state.active_booking_id, available=state.available)
+
+
+@bp.post("/operator/drive/location")
+@login_required
+def location():
+    """The driver's position, for the customer of the accepted trip they hold.
+
+    Refused and not stored at any other time: before acceptance, after the trip
+    ends, or for a trip that is not this driver's.
+    """
+    driver = _current()
+    data = payload()
+    now = datetime.utcnow()
+    lat, lng = _point(data.get("lat"), 90), _point(data.get("lng"), 180)
+    if lat is None or lng is None:
+        return jsonify(error="Your phone didn't send a usable location."), 400
+    booking_id = _whole(data.get("booking_id"))
+    state = db.session.get(DriverState, driver.id)
+    booking = db.session.get(Booking, booking_id) if booking_id else None
+    if (state is None or booking is None or booking.operator_id != driver.id
+            or state.active_booking_id != booking.id or booking.status not in RIDE_ACTIVE):
+        return jsonify(error="Your location is only shared during a trip you have accepted.",
+                       share_location=False), 409
+    changed = db.session.execute(update(DriverState).where(
+        DriverState.operator_id == driver.id,
+        DriverState.active_booking_id == booking.id,
+    ).values(lat=lat, lng=lng, location_at=now, updated_at=now))
+    if changed.rowcount != 1:
+        db.session.rollback()
+        return jsonify(error="This trip has just changed.", share_location=False), 409
+    db.session.commit()
+    return jsonify(share_location=True, active_booking_id=booking.id)
+
+
+@bp.get("/operator/drive/route")
+@login_required
+def driver_route():
+    """Road routes for the accepted trip this driver holds, and no other."""
+    driver = _current()
+    now = datetime.utcnow()
+    booking_id = _whole(request.args.get("booking_id"))
+    state = db.session.get(DriverState, driver.id)
+    booking = db.session.get(Booking, booking_id) if booking_id else None
+    if booking is None or booking.operator_id != driver.id or state is None \
+            or state.active_booking_id != booking.id:
+        return jsonify(error="That trip isn't yours."), 404
+    if not _within_rate_limit("_trip_route", 30):
+        return jsonify(error="Please wait a moment."), 429
+    return jsonify(trip_routes(booking, state, now))
+
+
+@bp.post("/operator/drive/location/stop")
+@login_required
+def stop_location():
+    """The driver turned location sharing off. The trip itself carries on."""
+    driver = _current()
+    state = db.session.get(DriverState, driver.id)
+    if state is not None:
+        state.forget_location()
+        db.session.commit()
+    return jsonify(share_location=False)
 
 
 @bp.post("/operator/drive/offline")
@@ -830,6 +978,7 @@ def offline():
     state = db.session.get(DriverState, driver.id)
     if state is not None:
         state.available = False
+        state.forget_location()
         if state.active_booking_id:
             # Going offline with a request still waiting says no to it, so the
             # customer can choose someone else straight away.
@@ -875,8 +1024,8 @@ def accept():
                        status=booking.status), 409
 
     state = db.session.get(DriverState, driver.id)
-    if state.updated_at is None or state.updated_at < now - FRESH_FIX or state.lat is None:
-        return jsonify(error="Turn on location sharing before you accept."), 409
+    if state.updated_at is None or state.updated_at < now - FRESH_FIX:
+        return jsonify(error="You seem to be offline. Keep Driving mode open, then accept."), 409
 
     accepted = db.session.execute(update(Booking).where(
         Booking.id == booking.id,

@@ -679,63 +679,67 @@ class ChooseAgainTests(DriverConsoleCase):
 # --- location updates -----------------------------------------------------------
 
 class LocationTests(DriverConsoleCase):
+    """Online is a heartbeat; a position is accepted only for an accepted trip."""
+
+    def _beat(self, client, **data):
+        body = dict(vehicle_id=self.car.id, available=True)
+        body.update(data)
+        return self._dpost(client, "/operator/drive/heartbeat", body)
+
     def _loc(self, client, **data):
-        body = dict(lat=13.45, lng=-16.65, vehicle_id=self.car.id, available=True)
+        body = dict(lat=13.45, lng=-16.65)
         body.update(data)
         return self._dpost(client, "/operator/drive/location", body)
 
-    def test_valid_update_goes_online(self):
+    def test_heartbeat_goes_online_without_storing_a_position(self):
         driver = self._driver()
-        response = self._loc(driver)
+        response = self._beat(driver)
         self.assertEqual(response.status_code, 200, response.data)
         state = self._state(self.operator_id)
         self.assertTrue(state.available)
-        self.assertEqual((state.lat, state.lng), (13.45, -16.65))
+        self.assertIsNone(state.location_at)
 
     def test_another_drivers_vehicle_is_rejected(self):
         driver = self._driver()
-        self.assertEqual(self._loc(driver, vehicle_id=self.rival_car.id).status_code, 400)
-        state = self._state(self.operator_id)
-        self.assertEqual(state.vehicle_id, self.car.id)
-        self.assertNotEqual(state.lat, 13.45)
+        self.assertEqual(self._beat(driver, vehicle_id=self.rival_car.id).status_code, 400)
+        self.assertEqual(self._state(self.operator_id).vehicle_id, self.car.id)
 
     def test_inactive_vehicle_is_rejected(self):
         parked = self._car(self.operator, "Honda", "Fit", active=False)
         driver = self._driver()
-        self.assertEqual(self._loc(driver, vehicle_id=parked.id).status_code, 400)
+        self.assertEqual(self._beat(driver, vehicle_id=parked.id).status_code, 400)
         self.assertEqual(self._state(self.operator_id).vehicle_id, self.car.id)
 
-    def test_boolean_and_non_finite_coordinates_are_rejected(self):
+    def test_position_without_an_accepted_trip_is_refused(self):
         driver = self._driver()
-        before = self._state(self.operator_id).updated_at
+        self.assertEqual(self._loc(driver).status_code, 409)
+        _, booking = self._request()
+        self.assertEqual(self._loc(driver, booking_id=booking.id).status_code, 409)
+        self.assertIsNone(self._state(self.operator_id).location_at)
+
+    def test_boolean_and_non_finite_coordinates_are_rejected(self):
+        _, booking = self._request()
+        driver = self._driver()
+        self.assertEqual(self._accept(driver, booking.id).status_code, 200)
         for data in (dict(lat=True), dict(lng=False), dict(lat="nan"), dict(lng="inf"),
                      dict(lat=None), dict(lat=91), dict(lng=-181), dict(lat=[13.4])):
-            self.assertEqual(self._loc(driver, **data).status_code, 400, data)
-        # A literal NaN in the JSON body, which Python's parser accepts.
-        raw = '{"lat": NaN, "lng": -16.65, "vehicle_id": %d, "available": true}' % self.car.id
-        response = driver.post("/operator/drive/location", data=raw,
-                               content_type="application/json",
+            self.assertEqual(self._loc(driver, booking_id=booking.id, **data).status_code, 400, data)
+        raw = '{"lat": NaN, "lng": -16.65, "booking_id": %d}' % booking.id
+        response = driver.post("/operator/drive/location", data=raw, content_type="application/json",
                                headers={"X-CSRF-Token": driver.csrf})
         self.assertEqual(response.status_code, 400)
-        raw = '{"lat": 13.4, "lng": Infinity, "vehicle_id": %d, "available": true}' % self.car.id
-        response = driver.post("/operator/drive/location", data=raw,
-                               content_type="application/json",
-                               headers={"X-CSRF-Token": driver.csrf})
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(self._state(self.operator_id).updated_at, before)
+        self.assertIsNone(self._state(self.operator_id).location_at)
+        self.assertEqual(self._loc(driver, booking_id=booking.id).status_code, 200)
+        self.assertEqual((self._state(self.operator_id).lat, self._state(self.operator_id).lng),
+                         (13.45, -16.65))
 
     def test_available_only_when_json_true(self):
         driver = self._driver()
         for value in ("true", 1, "1", "yes", None, False):
-            response = self._loc(driver, available=value)
+            response = self._beat(driver, available=value)
             self.assertEqual(response.status_code, 200, value)
             self.assertFalse(self._state(self.operator_id).available, value)
-        response = driver.post("/operator/drive/location",
-                               json={"lat": 13.45, "lng": -16.65, "vehicle_id": self.car.id},
-                               headers={"X-CSRF-Token": driver.csrf})
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(self._state(self.operator_id).available)
-        self.assertEqual(self._loc(driver, available=True).status_code, 200)
+        self.assertEqual(self._beat(driver, available=True).status_code, 200)
         self.assertTrue(self._state(self.operator_id).available)
 
     def test_vehicle_cannot_be_switched_while_holding_a_trip(self):
@@ -743,7 +747,7 @@ class LocationTests(DriverConsoleCase):
         _, booking = self._request()
         driver = self._driver()
         self.assertEqual(self._accept(driver, booking.id).status_code, 200)
-        response = self._loc(driver, vehicle_id=spare.id, available=True)
+        response = self._beat(driver, vehicle_id=spare.id, available=True)
         self.assertIn(response.status_code, (200, 400, 409))
         state = self._state(self.operator_id)
         self.assertEqual(state.vehicle_id, self.car.id)
@@ -752,11 +756,9 @@ class LocationTests(DriverConsoleCase):
 
     def test_location_without_csrf_is_refused(self):
         driver = self._driver()
-        response = driver.post("/operator/drive/location",
-                               json=dict(lat=13.45, lng=-16.65, vehicle_id=self.car.id,
-                                         available=True))
+        response = driver.post("/operator/drive/location", json=dict(lat=13.45, lng=-16.65))
         self.assertEqual(response.status_code, 400)
-        self.assertNotEqual(self._state(self.operator_id).lat, 13.45)
+        self.assertIsNone(self._state(self.operator_id).location_at)
 
 
 # --- the older booking pages ----------------------------------------------------

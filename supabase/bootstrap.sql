@@ -247,6 +247,7 @@ CREATE TABLE IF NOT EXISTS driver_states (
 	active_booking_id INTEGER,
 	lat FLOAT,
 	lng FLOAT,
+	location_at TIMESTAMP WITHOUT TIME ZONE,
 	updated_at TIMESTAMP WITHOUT TIME ZONE,
 	PRIMARY KEY (operator_id),
 	FOREIGN KEY(operator_id) REFERENCES operators (id),
@@ -374,7 +375,8 @@ insert into public.schema_migrations (version, name, applied_at) values
   ('0007', 'verified completed booking reviews', now()),
   ('0008', 'driver phone sign-in and one request per estimate', now()),
   ('0009', 'verified Gambian numbers in 9-digit form', now()),
-  ('0010', 'public API lockdown and index parity', now())
+  ('0010', 'public API lockdown and index parity', now()),
+  ('0011', 'driver location only during an accepted trip', now())
 on conflict (version) do nothing;
 
 alter table public.schema_migrations enable row level security;

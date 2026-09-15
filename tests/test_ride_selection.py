@@ -469,15 +469,15 @@ class AvailabilityTests(RideSelectionCase):
                 datetime.utcnow() - timedelta(minutes=3)
         self._assert_driver_a_unavailable(change)
 
-    def test_latitude_missing(self):
-        def change():
-            db.session.get(DriverState, self.operator.id).lat = None
-        self._assert_driver_a_unavailable(change)
-
-    def test_longitude_missing(self):
-        def change():
-            db.session.get(DriverState, self.operator.id).lng = None
-        self._assert_driver_a_unavailable(change)
+    def test_no_shared_position_still_offered(self):
+        """Being online is a heartbeat. A driver shares no position until they
+        accept a trip, so a missing position must not hide them."""
+        state = db.session.get(DriverState, self.operator.id)
+        state.lat = state.lng = None
+        db.session.commit()
+        fresh_client, fresh_csrf = self._customer()
+        fresh = self._estimate(fresh_client, fresh_csrf).get_json()
+        self.assertIn(self.operator.id, self._driver_ids(fresh["choices"]))
 
     def test_driving_a_car_that_belongs_to_someone_else(self):
         def change():

@@ -58,13 +58,14 @@
   var DROPOFF = {{ ([booking.dropoff_lat | float, booking.dropoff_lng | float] if booking.dropoff_lat is not none else none) | tojson }};
   var $ = function (id) { return document.getElementById(id); };
   var map = null, driverMarker = null, countdownTimer = null, poll = null, rechoiceToken = null;
+  var routeLayers = [], lastRouteAt = 0, ACTIVE = ["accepted", "confirmed", "arriving", "in_progress"];
 
   if (CFG.enabled && typeof L !== "undefined") {
     map = L.map("track-map").setView(CFG.centre, CFG.zoom);
     L.tileLayer(CFG.tile_url, { attribution: CFG.attribution, maxZoom: CFG.max_zoom }).addTo(map);
     var bounds = [];
-    if (PICKUP) { L.marker(PICKUP).addTo(map).bindTooltip("Pickup"); bounds.push(PICKUP); }
-    if (DROPOFF) { L.marker(DROPOFF).addTo(map).bindTooltip("Destination"); bounds.push(DROPOFF); }
+    if (PICKUP) { L.marker(PICKUP, { title: "Pickup", alt: "Pickup" }).addTo(map).bindTooltip("Pickup", { permanent: true }); bounds.push(PICKUP); }
+    if (DROPOFF) { L.marker(DROPOFF, { title: "Destination", alt: "Destination" }).addTo(map).bindTooltip("Destination", { permanent: true }); bounds.push(DROPOFF); }
     if (bounds.length > 1) map.fitBounds(L.latLngBounds(bounds).pad(0.25));
   }
 
@@ -133,13 +134,23 @@
     }
 
     if (driverMarker && map) { map.removeLayer(driverMarker); driverMarker = null; }
-    if (d.driver && typeof d.driver.lat === "number" && map) {
-      driverMarker = L.circleMarker([d.driver.lat, d.driver.lng], { radius: 10, weight: 3 }).addTo(map)
-        .bindTooltip("Your driver", { permanent: true });
-      $("location-note").textContent = "Driver location updated at " + new Date(d.driver.updated_at).toLocaleTimeString() + ".";
+    var note = $("location-note");
+    if (d.driver && d.driver.location === "live" && typeof d.driver.lat === "number") {
+      if (map) {
+        driverMarker = L.circleMarker([d.driver.lat, d.driver.lng], { radius: 10, weight: 3 }).addTo(map)
+          .bindTooltip("Your driver", { permanent: true });
+      }
+      note.textContent = "Your driver's location, updated at " + new Date(d.driver.updated_at).toLocaleTimeString() + ".";
+    } else if (d.driver) {
+      note.textContent = {
+        stale: "Your driver's last location is more than a minute old, so it isn't shown.",
+        not_shared: "Your driver isn't sharing their location right now. You can call them.",
+        offline: "Your driver seems to be offline. Call them, or choose another driver if they don't answer."
+      }[d.driver.location] || "";
     } else {
-      $("location-note").textContent = d.driver ? "Waiting for your driver's location." : "";
+      note.textContent = "";
     }
+    drawRoutes(d);
 
     $("silent").hidden = !d.driver_silent;
     $("rechoose").hidden = !d.can_choose_again;
@@ -148,7 +159,35 @@
     review.hidden = !d.review_url;
     if (d.review_url && sameOrigin(d.review_url)) review.href = sameOrigin(d.review_url);
 
-    if (d.status === "completed" || d.status === "cancelled") { clearInterval(poll); poll = null; }
+    if (d.status === "completed" || d.status === "cancelled") { clearInterval(poll); poll = null; clearRoutes(); }
+  }
+
+  function clearRoutes() {
+    if (!map) return;
+    routeLayers.forEach(function (layer) { map.removeLayer(layer); });
+    routeLayers = [];
+  }
+
+  /* Road routes appear only for an accepted trip: from the driver to the
+     pickup (dashed) while they are on their way, and pickup to destination. */
+  function drawRoutes(d) {
+    if (!map || ACTIVE.indexOf(d.status) < 0) { clearRoutes(); return; }
+    if (Date.now() - lastRouteAt < 20000) return;
+    lastRouteAt = Date.now();
+    fetch("/ride/route/" + encodeURIComponent(REF), { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (routes) {
+        if (!routes) return;
+        clearRoutes();
+        if (routes.trip && routes.trip.geometry.length > 1) {
+          routeLayers.push(L.polyline(routes.trip.geometry, { weight: 5, opacity: .8 }).addTo(map));
+        }
+        if (routes.to_pickup && routes.to_pickup.geometry.length > 1) {
+          routeLayers.push(L.polyline(routes.to_pickup.geometry, { weight: 4, dashArray: "8 8" }).addTo(map));
+          $("location-note").textContent += " About " + routes.to_pickup.duration_minutes + " min to your pickup.";
+        }
+        if (routeLayers.length) map.fitBounds(L.featureGroup(routeLayers).getBounds().pad(0.15));
+      }).catch(function () {});
   }
 
   function refresh() {
