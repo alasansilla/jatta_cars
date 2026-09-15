@@ -25,6 +25,7 @@
     <p id="silent" class="notice notice--warn" hidden>Your driver hasn't shared their location for a few minutes. Call them, or choose another driver below.</p>
     <p id="location-note" class="small muted"></p>
     {% if map_settings.enabled %}<div id="track-map" class="track-map"></div>{% endif %}
+    {% include "partials/map_attribution.html" %}
 
     <section id="rechoose" class="panel" hidden>
       <h2 style="font-size:1.3rem">Choose another driver</h2>

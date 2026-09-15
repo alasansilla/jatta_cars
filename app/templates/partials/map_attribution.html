@@ -1,0 +1,9 @@
+{# Expects map_settings. Geoapify's Free plan requires a visible follow link
+   ("Powered by Geoapify") wherever its geocoding or routing data is used, and
+   OpenStreetMap data always needs its own credit. #}
+{% if map_settings and (map_settings.geocoding or map_settings.routing) %}
+  <p class="small muted map-attribution">
+    <a href="https://www.geoapify.com/" target="_blank">Powered by Geoapify</a>
+    · Map data &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors
+  </p>
+{% endif %}

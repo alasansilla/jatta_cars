@@ -96,6 +96,7 @@
           {% endif %}
 
           <div id="route-summary" class="route-summary" hidden></div>
+          {% include "partials/map_attribution.html" %}
 
           {% if not map_settings.geocoding or not map_settings.routing %}
             <p class="hint" id="manual-note" style="margin-top:12px">

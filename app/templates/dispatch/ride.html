@@ -48,7 +48,7 @@
       <div>
         {% if map_settings.enabled %}<div id="ride-map" class="track-map" style="height:480px;margin-top:0"></div>{% endif %}
         <p class="small muted">Prices come from each driver's own rate and the road distance. You pay your driver; nothing is charged on this website.</p>
-        {% if map_settings.geocoding or map_settings.routing %}<p class="small muted">Address search and road routes by <a href="https://www.geoapify.com/" rel="noopener">Geoapify</a>. Map data &copy; OpenStreetMap contributors.</p>{% endif %}
+        {% include "partials/map_attribution.html" %}
       </div>
     </div>
   </div>
