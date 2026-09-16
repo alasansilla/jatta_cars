@@ -126,6 +126,14 @@ class WhatTheSiteClaims(CopyCase):
                                          source) for source in sources)]
         self.assertEqual(orphans, [])
 
+    def test_the_car_count_reads_properly_when_there_is_one(self):
+        self.assertIn("1 car listed by drivers right now", self.text("/about"))
+        db.session.add(Vehicle(make="Toyota", model="Vitz", year=2021, daily_rate=3000,
+                               deposit=5000, operator_id=self.driver.id, is_active=True,
+                               service_mode="rental"))
+        db.session.commit()
+        self.assertIn("2 cars listed by drivers right now", self.text("/about"))
+
     def test_the_settings_screens_still_open(self):
         with self.client.session_transaction() as session:
             session["admin_id"] = 1

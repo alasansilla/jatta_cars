@@ -276,8 +276,9 @@ SCHEMA = [
                        "box stays hidden unless you put something here."),
             Field("about_cta_heading", "Closing heading", default="Have a look at the cars"),
             Field("about_cta_body", "Closing text", type="textarea", rows=2,
-                  default="{fleet_size} cars listed by drivers right now.",
-                  help="{fleet_size} is replaced with the number of cars currently listed."),
+                  default="{cars} listed by drivers right now.",
+                  help="{cars} is replaced with the number of cars currently listed, "
+                       "as \"1 car\" or \"4 cars\"; {fleet_size} gives the number alone."),
         ],
     ),
     Group(

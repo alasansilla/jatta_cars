@@ -57,7 +57,8 @@
   <div class="wrap center">
     <h2 data-edit="about_cta_heading">{{ site.about_cta_heading }}</h2>
     <p class="lede" style="margin:0 auto 30px" data-edit="about_cta_body">
-      {{ site.about_cta_body | tokens(fleet_size=stats.vehicles) }}
+      {{ site.about_cta_body | tokens(fleet_size=stats.vehicles,
+                                      cars=(stats.vehicles ~ (' car' if stats.vehicles == 1 else ' cars'))) }}
     </p>
     <a class="btn btn--primary btn--lg" href="{{ url_for('public.fleet') }}">Browse cars {{ arrow(18) }}</a>
   </div>
