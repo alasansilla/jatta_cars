@@ -224,14 +224,34 @@ SCHEMA = [
             Field("about_eyebrow", "Small label", default="About us"),
             Field("about_heading", "Page heading",
                   default="Drivers you choose, journeys you arrange with them"),
-            Field("about_section1_heading", "First section heading", default="What GoGo Taxi is"),
+            Field("about_section1_heading", "First section heading", default="Who we are"),
             Field("about_section1_body", "First section text", type="textarea", rows=8,
-                  default="GoGo Taxi is an online platform for The Gambia. It puts you in "
-                          "touch with independent drivers who offer rides, airport transfers "
-                          "and cars to rent. We do not own the cars and we do not drive "
-                          "them.\n\n"
-                          "You choose the driver yourself, by their price, their profile and "
-                          "the reviews left by people they have already driven. Nobody is "
+                  default="GoGo Taxi was started in Kololi in 2026 by Alasan Silla, after a "
+                          "visit home made the problem plain. The country is full of "
+                          "vehicles, and it is still hard to find a driver or a car you can "
+                          "rely on. There was no way to book a car before arriving, and the "
+                          "question every visitor ends up asking — who am I actually "
+                          "driving with? — had no good answer.\n\n"
+                          "That is what this site is for. A customer should know who is "
+                          "picking them up, and a driver should know who they are carrying. "
+                          "You can arrange a driver ahead of time, so somebody is waiting "
+                          "when you land and takes you where you are going. And if you would "
+                          "rather drive yourself, the same drivers list cars to rent.\n\n"
+                          "GoGo Taxi is run alongside a day job: Alasan Silla works as an "
+                          "aircraft engine mechanic in Hamburg, and is studying business and "
+                          "IT part-time. The site is built to work without an office behind "
+                          "it — you deal with your driver directly, and nothing waits on "
+                          "somebody answering a phone.",
+                  help="Your own story: who started it, when, where, and what it is for. "
+                       "Do not claim premises, staff or a fleet of your own."),
+            Field("about_section2_heading", "Second section heading",
+                  default="How the platform works"),
+            Field("about_section2_body", "Second section text", type="textarea", rows=8,
+                  default="GoGo Taxi is an online platform. It puts you in touch with "
+                          "independent drivers who offer rides, airport transfers and cars "
+                          "to rent. We do not own the cars and we do not drive them. You "
+                          "choose the driver yourself, by their price, their profile and the "
+                          "reviews left by people they have already driven: nobody is "
                           "allocated to you, and no fare is quoted on anyone's behalf.\n\n"
                           "A driver reaches this site by confirming their own phone number "
                           "and then being approved by us, which is a person's decision "
@@ -244,11 +264,11 @@ SCHEMA = [
                           "While a trip is under way you can follow your driver on a map. "
                           "Their location is shared only during that trip and is cleared "
                           "when it ends.",
-                  help="Say what the platform does and how it is run. Do not claim "
-                       "premises, staff or a fleet of your own."),
-            Field("about_section2_heading", "Second section heading",
+                  help="How a listing gets here and what stands behind it. Every line "
+                       "should be something the site actually does."),
+            Field("about_section3_heading", "Third section heading",
                   default="Prices, deposits and terms"),
-            Field("about_section2_body", "Second section text", type="textarea", rows=8,
+            Field("about_section3_body", "Third section text", type="textarea", rows=8,
                   default="Every price you see is set by the driver offering it, and it is "
                           "shown in full before you request anything. Nothing is charged on "
                           "this website: you settle up with the driver directly.\n\n"

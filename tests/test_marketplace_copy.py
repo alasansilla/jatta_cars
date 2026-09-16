@@ -101,6 +101,16 @@ class WhatTheSiteClaims(CopyCase):
         # Approval is a real step, so it may be stated.
         self.assertIn("approved", body)
 
+    def test_the_about_page_carries_the_owner_s_own_account(self):
+        """Who started it, when and where — given to us by the owner, not guessed."""
+        body = self.text("/about")
+        self.assertIn("started in Kololi in 2026 by Alasan Silla", body)
+        self.assertIn("who am I actually driving with?", body)
+        self.assertIn("A customer should know who is picking them up", body)
+        self.assertIn("if you would rather drive yourself", body)
+        self.assertIn("run alongside a day job", body)
+        self.assertIn("aircraft engine mechanic in Hamburg", body)
+
     def test_the_about_page_only_claims_checks_the_site_actually_makes(self):
         """Each of these is something the code does, not a promise about care."""
         body = self.text("/about")
@@ -112,9 +122,11 @@ class WhatTheSiteClaims(CopyCase):
                       "their cars and prices come off the site straight away",
                       "shared only during that trip"]:
             self.assertIn(claim, body, claim)
-        # Nothing about premises, staff, servicing or years in business.
+        # No premises, staff, servicing or history are claimed. Saying there is
+        # no office is the opposite of claiming one, so the test names claims.
         for invented in ["years", "founded", "our workshop", "our mechanics", "since 20",
-                         "family business", "office"]:
+                         "family business", "our office", "visit us", "our team",
+                         "opening hours"]:
             self.assertNotIn(invented, body.lower(), invented)
 
     def test_placeholders_remain_only_where_the_owner_still_has_to_answer(self):
