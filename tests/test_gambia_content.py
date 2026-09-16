@@ -86,7 +86,7 @@ class GambiaContentTests(unittest.TestCase):
     def test_a_deposit_is_never_described_as_insurance(self):
         """A refundable deposit is not cover, and must not be sold as it."""
         settings = current_settings()
-        deposit_copy = (settings["deposit_policy"] + settings["reason_2_body"]).lower()
+        deposit_copy = (settings["deposit_policy"] + settings["vehicle_terms_note"]).lower()
         self.assertNotIn("insurance", deposit_copy)
         # Cover belongs to the driver. The site states that plainly instead of
         # promising cover it does not provide.
@@ -143,9 +143,9 @@ class GambiaContentTests(unittest.TestCase):
         self.assertIn("D10,000.00", page)   # this car's deposit, as its driver set it
 
     def test_kololi_is_stated_as_the_usual_pick_up(self):
-        settings = current_settings()
-        self.assertIn("Kololi", settings["reason_3_title"] + settings["reason_3_body"])
-        self.assertIn("Kololi", settings["locations"])
+        """The one place we were actually told about. Everywhere else is the
+        driver's arrangement, not a claim the site makes."""
+        self.assertIn("Kololi", current_settings()["locations"])
 
     def test_excess_and_exchange_rates_are_still_unanswered(self):
         """Saying cover is the driver's did not license inventing figures."""
@@ -200,11 +200,13 @@ class GambiaContentTests(unittest.TestCase):
         )
         self.assertIn("Choose a pick-up location", response.get_data(as_text=True))
 
-    def test_reviews_are_placeholders_not_invented_quotes(self):
+    def test_reviews_start_empty_rather_than_invented(self):
+        """No quote is shipped at all: an empty slot shows nothing, and there is
+        no placeholder pretending an answer is still coming."""
         settings = current_settings()
         for n in (1, 2, 3):
-            self.assertIn(PLACEHOLDER_MARKER, settings[f"review_{n}_quote"])
-            self.assertIn(PLACEHOLDER_MARKER, settings[f"review_{n}_name"])
+            self.assertEqual(settings[f"review_{n}_quote"], "")
+            self.assertEqual(settings[f"review_{n}_name"], "")
 
     def test_reviews_section_can_be_switched_off(self):
         def shown():
@@ -518,11 +520,11 @@ class DraftModeTests(unittest.TestCase):
         """
         self.assertTrue(current_settings()["site_live"])
 
-        save_settings({"home_heading": "A new heading"})  # partial, as the editor does
+        save_settings({"about_heading": "A new heading"})  # partial, as the editor does
 
         self.assertTrue(current_settings()["site_live"], "site was un-published")
         self.assertTrue(current_settings()["show_reviews"], "reviews were switched off")
-        self.assertEqual(current_settings()["home_heading"], "A new heading")
+        self.assertEqual(current_settings()["about_heading"], "A new heading")
 
     def test_a_full_group_form_still_honours_an_unticked_box(self):
         # A real form submission omits the checkbox entirely when unticked.

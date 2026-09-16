@@ -7,6 +7,7 @@ wording has to say so and tell the customer to settle it with them, rather than
 promise it or leave a placeholder where an answer should be.
 """
 import html as html_module
+import os
 import re
 import unittest
 from datetime import date, timedelta
@@ -28,8 +29,8 @@ FORBIDDEN = [
 
 # Settings whose wording is the owner's own business detail, still unanswered.
 STILL_UNKNOWN = {"company_email", "company_phone"}
-# The old single-fleet home page. Nothing renders these any more.
-LEGACY_HOME = {key for key in FIELDS if key.startswith(("home_", "reason_", "step_", "review_"))}
+# The home page builds these keys as it counts: site['review_1_quote'] and so on.
+BUILT_AT_RENDER = {f"review_{n}_{part}" for n in (1, 2, 3) for part in ("quote", "name")}
 
 
 def visible(html):
@@ -104,9 +105,35 @@ class WhatTheSiteClaims(CopyCase):
         unanswered = {key for key, value in DEFAULTS.items()
                       if PLACEHOLDER_MARKER in ("\n".join(value) if isinstance(value, list)
                                                 else str(value))}
-        self.assertEqual(unanswered - LEGACY_HOME, STILL_UNKNOWN)
+        self.assertEqual(unanswered, STILL_UNKNOWN)
+        # The staff checklist can now be finished: two contact details, and done.
         listed = {item["field"].key for item in outstanding_items(DEFAULTS)}
-        self.assertEqual(listed, unanswered)
+        self.assertEqual(listed, STILL_UNKNOWN)
+
+    def test_every_setting_is_wording_that_some_page_actually_shows(self):
+        """Settings for a page that no longer exists are a trap: staff fill them
+        in, and nothing changes. The old single-fleet home page left dozens."""
+        sources = []
+        for folder in ("app", "tools"):
+            for root, _, files in os.walk(folder):
+                for name in files:
+                    path = os.path.join(root, name)
+                    if name.endswith((".html", ".py", ".js")) and path != "app/settings.py":
+                        with open(path, encoding="utf-8", errors="ignore") as handle:
+                            sources.append(handle.read())
+        orphans = [key for key in FIELDS if key not in BUILT_AT_RENDER
+                   and not any(re.search(r"(?<![A-Za-z0-9_])" + re.escape(key) + r"(?![A-Za-z0-9_])",
+                                         source) for source in sources)]
+        self.assertEqual(orphans, [])
+
+    def test_the_settings_screens_still_open(self):
+        with self.client.session_transaction() as session:
+            session["admin_id"] = 1
+            session["_csrf_token"] = "copy-test"
+        for group in ("business", "publishing", "booking", "home", "about", "contact",
+                      "vehicle", "marketplace", "rides", "operators", "footer"):
+            response = self.client.get(f"/admin/settings?group={group}")
+            self.assertEqual(response.status_code, 200, group)
 
 
 class DriverTerms(CopyCase):

@@ -125,6 +125,9 @@ SCHEMA = [
                        "wording still in it."),
             Field("holding_heading", "Holding page — heading",
                   default="Our website is nearly ready"),
+            Field("holding_image", "Holding page — image", type="image",
+                  default="img/car-economy.svg",
+                  help="The picture on the holding page."),
             Field("holding_body", "Holding page — text", type="textarea", rows=4,
                   default="We are putting the last details in place. Come back shortly to "
                           "find a driver for a ride, an airport transfer or a car to rent."),
@@ -191,138 +194,27 @@ SCHEMA = [
         ],
     ),
     Group(
-        "home", "Home page",
-        "Every piece of text and the main image on the home page.",
+        "home", "Home page quotes",
+        "The home page itself is built from the Marketplace group. This is the "
+        "strip of customer quotes below it, which stays hidden until you have "
+        "real ones to show. Reviews left after a trip appear on each driver's "
+        "own page and need nothing here.",
         [
-            Field("home_eyebrow", "Small label above the headline", default="Plan your trip"),
-            Field("home_heading", "Headline", default="Explore The Gambia at your own pace"),
-            Field("home_heading_highlight", "Word(s) to colour in the headline",
-                  default="your own pace",
-                  help="The first match inside the headline is shown in the accent colour. "
-                       "Leave empty for a plain headline."),
-            Field("home_intro", "Introduction", type="textarea", rows=4,
-                  default=f"A small, locally run fleet of self-drive cars. Choose your dates, "
-                          f"send a request in about two minutes, and we come back to you to "
-                          f"confirm. There is nothing to pay on this website.\n\n"
-                          f"{TBC} add a sentence about what makes hiring from you different."),
-            Field("home_hero_image", "Main image", type="image", default="img/car-economy.svg",
-                  help="The large picture beside the headline. A photo of one of your own "
-                       "cars works far better than the drawing that ships with the site."),
-            Field("home_cta_primary", "Primary button", default="Book a car"),
-            Field("home_cta_secondary", "Secondary button", default="Learn more"),
-
-            Field("home_search_heading", "Booking panel heading", default="Book a car"),
-
-            Field("home_fleet_eyebrow", "Fleet section label", default="Our cars"),
-            Field("home_fleet_heading", "Fleet section heading",
-                  default="Choose the car that suits the trip"),
-            Field("home_fleet_intro", "Fleet section intro", type="textarea", rows=2,
-                  default=f"{TBC} add a line about how your cars are looked after and "
-                          f"prepared between hires."),
-
-            Field("home_why_eyebrow", "Why-choose-us label", default="Why book with us"),
-            Field("home_why_heading", "Why-choose-us heading",
-                  default="Booked direct, straight with you"),
-            Field("home_why_body", "Why-choose-us text", type="textarea", rows=6,
-                  default=f"You are dealing with us, not an agency. Every request comes "
-                          f"straight to our own team, and a person checks the car and comes "
-                          f"back to you.\n\n"
-                          f"{TBC} replace this with what you want customers to know about "
-                          f"your service."),
-            Field("home_why_cta", "Why-choose-us button", default="See the cars"),
-
-            Field("reason_1_icon", "Reason 1 — icon", type="choice", default="coin", choices=ICON_CHOICES),
-            Field("reason_1_title", "Reason 1 — heading", default="Pay when you collect"),
-            Field("reason_1_body", "Reason 1 — text", type="textarea", rows=3,
-                  default=f"Nothing is charged on this website. You settle up with us when "
-                          f"you pick the car up. {TBC} confirm which payment methods you take."),
-            Field("reason_2_icon", "Reason 2 — icon", type="choice", default="shield", choices=ICON_CHOICES),
-            Field("reason_2_title", "Reason 2 — heading", default="A deposit you get back"),
-            Field("reason_2_body", "Reason 2 — text", type="textarea", rows=3,
-                  default="A refundable D5,000 deposit, returned when the car comes back "
-                          "undamaged with at least half a tank of fuel. Hire is D10,000 a "
-                          "day."),
-            Field("reason_3_icon", "Reason 3 — icon", type="choice", default="pin", choices=ICON_CHOICES),
-            Field("reason_3_title", "Reason 3 — heading", default="Collect in Kololi"),
-            Field("reason_3_body", "Reason 3 — text", type="textarea", rows=3,
-                  default=f"Most hires start and end in Kololi. We can arrange somewhere else "
-                          f"when we confirm your booking. {TBC} say whether you deliver to "
-                          f"hotels or the airport, and what happens outside opening hours."),
-
-            Field("home_steps_eyebrow", "Steps section label", default="How it works"),
-            Field("home_steps_heading", "Steps section heading",
-                  default="Three steps and you are driving"),
-            Field("step_1_title", "Step 1 — heading", default="Choose your dates"),
-            Field("step_1_body", "Step 1 — text", type="textarea", rows=3,
-                  default="Tell us when and where. Only cars that are genuinely free for "
-                          "those days are shown."),
-            Field("step_2_title", "Step 2 — heading", default="Send your request"),
-            Field("step_2_body", "Step 2 — text", type="textarea", rows=3,
-                  default="Your name, phone and email. Nothing is charged online — this is a "
-                          "request, and we come back to you to confirm it."),
-            Field("step_3_title", "Step 3 — heading", default="Collect and drive"),
-            Field("step_3_body", "Step 3 — text", type="textarea", rows=3,
-                  default=f"{TBC} say what happens on the day — where to come, what to bring "
-                          f"and how long the handover takes."),
-
-            Field("home_about_eyebrow", "About section label", default="About us"),
-            Field("home_about_heading", "About section heading",
-                  default="A local fleet, run by people you can reach"),
-            Field("home_about_body", "About section text", type="textarea", rows=7,
-                  default=f"{TBC} introduce your business — who runs it, how long you have "
-                          f"been hiring cars, and where you are based.\n\n"
-                          f"{TBC} add a second paragraph about how you look after the cars."),
-            Field("home_about_cta", "About section button", default="More about us"),
-            Field("home_stat3_value", "Third statistic — number", default=f"{TBC}"),
-            Field("home_stat3_label", "Third statistic — label",
-                  default=f"{TBC} e.g. years hiring cars"),
-
-            Field("rate_summary", "Standard rate", type="textarea", rows=2,
-                  default="Hire is D10,000 a day, plus a refundable D5,000 deposit. Each "
-                          "car's own rate is shown on its page.",
-                  help="Shown above the good-to-know list. Change it here if your rates change."),
-            Field("home_included_eyebrow", "Included section label", default="Good to know"),
-            Field("home_included_heading", "Included section heading",
-                  default="What to check before you book"),
-            Field("home_included_items", "Included items", type="lines", rows=9,
-                  default=f"D10,000 a day\n"
-                          f"A refundable D5,000 deposit\n"
-                          f"Bring the car back with at least half a tank\n"
-                          f"Pick-up in Kololi, or somewhere else by arrangement\n"
-                          f"{TBC} what the insurance covers, and the excess\n"
-                          f"{TBC} mileage — a daily limit, or unlimited\n"
-                          f"{TBC} whether extra drivers are allowed, and any charge\n"
-                          f"{TBC} minimum age and how long a licence must be held\n"
-                          f"{TBC} what happens if the car breaks down\n"
-                          f"{TBC} your cancellation terms",
-                  help="One per line. Replace each with the real answer — these are the "
-                       "questions customers ask before booking."),
-
-            Field("home_reviews_eyebrow", "Reviews section label", default="What customers say"),
-            Field("home_reviews_heading", "Reviews section heading", default="In their words"),
-            Field("home_reviews_intro", "Reviews section intro", type="textarea", rows=2,
-                  default=f"{TBC} replace the three quotes below with real reviews, and only "
-                          f"use them with the customer's permission."),
             Field("review_1_quote", "Review 1 — quote", type="textarea", rows=3,
-                  default=f"{TBC} paste a real customer review here."),
-            Field("review_1_name", "Review 1 — name", default=f"{TBC} customer name"),
-            Field("review_1_place", "Review 1 — where from", default=f"{TBC} where they came from"),
+                  default="",
+                  help="A real review, used with the customer's permission. Empty until then: nothing is shown."),
+            Field("review_1_name", "Review 1 — name", default=""),
             Field("review_2_quote", "Review 2 — quote", type="textarea", rows=3,
-                  default=f"{TBC} paste a real customer review here."),
-            Field("review_2_name", "Review 2 — name", default=f"{TBC} customer name"),
-            Field("review_2_place", "Review 2 — where from", default=f"{TBC} where they came from"),
+                  default="",
+                  help="A real review, used with the customer's permission. Empty until then: nothing is shown."),
+            Field("review_2_name", "Review 2 — name", default=""),
             Field("review_3_quote", "Review 3 — quote", type="textarea", rows=3,
-                  default=f"{TBC} paste a real customer review here."),
-            Field("review_3_name", "Review 3 — name", default=f"{TBC} customer name"),
-            Field("review_3_place", "Review 3 — where from", default=f"{TBC} where they came from"),
+                  default="",
+                  help="A real review, used with the customer's permission. Empty until then: nothing is shown."),
+            Field("review_3_name", "Review 3 — name", default=""),
             Field("show_reviews", "Show the reviews section", type="boolean", default=True,
                   help="Turn this off until you have real reviews to show."),
 
-            Field("home_final_heading", "Closing heading", default="Ready when you are"),
-            Field("home_final_body", "Closing text", type="textarea", rows=2,
-                  default="Have a look at the cars, or call us on {phone} and we will sort "
-                          "it out over the phone.",
-                  help="{phone} is replaced with your phone number."),
         ],
     ),
     Group(
@@ -521,18 +413,12 @@ SCHEMA = [
                   type="textarea", rows=3,
                   default="Confirming your phone number does not approve you straight "
                           "away — we check every driver first."),
-            Field("operators_empty", "Shown when no drivers are approved yet",
-                  type="textarea", rows=2,
-                  default="No drivers are listed yet."),
         ],
     ),
     Group(
         "footer", "Footer",
         "The bottom of every page.",
         [
-            Field("footer_blurb", "Short description", type="textarea", rows=3,
-                  default="Rides, airport transfers and car rental in The Gambia, from "
-                          "independent drivers you choose yourself."),
             Field("footer_company_heading", "First column heading", default="Company"),
             Field("footer_locations_heading", "Second column heading", default="Pick-up points"),
             Field("footer_contact_heading", "Third column heading", default="Get in touch"),
