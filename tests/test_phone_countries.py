@@ -147,7 +147,8 @@ class PhoneFormTests(MarketplaceCase):
             sent = self.post(again, "/driver/send-code", country_code=country, phone=number, intent="sign_in")
             self.assertEqual(sent.status_code, 302, (country, number))
             response = self.post(again, "/driver/code", code=self.code())
-            self.assertIn("/driver/status", response.location)
+            # Pending, with no licence on file yet: that is the step they land on.
+            self.assertIn("/driver/documents", response.location)
             with again.session_transaction() as session:
                 self.assertEqual(session["operator_id"], driver.id)
         self.assertEqual(Operator.query.count(), 1)
