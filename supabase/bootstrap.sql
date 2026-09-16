@@ -70,30 +70,6 @@ CREATE TABLE IF NOT EXISTS media_assets (
 	UNIQUE (filename)
 );
 
-CREATE TABLE IF NOT EXISTS operators (
-	id SERIAL NOT NULL,
-	name VARCHAR(120) NOT NULL,
-	slug VARCHAR(120) NOT NULL,
-	contact_name VARCHAR(120),
-	email VARCHAR(160),
-	phone VARCHAR(40),
-	phone_e164 VARCHAR(16),
-	phone_verified_at TIMESTAMP WITHOUT TIME ZONE,
-	password_hash VARCHAR(255),
-	status VARCHAR(20) NOT NULL,
-	commission_rate NUMERIC(5, 2),
-	service_area VARCHAR(200),
-	terms TEXT,
-	notes TEXT,
-	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-	approved_at TIMESTAMP WITHOUT TIME ZONE,
-	PRIMARY KEY (id)
-);
-CREATE UNIQUE INDEX IF NOT EXISTS ix_operators_email ON operators (email);
-CREATE UNIQUE INDEX IF NOT EXISTS ix_operators_phone_e164 ON operators (phone_e164);
-CREATE UNIQUE INDEX IF NOT EXISTS ix_operators_slug ON operators (slug);
-CREATE INDEX IF NOT EXISTS ix_operators_status ON operators (status);
-
 CREATE TABLE IF NOT EXISTS phone_codes (
 	id SERIAL NOT NULL,
 	phone_e164 VARCHAR(16) NOT NULL,
@@ -116,6 +92,34 @@ CREATE TABLE IF NOT EXISTS settings (
 	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
 	PRIMARY KEY (key)
 );
+
+CREATE TABLE IF NOT EXISTS operators (
+	id SERIAL NOT NULL,
+	name VARCHAR(120) NOT NULL,
+	slug VARCHAR(120) NOT NULL,
+	contact_name VARCHAR(120),
+	email VARCHAR(160),
+	phone VARCHAR(40),
+	phone_e164 VARCHAR(16),
+	phone_verified_at TIMESTAMP WITHOUT TIME ZONE,
+	password_hash VARCHAR(255),
+	status VARCHAR(20) NOT NULL,
+	commission_rate NUMERIC(5, 2),
+	checks_confirmed_at TIMESTAMP WITHOUT TIME ZONE,
+	checks_confirmed_by_id INTEGER,
+	checks_note TEXT,
+	service_area VARCHAR(200),
+	terms TEXT,
+	notes TEXT,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	approved_at TIMESTAMP WITHOUT TIME ZONE,
+	PRIMARY KEY (id),
+	FOREIGN KEY(checks_confirmed_by_id) REFERENCES admin_users (id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_operators_email ON operators (email);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_operators_phone_e164 ON operators (phone_e164);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_operators_slug ON operators (slug);
+CREATE INDEX IF NOT EXISTS ix_operators_status ON operators (status);
 
 CREATE TABLE IF NOT EXISTS commission_settlements (
 	id SERIAL NOT NULL,
@@ -398,7 +402,8 @@ insert into public.schema_migrations (version, name, applied_at) values
   ('0011', 'driver location only during an accepted trip', now()),
   ('0012', 'vehicle taxi and rental service mode', now()),
   ('0013', 'driver car review queue', now()),
-  ('0014', 'commission settlement ledger', now())
+  ('0014', 'commission settlement ledger', now()),
+  ('0015', 'driver licence and identification checks', now())
 on conflict (version) do nothing;
 
 alter table public.schema_migrations enable row level security;

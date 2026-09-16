@@ -960,6 +960,18 @@ def operator_decision(operator_id):
     if decision not in OPERATOR_STATUSES:
         abort(400)
 
+    if decision == "approved" and not operator.checks_done:
+        # The site tells customers that a licence and identification are seen
+        # before anyone is listed. Approving without recording that would make
+        # the page a promise nobody kept.
+        if request.form.get("checks_confirmed") != "1":
+            flash(f"Record that you have seen {operator.name}'s driving licence and "
+                  f"identification before approving them.", "error")
+            return redirect(request.referrer or url_for("admin.operators"))
+        operator.checks_confirmed_at = datetime.utcnow()
+        operator.checks_confirmed_by_id = session.get("admin_id")
+        operator.checks_note = (request.form.get("checks_note") or "").strip()[:500] or None
+
     operator.status = decision
     if decision == "approved" and operator.approved_at is None:
         operator.approved_at = datetime.utcnow()

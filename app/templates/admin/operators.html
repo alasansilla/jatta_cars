@@ -49,6 +49,16 @@
               {% endif %}
               {% if operator.phone %} · Contact number (not verified): {{ operator.phone }}{% endif %}
             </p>
+            <p class="small" style="margin:4px 0 0">
+              {% if operator.checks_done %}
+                <span class="tag tag--confirmed">licence and ID checked</span>
+                {{ operator.checks_confirmed_at.strftime('%d %b %Y') }}
+                {% if operator.checks_confirmed_by %} by {{ operator.checks_confirmed_by.username }}{% endif %}
+                {% if operator.checks_note %}<br><span class="muted">{{ operator.checks_note }}</span>{% endif %}
+              {% else %}
+                <span class="muted">Licence and identification not checked yet</span>
+              {% endif %}
+            </p>
             {% if operator.service_area %}
               <p class="small muted" style="margin:2px 0 0">Works in: {{ operator.service_area }}</p>
             {% endif %}
@@ -77,6 +87,17 @@
             <form method="post" action="{{ url_for('admin.operator_decision', operator_id=operator.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="status" value="{{ value }}">
+              {% if value == 'approved' and not operator.checks_done %}
+                {# The public pages say a licence and identification are seen before
+                   anyone is listed, so approval cannot happen without recording it. #}
+                <label class="checkbox small" style="display:block;margin-bottom:6px;max-width:34ch">
+                  <input type="checkbox" name="checks_confirmed" value="1" required>
+                  <span>I have seen this driver's licence and identification</span>
+                </label>
+                <input type="text" name="checks_note" maxlength="500"
+                       placeholder="What you saw (optional)"
+                       style="width:100%;padding:7px 10px;margin-bottom:6px">
+              {% endif %}
               <button class="btn btn--sm {{ 'btn--primary' if loop.first and value == 'approved' else 'btn--ghost' }}"
                       type="submit">{{ label }}</button>
             </form>

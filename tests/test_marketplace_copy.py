@@ -271,3 +271,20 @@ class DetailsTheOwnerHasNotGiven(CopyCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HomePageOrder(CopyCase):
+    """What a visitor came for comes before how the site works."""
+
+    def test_rental_cars_are_shown_above_the_how_it_works_steps(self):
+        page = self.client.get("/").get_data(as_text=True)
+        headings = re.findall(r"<h2[^>]*>(.*?)</h2>", page, re.S)
+        headings = [re.sub(r"<[^>]+>", "", heading).strip() for heading in headings]
+        self.assertIn("Available rental cars", headings)
+        self.assertLess(headings.index("Available rental cars"),
+                        headings.index("From pickup to arrival"))
+
+    def test_the_cars_section_disappears_when_nothing_is_listed(self):
+        Vehicle.query.delete()
+        db.session.commit()
+        self.assertNotIn("Available rental cars", self.text("/"))

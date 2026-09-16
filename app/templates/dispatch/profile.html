@@ -11,6 +11,7 @@
     <p>
       {% if facts.available_now %}<span class="badge badge--good">Online now</span>{% endif %}
       {% if facts.rating.rating %}<span class="badge">★ {{ facts.rating.rating }} / 5 · {{ facts.rating.review_count }} review{{ 's' if facts.rating.review_count != 1 }}</span>{% else %}<span class="badge">New driver — no reviews yet</span>{% endif %}
+      {% if profile.checks_done %}<span class="badge badge--good">Licence and ID checked {{ profile.checks_confirmed_at.strftime('%b %Y') }}</span>{% endif %}
     </p>
     {% if facts.offers_rides %}
       <a class="btn btn--primary btn--lg" href="{{ url_for('dispatch.ride', driver=profile.id) }}">Request a ride with {{ profile.display_name }}</a>

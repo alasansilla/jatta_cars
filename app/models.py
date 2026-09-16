@@ -87,6 +87,15 @@ class Operator(db.Model):
     # has not been given their own deal.
     commission_rate = db.Column(db.Numeric(5, 2), nullable=True)
 
+    # What was seen before this driver was approved. Approval is refused until
+    # it is recorded, so "we check licences" is a fact with a date against it
+    # rather than a promise on a page.
+    checks_confirmed_at = db.Column(db.DateTime, nullable=True)
+    checks_confirmed_by_id = db.Column(db.Integer, db.ForeignKey("admin_users.id"),
+                                       nullable=True)
+    checks_confirmed_by = db.relationship("AdminUser")
+    checks_note = db.Column(db.Text, nullable=True)
+
     service_area = db.Column(db.String(200), nullable=True)
     terms = db.Column(db.Text, nullable=True)
     notes = db.Column(db.Text, nullable=True)  # staff-only, never shown publicly
@@ -107,6 +116,11 @@ class Operator(db.Model):
     def can_sign_in(self):
         """Whether the older email-and-password sign-in works for this account."""
         return self.is_approved and bool(self.password_hash) and bool(self.email)
+
+    @property
+    def checks_done(self):
+        """Their licence and identification have been seen and written down."""
+        return self.checks_confirmed_at is not None
 
     @property
     def signs_in_by_phone(self):

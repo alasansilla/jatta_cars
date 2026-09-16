@@ -259,7 +259,9 @@ class OperatorApprovalTests(MarketplaceCase):
             token = session["_csrf_token"]
 
         admin.post(f"/admin/operators/{applicant.id}/decision",
-                   data={"csrf_token": token, "status": "approved"})
+                   # Approving means confirming their licence and identification
+                   # were seen; the site refuses to do it silently.
+                   data={"csrf_token": token, "status": "approved", "checks_confirmed": "1"})
         refreshed = db.session.get(Operator, applicant.id)
         self.assertEqual(refreshed.status, "approved")
         self.assertIsNotNone(refreshed.approved_at)
@@ -722,7 +724,8 @@ class ApprovalMessageTests(MarketplaceCase):
     def _approve(self, operator):
         admin = self._admin()
         response = admin.post(f"/admin/operators/{operator.id}/decision",
-                              data={"csrf_token": self.token, "status": "approved"},
+                              data={"csrf_token": self.token, "status": "approved",
+                                    "checks_confirmed": "1"},
                               follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         return response.get_data(as_text=True)
