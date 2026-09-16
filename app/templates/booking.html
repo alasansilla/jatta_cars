@@ -108,11 +108,26 @@
       </div>
 
       <p class="small muted" style="margin-top:26px">
-        Need to change or cancel? Tell your driver as soon as you can, quoting
+        Need to change something? Tell your driver as soon as you can, quoting
         <span class="reference">{{ booking.reference }}</span>{% if company_phone | stated %},
         or call us on {{ company_phone }}{% endif %}.
       </p>
       <p class="small muted" data-edit="booking_change_note">{{ site.booking_change_note }}</p>
+
+      {% if booking.status in ['pending', 'confirmed'] %}
+        {# Cancelling here frees the dates straight away. The driver sees it in
+           their own bookings, but nothing reaches them automatically. #}
+        <form method="post" action="{{ url_for('public.booking_cancel', reference=booking.reference) }}"
+              style="margin-top:22px"
+              onsubmit="return confirm('Cancel booking {{ booking.reference }}? This cannot be undone here.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn--ghost" type="submit">Cancel this {{ 'trip' if booking.is_journey else 'rental' }}</button>
+          <span class="small muted" style="margin-left:10px">
+            Your driver is not told automatically — message them as well if the
+            {{ 'trip' if booking.is_journey else 'rental' }} is soon.
+          </span>
+        </form>
+      {% endif %}
       <p class="small muted" data-edit="payment_note">{{ site.payment_note }}</p>
     </div>
 

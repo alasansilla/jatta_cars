@@ -11,7 +11,9 @@ from flask import (
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
-from . import routing
+import secrets
+
+from . import commission, routing
 from .forms import (
     parse_date, validate_customer, validate_journey, validate_journey_party,
     validate_rental_dates,
@@ -297,6 +299,54 @@ def booking_detail(reference):
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
     return response
+
+
+# A customer may call off a booking the driver has not carried out yet. An
+# on-demand ride has its own cancel button on the tracking page, which also
+# frees the driver who is holding it.
+CUSTOMER_CANCELLABLE = ("pending", "confirmed")
+
+
+@bp.post("/booking/<reference>/cancel")
+def booking_cancel(reference):
+    """Cancel a rental, scheduled ride or airport transfer.
+
+    Proving the reference and email address is what opens the booking page, and
+    the same session is what allows this. The change is one conditional write,
+    so two taps cannot cancel twice, and a booking the driver has already
+    completed is refused rather than quietly reopened.
+    """
+    reference = str(reference or "").upper()[:12]
+    if session.get("booking_reference") != reference:
+        return redirect(url_for("public.booking_lookup"))
+
+    supplied = request.form.get("csrf_token", "")
+    expected = session.get("_csrf_token", "")
+    if not expected or not secrets.compare_digest(str(supplied), str(expected)):
+        flash("That page had expired. Please try again.", "error")
+        return redirect(url_for("public.booking_detail", reference=reference))
+
+    booking = Booking.query.filter_by(reference=reference).first_or_404()
+    if booking.is_on_demand:
+        return redirect(url_for("dispatch.track", reference=reference))
+
+    changed = db.session.execute(
+        db.update(Booking)
+        .where(Booking.id == booking.id, Booking.status.in_(CUSTOMER_CANCELLABLE))
+        .values(status="cancelled"))
+    if changed.rowcount != 1:
+        db.session.rollback()
+        flash("This booking can no longer be cancelled here. Please contact your driver.",
+              "error")
+        return redirect(url_for("public.booking_detail", reference=reference))
+
+    db.session.refresh(booking)
+    # Keeps the ledger straight: a cancelled booking has earned nobody anything.
+    commission.sync_for(booking)
+    db.session.commit()
+    flash("Your booking is cancelled. Let your driver know if the date was close.",
+          "success")
+    return redirect(url_for("public.booking_detail", reference=reference))
 
 
 @bp.route("/booking", methods=["GET", "POST"])
