@@ -6,10 +6,22 @@
     <p class="lede">Thank you for joining {{ company_name }}.</p>
     <ol class="status-steps">
       <li><span class="dot dot--done">✓</span><span>Phone number confirmed{% if phone %}: {{ phone }}{% endif %}</span></li>
-      <li><span class="dot dot--now">2</span><span><strong>{{ company_name }} is checking your details.</strong> We will contact you on your phone.</span></li>
-      <li><span class="dot">3</span><span>After you are approved, you can switch on Driving mode and take trips.</span></li>
+      {% if missing %}
+        <li><span class="dot dot--now">2</span><span><strong>Send your licence and photo identification.</strong>
+          {{ company_name }} looks at them before listing any driver.</span></li>
+      {% else %}
+        <li><span class="dot dot--done">✓</span><span>Licence and photo identification received</span></li>
+      {% endif %}
+      <li><span class="dot {{ 'dot--now' if not missing }}">3</span><span><strong>{{ company_name }} is checking your details.</strong> We will contact you on your phone.</span></li>
+      <li><span class="dot">4</span><span>After you are approved, you can switch on Driving mode and take trips.</span></li>
     </ol>
-    <p>You don't need to do anything else right now.</p>
+    {% if missing %}
+      <p><a class="btn btn--primary btn--lg" href="{{ url_for('driver_auth.driver_documents') }}">Send your documents</a></p>
+    {% else %}
+      <p>You don't need to do anything else right now. You can
+        <a href="{{ url_for('driver_auth.driver_documents') }}">replace a document</a> if
+        something has changed.</p>
+    {% endif %}
   {% elif account.status == 'suspended' %}
     <p class="notice notice--warn">Your driver account is paused, so you can't take trips at the moment.</p>
     <p>Please contact {{ company_name }} to find out more.</p>

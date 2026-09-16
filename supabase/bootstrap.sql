@@ -137,6 +137,23 @@ CREATE TABLE IF NOT EXISTS commission_settlements (
 CREATE INDEX IF NOT EXISTS ix_commission_settlements_operator_id ON commission_settlements (operator_id);
 CREATE INDEX IF NOT EXISTS ix_commission_settlements_recorded_at ON commission_settlements (recorded_at);
 
+CREATE TABLE IF NOT EXISTS driver_documents (
+	id SERIAL NOT NULL,
+	operator_id INTEGER NOT NULL,
+	kind VARCHAR(20) NOT NULL,
+	key VARCHAR(80) NOT NULL,
+	content_type VARCHAR(60) NOT NULL,
+	size_bytes INTEGER NOT NULL,
+	digest VARCHAR(64) NOT NULL,
+	original_name VARCHAR(120),
+	uploaded_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT one_current_document_per_kind UNIQUE (operator_id, kind),
+	FOREIGN KEY(operator_id) REFERENCES operators (id),
+	UNIQUE (key)
+);
+CREATE INDEX IF NOT EXISTS ix_driver_documents_operator_id ON driver_documents (operator_id);
+
 CREATE TABLE IF NOT EXISTS operator_fares (
 	id SERIAL NOT NULL,
 	operator_id INTEGER NOT NULL,
@@ -333,7 +350,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['phone_codes', 'auth_events', 'vehicles', 'bookings', 'enquiries', 'settings', 'media_assets', 'admin_users', 'schema_migrations', 'operators', 'operator_fares', 'commission_entries', 'commission_settlements', 'driver_states', 'booking_reviews'] loop
+  foreach t in array array['phone_codes', 'auth_events', 'vehicles', 'bookings', 'enquiries', 'settings', 'media_assets', 'admin_users', 'schema_migrations', 'operators', 'operator_fares', 'commission_entries', 'commission_settlements', 'driver_states', 'booking_reviews', 'driver_documents'] loop
     if exists (select 1 from pg_tables where schemaname = 'public' and tablename = t) then
       execute format('alter table public.%I enable row level security', t);
       execute format('revoke all on table public.%I from anon, authenticated', t);
@@ -403,7 +420,8 @@ insert into public.schema_migrations (version, name, applied_at) values
   ('0012', 'vehicle taxi and rental service mode', now()),
   ('0013', 'driver car review queue', now()),
   ('0014', 'commission settlement ledger', now()),
-  ('0015', 'driver licence and identification checks', now())
+  ('0015', 'driver licence and identification checks', now()),
+  ('0016', 'driver identity documents', now())
 on conflict (version) do nothing;
 
 alter table public.schema_migrations enable row level security;

@@ -111,7 +111,9 @@ class NormalisationAndUniquenessTests(FlowCase):
         response = self.verify(other)
         self.assertEqual(Operator.query.count(), 1)
         self.assertEqual(self.signed_in_as(other), first.id)
-        self.assertIn("/driver/status", response.location)
+        # Their licence and identification are still outstanding, so that is
+        # where they land rather than on the waiting page.
+        self.assertIn("/driver/documents", response.location)
 
     def test_the_database_refuses_a_second_account_for_a_number(self):
         from sqlalchemy.exc import IntegrityError
@@ -155,7 +157,11 @@ class SignUpTests(FlowCase):
         self.assertIsNone(driver.email)
         self.assertIsNone(driver.password_hash)
         self.assertEqual(self.signed_in_as(self.browser), driver.id)
-        self.assertIn("/driver/status", response.location)
+        # A new driver is asked for their licence and identification next.
+        self.assertIn("/driver/documents", response.location)
+        page = self.browser.get("/driver/documents").get_data(as_text=True)
+        self.assertIn("Driving licence", page)
+        self.assertIn("Photo identification", page)
 
     def test_details_are_required_and_explained(self):
         self.send(); self.verify()
@@ -203,12 +209,15 @@ class SignInTests(FlowCase):
         self.assertEqual(self.signed_in_as(self.browser), driver.id)
         self.assertEqual(self.browser.get("/operator/").status_code, 200)
 
-    def test_a_pending_driver_lands_on_their_application_status(self):
+    def test_a_pending_driver_lands_where_their_application_is_waiting(self):
         driver = self.make_driver("pending")
         self.send(intent="sign_in")
         response = self.verify()
-        self.assertIn("/driver/status", response.location)
+        # Documents outstanding: that is the next thing they can actually do.
+        self.assertIn("/driver/documents", response.location)
         self.assertEqual(self.signed_in_as(self.browser), driver.id)
+        self.assertIn("Send your licence and photo identification",
+                      self.browser.get("/driver/status").get_data(as_text=True))
 
     def test_a_suspended_driver_is_signed_in_but_cannot_work(self):
         self.make_driver("suspended")

@@ -12,17 +12,17 @@ import math
 from sqlalchemy.exc import IntegrityError
 
 from flask import (
-    Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
-    request, session, url_for
+    Blueprint, abort, current_app, flash, jsonify, make_response, redirect,
+    render_template, request, session, url_for
 )
 
-from . import commission, sms
+from . import commission, documents, sms
 from .media import delete_asset, save_upload
 from .storage import media_url
 from .models import (
     CATEGORIES, FUELS, OPERATOR_STATUSES, RENTAL, TRANSMISSIONS, AdminUser,
-    Booking, CommissionEntry, CommissionSettlement, Enquiry, MediaAsset, Operator,
-    OperatorFare, Setting, Vehicle, db
+    Booking, CommissionEntry, CommissionSettlement, DriverDocument, Enquiry,
+    MediaAsset, Operator, OperatorFare, Setting, Vehicle, db
 )
 from .settings import (
     FIELDS, GROUPS, PLACEHOLDER_MARKER, SCHEMA, current_settings, outstanding_items,
@@ -997,6 +997,34 @@ def operator_decision(operator_id):
     else:
         flash(f"{operator.name} is now {decision}.", "success")
     return redirect(request.referrer or url_for("admin.operators"))
+
+
+@bp.get("/operators/<int:operator_id>/document/<int:document_id>")
+@login_required
+def operator_document(operator_id, document_id):
+    """Show one driver's licence or identification to signed-in staff.
+
+    The bytes are streamed through here rather than linked: private storage has
+    no public URL, nothing may cache this, and it never leaves with a referrer
+    that would name the driver.
+    """
+    document = DriverDocument.query.filter_by(id=document_id,
+                                              operator_id=operator_id).first() or abort(404)
+    try:
+        data = documents.read_document(document)
+    except Exception:  # noqa: BLE001
+        current_app.logger.exception("Could not read a driver document")
+        flash("That document could not be read from storage.", "error")
+        return redirect(url_for("admin.operators"))
+
+    response = make_response(data)
+    response.headers["Content-Type"] = document.content_type
+    response.headers["Content-Disposition"] = (
+        f'inline; filename="{document.kind}-{operator_id}"')
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
 
 
 @bp.route("/operators/<int:operator_id>/rate", methods=["POST"])

@@ -50,6 +50,19 @@
               {% if operator.phone %} · Contact number (not verified): {{ operator.phone }}{% endif %}
             </p>
             <p class="small" style="margin:4px 0 0">
+              {% set on_file = operator.documents | map(attribute='kind') | list %}
+              {% for kind, label in [('licence', 'Licence'), ('identity', 'Photo ID')] %}
+                {% if kind in on_file %}
+                  {% for document in operator.documents if document.kind == kind %}
+                    <a href="{{ url_for('admin.operator_document', operator_id=operator.id, document_id=document.id) }}"
+                       target="_blank" rel="noopener noreferrer">{{ label }} ({{ document.content_type.split('/')[-1] }})</a>
+                  {% endfor %}
+                {% else %}
+                  <span class="muted">{{ label }} not sent</span>
+                {% endif %}{% if not loop.last %} · {% endif %}
+              {% endfor %}
+            </p>
+            <p class="small" style="margin:4px 0 0">
               {% if operator.checks_done %}
                 <span class="tag tag--confirmed">licence and ID checked</span>
                 {{ operator.checks_confirmed_at.strftime('%d %b %Y') }}

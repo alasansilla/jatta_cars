@@ -25,7 +25,7 @@ from flask import (
     url_for,
 )
 
-from . import phone_auth, sms
+from . import documents, phone_auth, sms
 from .operator import _account, _current, end_session, signed_in_recently, start_session
 from .phone import DEFAULT_COUNTRY_CODE, InvalidPhone, country_hint, country_hints, normalise, pretty
 
@@ -63,9 +63,13 @@ def _landing(intent):
     return url_for("driver_auth.join" if intent == JOIN else "driver_auth.sign_in")
 
 
-def _after_sign_in(driver):
+def _after_sign_in(driver, joined=False):
     if driver.is_approved:
         return redirect(url_for("operator.dashboard"))
+    # Nobody is approved until their licence and identification have been seen,
+    # so a driver who has just joined is asked for them straight away.
+    if joined or documents.missing_for(driver):
+        return redirect(url_for("driver_auth.driver_documents"))
     return redirect(url_for("driver_auth.status"))
 
 
@@ -281,10 +285,41 @@ def name():
                 phone, full_name, service_area=area, about=about or None)
             session.pop("phone_verified", None)
             start_session(driver, "phone")
-            return _after_sign_in(driver)
+            return _after_sign_in(driver, joined=True)
 
     return render_template("driver/name.html", phone=pretty(phone), blocked=False,
                            errors=errors, values=values), (400 if errors else 200)
+
+
+@bp.route("/documents", methods=["GET", "POST"])
+def driver_documents():
+    """Where a driver sends their licence and photo identification.
+
+    Nobody is approved without them, and they are not public: the files go to
+    private storage, and only signed-in staff can read them back.
+    """
+    account = _account()
+    if account is None:
+        return redirect(url_for("driver_auth.sign_in"))
+
+    error = None
+    if request.method == "POST":
+        # A stale form is already refused for the whole blueprint, before here.
+        try:
+            documents.save_document(account, request.form.get("kind"),
+                                    request.files.get("document"))
+            flash("Thank you — that document is with us.", "success")
+            return redirect(url_for("driver_auth.driver_documents"))
+        except documents.DocumentError as refused:
+            error = str(refused)
+        except Exception:  # noqa: BLE001 — storage is the only other failure
+            current_app.logger.exception("Driver document upload failed")
+            error = ("We could not store that just now. Please try again in a "
+                     "few minutes.")
+
+    return render_template("driver/documents.html", account=account, error=error,
+                           kinds=documents.KINDS, held=documents.for_operator(account),
+                           missing=documents.missing_for(account)), (400 if error else 200)
 
 
 @bp.get("/status")
@@ -295,7 +330,9 @@ def status():
     if account.is_approved:
         return redirect(url_for("operator.dashboard"))
     return render_template("driver/status.html", account=account,
-                           phone=pretty(account.phone_e164))
+                           phone=pretty(account.phone_e164),
+                           missing=documents.missing_for(account),
+                           kinds=documents.KINDS)
 
 
 @bp.get("/phone")

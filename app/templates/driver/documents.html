@@ -1,0 +1,63 @@
+{% extends "driver/base.html" %}
+{% block driver_title %}Your documents{% endblock %}
+{% block driver_content %}
+  <h1>Your licence and identification</h1>
+  <p class="lede">
+    {{ company_name }} looks at these before listing any driver, so customers know
+    who is picking them up. Only {{ company_name }} staff can see them — they are
+    never shown on your public profile or anywhere else on the site.
+  </p>
+
+  {% if error %}<p class="notice notice--warn">{{ error }}</p>{% endif %}
+
+  {% for kind, label in kinds.items() %}
+    {% set document = held.get(kind) %}
+    <div class="panel" style="margin-bottom:18px">
+      <h2 style="font-size:1.15rem;margin:0 0 6px">{{ label }}</h2>
+      {% if document %}
+        <p class="small" style="margin:0 0 12px">
+          <span class="tag tag--confirmed">received</span>
+          {{ document.uploaded_at.strftime('%d %b %Y') }} ·
+          {{ (document.size_bytes / 1024) | round | int }} KB
+          {% if document.original_name %}· {{ document.original_name }}{% endif %}
+        </p>
+      {% else %}
+        <p class="small muted" style="margin:0 0 12px">Not sent yet.</p>
+      {% endif %}
+
+      <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="kind" value="{{ kind }}">
+        <label class="small" for="file-{{ kind }}">
+          A clear photo or scan — JPEG, PNG or PDF, up to 6 MB
+        </label>
+        <input type="file" id="file-{{ kind }}" name="document"
+               accept="image/jpeg,image/png,application/pdf" required
+               style="display:block;margin:8px 0 12px">
+        <button class="btn-liquid btn-liquid--primary" type="submit">
+          {{ 'Send a new one' if document else 'Send ' ~ label | lower }}
+        </button>
+      </form>
+    </div>
+  {% endfor %}
+
+  {% if missing %}
+    <p class="small muted">
+      Still needed: {{ missing | map('replace', 'licence', 'driving licence')
+                                | map('replace', 'identity', 'photo identification')
+                                | join(' and ') }}.
+      You can send them now or come back later — your account stays as it is until
+      {{ company_name }} has both.
+    </p>
+  {% else %}
+    <p class="notice notice--good">
+      Both documents are with us. {{ company_name }} will check them and contact you
+      on your phone.
+    </p>
+  {% endif %}
+
+  <p style="margin-top:18px">
+    <a href="{{ url_for('driver_auth.status') }}">Back to your application</a> ·
+    <a href="{{ url_for('driver_auth.sign_out') }}">Sign out</a>
+  </p>
+{% endblock %}

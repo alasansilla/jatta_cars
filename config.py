@@ -252,6 +252,18 @@ class Config:
     MAX_CONTENT_LENGTH = 8 * 1024 * 1024  # 8 MB per upload
     ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
 
+    # --- Driver identity documents -----------------------------------------
+    #
+    # Licences and photo identification, which are not pictures for a page.
+    # They go to their own private place: a directory outside static/, or a
+    # Supabase bucket that must be created with public access OFF. Nothing
+    # builds a public URL for them; staff read them through the application.
+    DOCUMENT_STORAGE_BACKEND = os.environ.get("JATTA_DOCUMENT_STORAGE", "").strip() or None
+    DOCUMENT_ROOT = os.environ.get(
+        "JATTA_DOCUMENT_ROOT", os.path.join(BASE_DIR, "instance", "driver_documents"))
+    SUPABASE_DOCUMENTS_BUCKET = os.environ.get(
+        "SUPABASE_DOCUMENTS_BUCKET", "driver-documents")
+
     # Where uploaded pictures live. "local" writes into app/static/uploads,
     # which is fine on a normal server and useless on a serverless host where
     # the filesystem is read-only and thrown away. "supabase" is durable.

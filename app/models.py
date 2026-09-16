@@ -107,6 +107,8 @@ class Operator(db.Model):
     bookings = db.relationship("Booking", back_populates="operator")
     fares = db.relationship("OperatorFare", back_populates="operator",
                             cascade="all, delete-orphan")
+    documents = db.relationship("DriverDocument", back_populates="operator",
+                                cascade="all, delete-orphan")
 
     @property
     def is_approved(self):
@@ -529,6 +531,38 @@ class CommissionEntry(db.Model):
 
     def __repr__(self):
         return f"<CommissionEntry booking={self.booking_id} {self.amount}>"
+
+
+class DriverDocument(db.Model):
+    """A driver's licence or photo identification, held for the approval check.
+
+    The row says what is on file; the bytes live in private storage under the
+    random `key`, never in anything the web server hands out by path. One
+    current document per kind: uploading again replaces it and the old file is
+    deleted. See app/documents.py.
+    """
+
+    __tablename__ = "driver_documents"
+    __table_args__ = (
+        db.UniqueConstraint("operator_id", "kind", name="one_current_document_per_kind"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    operator_id = db.Column(db.Integer, db.ForeignKey("operators.id"), nullable=False,
+                            index=True)
+    operator = db.relationship("Operator", back_populates="documents")
+
+    kind = db.Column(db.String(20), nullable=False)          # licence | identity
+    key = db.Column(db.String(80), nullable=False, unique=True)
+    content_type = db.Column(db.String(60), nullable=False)
+    size_bytes = db.Column(db.Integer, nullable=False)
+    # So a file can be shown to be the one that was uploaded.
+    digest = db.Column(db.String(64), nullable=False)
+    original_name = db.Column(db.String(120), nullable=True)
+    uploaded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<DriverDocument {self.kind} operator={self.operator_id}>"
 
 
 class CommissionSettlement(db.Model):
