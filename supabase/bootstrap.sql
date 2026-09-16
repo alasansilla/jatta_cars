@@ -117,6 +117,22 @@ CREATE TABLE IF NOT EXISTS settings (
 	PRIMARY KEY (key)
 );
 
+CREATE TABLE IF NOT EXISTS commission_settlements (
+	id SERIAL NOT NULL,
+	operator_id INTEGER NOT NULL,
+	amount NUMERIC(10, 2) NOT NULL,
+	method VARCHAR(40) NOT NULL,
+	reference VARCHAR(80),
+	note TEXT,
+	recorded_by_id INTEGER,
+	recorded_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	PRIMARY KEY (id),
+	FOREIGN KEY(operator_id) REFERENCES operators (id),
+	FOREIGN KEY(recorded_by_id) REFERENCES admin_users (id)
+);
+CREATE INDEX IF NOT EXISTS ix_commission_settlements_operator_id ON commission_settlements (operator_id);
+CREATE INDEX IF NOT EXISTS ix_commission_settlements_recorded_at ON commission_settlements (recorded_at);
+
 CREATE TABLE IF NOT EXISTS operator_fares (
 	id SERIAL NOT NULL,
 	operator_id INTEGER NOT NULL,
@@ -313,7 +329,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['phone_codes', 'auth_events', 'vehicles', 'bookings', 'enquiries', 'settings', 'media_assets', 'admin_users', 'schema_migrations', 'operators', 'operator_fares', 'commission_entries', 'driver_states', 'booking_reviews'] loop
+  foreach t in array array['phone_codes', 'auth_events', 'vehicles', 'bookings', 'enquiries', 'settings', 'media_assets', 'admin_users', 'schema_migrations', 'operators', 'operator_fares', 'commission_entries', 'commission_settlements', 'driver_states', 'booking_reviews'] loop
     if exists (select 1 from pg_tables where schemaname = 'public' and tablename = t) then
       execute format('alter table public.%I enable row level security', t);
       execute format('revoke all on table public.%I from anon, authenticated', t);
@@ -381,7 +397,8 @@ insert into public.schema_migrations (version, name, applied_at) values
   ('0010', 'public API lockdown and index parity', now()),
   ('0011', 'driver location only during an accepted trip', now()),
   ('0012', 'vehicle taxi and rental service mode', now()),
-  ('0013', 'driver car review queue', now())
+  ('0013', 'driver car review queue', now()),
+  ('0014', 'commission settlement ledger', now())
 on conflict (version) do nothing;
 
 alter table public.schema_migrations enable row level security;

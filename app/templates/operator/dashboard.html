@@ -25,7 +25,8 @@
   <div class="stat"><div class="stat__label">Accepted</div><div class="stat__value">{{ counts.confirmed }}</div></div>
   <div class="stat"><div class="stat__label">Completed</div><div class="stat__value">{{ counts.completed }}</div></div>
   <div class="stat"><div class="stat__label">Prices listed</div><div class="stat__value">{{ counts.fares }}</div></div>
-  <div class="stat"><div class="stat__label">Commission charged</div><div class="stat__value">{{ earned | money }}</div></div>
+  <div class="stat"><div class="stat__label">Commission charged</div><div class="stat__value">{{ statement.earned | money }}</div></div>
+  <div class="stat"><div class="stat__label">You still owe</div><div class="stat__value">{{ statement.outstanding | money }}</div></div>
 </div>
 
 <div class="panel" style="margin-top:26px">
@@ -36,6 +37,35 @@
     booking that is cancelled or never completed.
   </p>
   <p class="small muted" style="margin:0">{{ payout_note }}</p>
+
+  {# What the marketplace has written down as received. A driver who has paid
+     should be able to see it here rather than take our word for it. #}
+  <h3 style="font-size:1.05rem;margin-top:22px">Payments recorded</h3>
+  {% if statement.payments %}
+    <div class="table-scroll">
+      <table class="table--stacked">
+        <thead><tr><th>When</th><th>Amount</th><th>How</th><th>Reference</th><th>Note</th></tr></thead>
+        <tbody>
+          {% for payment in statement.payments %}
+            <tr>
+              <td>{{ payment.recorded_at.strftime('%d %b %Y') }}</td>
+              <td>{{ payment.amount | money }}{% if payment.is_correction %} <span class="tag">correction</span>{% endif %}</td>
+              <td>{{ payment.method }}</td>
+              <td>{{ payment.reference or '—' }}</td>
+              <td>{{ payment.note or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted" style="margin-top:10px">
+      Paid {{ statement.settled | money }} of {{ statement.earned | money }}. If something here
+      looks wrong, tell us and we will put it right with a correction rather than an edit.
+    </p>
+  {% else %}
+    <p class="small muted" style="margin:0">Nothing recorded yet. Payments you make appear here
+      once they are written down.</p>
+  {% endif %}
 </div>
 
 <div class="panel">

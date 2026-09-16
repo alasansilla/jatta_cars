@@ -21,8 +21,8 @@ from .media import delete_asset, save_upload
 from .storage import media_url
 from .models import (
     CATEGORIES, FUELS, OPERATOR_STATUSES, RENTAL, TRANSMISSIONS, AdminUser,
-    Booking, CommissionEntry, Enquiry, MediaAsset, Operator, OperatorFare,
-    Setting, Vehicle, db
+    Booking, CommissionEntry, CommissionSettlement, Enquiry, MediaAsset, Operator,
+    OperatorFare, Setting, Vehicle, db
 )
 from .settings import (
     FIELDS, GROUPS, PLACEHOLDER_MARKER, SCHEMA, current_settings, outstanding_items,
@@ -69,6 +69,7 @@ def inject_admin_counts():
         "nav_unread": Enquiry.query.filter_by(is_read=False).count(),
         "nav_todo": len(outstanding_items()),
         "nav_operators": Operator.query.filter_by(status="pending").count(),
+        "nav_commission_owed": commission.outstanding() > 0,
         "admin_username": session.get("admin_username"),
     }
 
@@ -535,10 +536,12 @@ def checklist():
         blockers.append(
             "No SMS provider is configured, so drivers cannot join or sign in with "
             "their phone number. " + " ".join(sms_problems))
-    if commission.totals() > 0:
+    owed = commission.outstanding()
+    if owed > 0:
         blockers.append(
-            f"{commission.totals()} of commission has been recorded but nothing "
-            f"collects it — settling up with operators happens outside this site.")
+            f"{owed} of commission is owed by drivers. Nothing is collected online: "
+            f"settle up with them directly and record each payment in the commission "
+            f"ledger.")
 
     return render_template(
         "admin/checklist.html",
@@ -859,6 +862,60 @@ def api_choices():
     """Valid values for the fields the inline editor offers as a picker."""
     return jsonify(VEHICLE_CHOICES)
 
+
+
+# --- Commission ledger -------------------------------------------------------
+
+@bp.route("/commission")
+@login_required
+def commission_ledger():
+    """What each driver owes us, and what they have paid.
+
+    Nothing is collected online, so this is the record of money that actually
+    changed hands. Rows are never edited or deleted; a mistake is corrected by
+    recording the opposite amount with a note.
+    """
+    drivers = Operator.query.order_by(Operator.name).all()
+    statements = [commission.statement(driver) for driver in drivers]
+    statements = [row for row in statements
+                  if row["earned"] or row["settled"] or row["operator"].is_approved]
+    recent = (CommissionSettlement.query
+              .order_by(CommissionSettlement.recorded_at.desc(), CommissionSettlement.id.desc())
+              .limit(50).all())
+    return render_template(
+        "admin/commission.html",
+        statements=statements,
+        recent=recent,
+        methods=commission.METHODS,
+        earned=commission.totals(),
+        settled=commission.settled(),
+        outstanding=commission.outstanding(),
+    )
+
+
+@bp.route("/commission/<int:operator_id>/settle", methods=["POST"])
+@login_required
+def commission_settle(operator_id):
+    """Write down a payment a driver has handed over."""
+    operator = db.session.get(Operator, operator_id) or abort(404)
+    try:
+        settlement = commission.record_settlement(
+            operator,
+            request.form.get("amount"),
+            request.form.get("method"),
+            reference=request.form.get("reference"),
+            note=request.form.get("note"),
+            recorded_by=db.session.get(AdminUser, session.get("admin_id")),
+        )
+    except commission.SettlementError as error:
+        flash(str(error), "error")
+        return redirect(url_for("admin.commission_ledger"))
+
+    db.session.commit()
+    kind = "correction" if settlement.is_correction else "payment"
+    flash(f"Recorded a {kind} of {settlement.amount} from {operator.name}. "
+          f"They now owe {commission.outstanding(operator)}.", "success")
+    return redirect(url_for("admin.commission_ledger"))
 
 
 # --- Operators --------------------------------------------------------------

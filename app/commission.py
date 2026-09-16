@@ -15,7 +15,7 @@ rate later moves future bookings and leaves history alone.
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from .models import CommissionEntry, db
+from .models import CommissionEntry, CommissionSettlement, db
 from .settings import current_settings
 
 COMPLETED = "completed"
@@ -132,3 +132,80 @@ def totals(operator=None):
     if operator is not None:
         query = query.filter(CommissionEntry.operator_id == operator.id)
     return _decimal(query.scalar())
+
+
+# --- what has actually been paid ---------------------------------------------
+#
+# Nothing is collected online. A driver settles up with us directly and a member
+# of staff writes down what changed hands, so these two sums are what says
+# whether anyone is behind.
+
+MAX_SETTLEMENT = Decimal("10000000")
+METHODS = ("cash", "mobile money", "bank transfer", "other")
+
+
+def settled(operator=None):
+    """Sum of the payments recorded, optionally for one operator."""
+    query = db.session.query(db.func.coalesce(db.func.sum(CommissionSettlement.amount), 0))
+    if operator is not None:
+        query = query.filter(CommissionSettlement.operator_id == operator.id)
+    return _decimal(query.scalar())
+
+
+def outstanding(operator=None):
+    """What is still owed: earned, less paid. Negative means overpaid."""
+    return (totals(operator) - settled(operator)).quantize(PENNY)
+
+
+class SettlementError(ValueError):
+    """The payment as typed cannot be recorded."""
+
+
+def record_settlement(operator, amount, method, reference=None, note=None, recorded_by=None):
+    """Write down one payment from a driver.
+
+    A correction is a negative amount, which is why those are allowed. It is
+    refused without a note, because a negative row nobody explained is exactly
+    the sort of thing an audit cannot resolve later.
+    """
+    if operator is None:
+        raise SettlementError("Choose the driver this payment came from.")
+    try:
+        value = Decimal(str(amount).strip().replace(",", ""))
+    except (InvalidOperation, ValueError, TypeError, AttributeError):
+        raise SettlementError("Enter the amount as a number, for example 1500.")
+    value = value.quantize(PENNY, rounding=ROUND_HALF_UP)
+    if value == 0:
+        raise SettlementError("Enter an amount other than zero.")
+    if abs(value) > MAX_SETTLEMENT:
+        raise SettlementError("That amount looks wrong. Check it and try again.")
+
+    method = (method or "").strip().lower()
+    if method not in METHODS:
+        raise SettlementError("Choose how the payment was made.")
+    note = (note or "").strip() or None
+    if value < 0 and not note:
+        raise SettlementError("A correction needs a note saying what it puts right.")
+
+    settlement = CommissionSettlement(
+        operator_id=operator.id, amount=value, method=method,
+        reference=(reference or "").strip()[:80] or None, note=note,
+        recorded_by_id=getattr(recorded_by, "id", None),
+    )
+    db.session.add(settlement)
+    return settlement
+
+
+def statement(operator):
+    """One driver's ledger: what they earned us, what they have paid, and the
+    payments themselves, newest first."""
+    return {
+        "operator": operator,
+        "earned": totals(operator),
+        "settled": settled(operator),
+        "outstanding": outstanding(operator),
+        "payments": (CommissionSettlement.query
+                     .filter_by(operator_id=operator.id)
+                     .order_by(CommissionSettlement.recorded_at.desc(),
+                               CommissionSettlement.id.desc()).all()),
+    }

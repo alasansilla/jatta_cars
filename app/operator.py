@@ -198,7 +198,7 @@ def dashboard():
         "operator/dashboard.html",
         upcoming=upcoming,
         counts=counts,
-        earned=commission.totals(operator),
+        statement=commission.statement(operator),
         payout_note=current_settings()["operator_payout_note"],
     )
 

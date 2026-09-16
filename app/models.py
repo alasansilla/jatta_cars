@@ -517,6 +517,44 @@ class CommissionEntry(db.Model):
         return f"<CommissionEntry booking={self.booking_id} {self.amount}>"
 
 
+class CommissionSettlement(db.Model):
+    """One payment of commission a driver has handed over, written down by staff.
+
+    Nothing is collected online, so this is the record of what actually changed
+    hands. An entry is never edited or deleted: a mistake is put right by
+    recording the opposite amount with a note, which leaves both the error and
+    the correction visible. What a driver still owes is everything they have
+    earned us, less everything recorded here.
+    """
+
+    __tablename__ = "commission_settlements"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    operator_id = db.Column(db.Integer, db.ForeignKey("operators.id"), nullable=False,
+                            index=True)
+    operator = db.relationship("Operator")
+
+    # Negative for a correction, which is why this is not a positive-only column.
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    method = db.Column(db.String(40), nullable=False)
+    reference = db.Column(db.String(80), nullable=True)
+    note = db.Column(db.Text, nullable=True)
+
+    # Who wrote it down. Kept even if that account is later removed, so the
+    # ledger never loses a row.
+    recorded_by_id = db.Column(db.Integer, db.ForeignKey("admin_users.id"), nullable=True)
+    recorded_by = db.relationship("AdminUser")
+    recorded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    @property
+    def is_correction(self):
+        return (self.amount or 0) < 0
+
+    def __repr__(self):
+        return f"<CommissionSettlement operator={self.operator_id} {self.amount}>"
+
+
 class AdminUser(db.Model):
     __tablename__ = "admin_users"
 

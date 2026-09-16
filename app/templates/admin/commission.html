@@ -1,0 +1,94 @@
+{% extends "admin/base.html" %}
+{% block title %}Commission — {{ company_name }}{% endblock %}
+{% block admin_content %}
+<div class="panel__head">
+  <div>
+    <h1 style="font-size:2rem;margin:0">Commission</h1>
+    <p class="small muted" style="margin:4px 0 0;max-width:70ch">
+      Commission is earned when a booking is completed, on the fare only — never on a
+      refundable deposit. Nothing is collected online: drivers settle up with you
+      directly, and each payment is written down here. Entries are never edited or
+      deleted; correct a mistake by recording a negative amount with a note.
+    </p>
+  </div>
+
+</div>
+
+<div class="grid grid--3" style="margin-bottom:24px">
+  <div class="panel"><p class="small muted" style="margin:0">Earned</p><p style="font-size:1.6rem;margin:4px 0 0">{{ earned | money }}</p></div>
+  <div class="panel"><p class="small muted" style="margin:0">Paid</p><p style="font-size:1.6rem;margin:4px 0 0">{{ settled | money }}</p></div>
+  <div class="panel"><p class="small muted" style="margin:0">Outstanding</p><p style="font-size:1.6rem;margin:4px 0 0">{{ outstanding | money }}</p></div>
+</div>
+
+{% if not statements %}
+  <div class="empty panel">
+    <h3>No commission yet</h3>
+    <p>Nothing has been earned, so there is nothing to settle. Entries appear here as
+      bookings are completed.</p>
+  </div>
+{% endif %}
+
+{% for row in statements %}
+  <div class="panel" style="margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <h2 style="font-size:1.2rem;margin:0">{{ row.operator.display_name }}</h2>
+        <p class="small muted" style="margin:4px 0 0">
+          Earned {{ row.earned | money }} · paid {{ row.settled | money }}
+        </p>
+      </div>
+      <p style="margin:0;font-size:1.2rem">
+        <strong{% if row.outstanding > 0 %} style="color:var(--warn)"{% endif %}>{{ row.outstanding | money }}</strong>
+        <span class="small muted">{% if row.outstanding > 0 %}owed{% elif row.outstanding < 0 %}overpaid{% else %}settled{% endif %}</span>
+      </p>
+    </div>
+
+    <form method="post" action="{{ url_for('admin.commission_settle', operator_id=row.operator.id) }}"
+          style="margin-top:16px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field-row">
+        <div class="field">
+          <label for="amount-{{ row.operator.id }}">Amount received</label>
+          <input type="text" inputmode="decimal" id="amount-{{ row.operator.id }}" name="amount"
+                 placeholder="1500" required>
+        </div>
+        <div class="field">
+          <label for="method-{{ row.operator.id }}">How</label>
+          <select id="method-{{ row.operator.id }}" name="method">
+            {% for method in methods %}<option value="{{ method }}">{{ method }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="reference-{{ row.operator.id }}">Their reference <span class="muted" style="font-weight:400">(optional)</span></label>
+          <input type="text" id="reference-{{ row.operator.id }}" name="reference" maxlength="80">
+        </div>
+      </div>
+      <div class="field">
+        <label for="note-{{ row.operator.id }}">Note <span class="muted" style="font-weight:400">(required for a correction)</span></label>
+        <input type="text" id="note-{{ row.operator.id }}" name="note" maxlength="300">
+      </div>
+      <button class="btn btn--primary btn--sm" type="submit" style="margin-top:12px">Record payment</button>
+    </form>
+
+    {% if row.payments %}
+      <div class="table-scroll" style="margin-top:18px">
+        <table class="table--stacked">
+          <thead><tr><th>When</th><th>Amount</th><th>How</th><th>Reference</th><th>Note</th><th>Recorded by</th></tr></thead>
+          <tbody>
+            {% for payment in row.payments %}
+              <tr>
+                <td>{{ payment.recorded_at.strftime('%d %b %Y, %H:%M') }}</td>
+                <td>{{ payment.amount | money }}{% if payment.is_correction %} <span class="tag">correction</span>{% endif %}</td>
+                <td>{{ payment.method }}</td>
+                <td>{{ payment.reference or '—' }}</td>
+                <td>{{ payment.note or '—' }}</td>
+                <td>{{ payment.recorded_by.username if payment.recorded_by else 'removed account' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+{% endfor %}
+{% endblock %}

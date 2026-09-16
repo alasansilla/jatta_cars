@@ -16,6 +16,9 @@
     <a href="{{ url_for('admin.operators') }}" class="{{ 'is-active' if here == 'admin.operators' }}">
       Drivers{% if nav_operators %}<span class="pill-count">{{ nav_operators }}</span>{% endif %}
     </a>
+    <a href="{{ url_for('admin.commission_ledger') }}" class="{{ 'is-active' if here == 'admin.commission_ledger' }}">
+      Commission{% if nav_commission_owed %}<span class="pill-count">owed</span>{% endif %}
+    </a>
     <a href="{{ url_for('admin.settings') }}" class="{{ 'is-active' if here == 'admin.settings' }}">Settings</a>
     {% if fake_sms_enabled %}<a href="{{ url_for('admin.dev_text_messages') }}" class="{{ 'is-active' if here == 'admin.dev_text_messages' }}">Test text messages</a>{% endif %}
     <a href="{{ url_for('admin.checklist') }}" class="{{ 'is-active' if here == 'admin.checklist' }}">
