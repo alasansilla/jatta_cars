@@ -913,10 +913,16 @@ def operator_decision(operator_id):
 
     db.session.commit()
 
-    if decision == "approved" and not operator.password_hash:
+    if decision == "approved" and operator.signs_in_by_phone:
+        # The usual case: they joined by confirming their number, so approval is
+        # all they were waiting for.
+        flash(f"{operator.name} is approved and can sign in with their phone number.",
+              "success")
+    elif decision == "approved" and not operator.password_hash:
         flash(
-            f"{operator.name} is approved. They cannot sign in until you issue a "
-            f"password below.",
+            f"{operator.name} is approved, but cannot sign in yet: no confirmed phone "
+            f"number and no email password. Ask them to join with their phone number, "
+            f"or issue a password below.",
             "success",
         )
     else:

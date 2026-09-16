@@ -73,8 +73,9 @@ TBC = PLACEHOLDER_MARKER
 SCHEMA = [
     Group(
         "business", "Business details",
-        "Your name, contact details and where customers collect a car. "
-        "These appear all over the site.",
+        "Your name and contact details. These appear all over the site. "
+        "GoGo Taxi connects customers with independent drivers, so there is no "
+        "address or opening hours to state unless you really have them.",
         [
             Field("company_name", "Company name", default="GoGo Taxi"),
             Field("brand_name", "Logo name", default="GoGo Taxi",
@@ -88,19 +89,23 @@ SCHEMA = [
             Field("company_phone", "Phone number",
                   default=f"{TBC} add your phone number",
                   help="Include the country code, for example +220 …"),
-            Field("company_address", "Address", type="textarea", rows=2,
-                  default=f"{TBC} add the address customers should come to"),
+            Field("company_address", "Address", type="textarea", rows=2, default="",
+                  help="Only if customers can genuinely come to you. Drivers arrange "
+                       "where to meet, so this is normally left empty and no address "
+                       "is shown anywhere."),
             Field("currency", "Currency symbol", default="D",
                   help="Shown in front of every price. D is the usual short form for "
                        "the Gambian dalasi; change it if you quote in something else."),
             Field("locations", "Pick-up points", type="lines", rows=6,
                   default="Kololi\n"
-                          "Somewhere else — we agree it when we confirm",
-                  help="One per line. Customers choose from these when booking. Add the "
-                       "other places you regularly hand cars over, such as the airport or "
-                       "a hotel, so people can pick one rather than explaining it."),
-            Field("opening_hours", "Opening hours",
-                  default=f"{TBC} add the days and hours you are open"),
+                          "Somewhere else — agreed with your driver",
+                  help="One per line. Customers choose from these when booking a car, and "
+                       "settle the exact spot with the driver. Add the places drivers "
+                       "regularly meet customers, such as the airport or a hotel."),
+            Field("opening_hours", "Opening hours", default="",
+                  help="The hours someone here answers enquiries, if you want to state "
+                       "them. Left empty, no hours are shown. Drivers keep their own "
+                       "hours and agree times with the customer."),
             Field("seo_description", "Search-engine description", type="textarea", rows=2,
                   default="Rides, airport transfers and car rental in The Gambia. Compare drivers "
                           "and cars by price, profile and reviews — nothing to pay on the website.",
@@ -121,14 +126,15 @@ SCHEMA = [
             Field("holding_heading", "Holding page — heading",
                   default="Our website is nearly ready"),
             Field("holding_body", "Holding page — text", type="textarea", rows=4,
-                  default="We are putting the last details in place. In the meantime, "
-                          "get in touch and we will sort out a car for you."),
+                  default="We are putting the last details in place. Come back shortly to "
+                          "find a driver for a ride, an airport transfer or a car to rent."),
         ],
     ),
     Group(
         "booking", "Booking rules",
-        "The limits applied when someone requests a car, and what they are told about "
-        "paying and collecting.",
+        "The limits applied when someone requests a car, and what customers are told "
+        "about paying and collecting. The driver sets the terms for their own car; "
+        "this wording tells the customer what to settle with them.",
         [
             Field("promo_message", "Ribbon on the booking panel", type="text",
                   default="",
@@ -150,29 +156,37 @@ SCHEMA = [
                   default="Approximate, for guidance only. You pay in dalasi.",
                   help="Shown wherever a converted price appears."),
             Field("deposit_policy", "Deposit and what it depends on", type="textarea", rows=4,
-                  default="We hold a refundable deposit of D5,000 on each hire. You get it "
-                          "back when the car comes back undamaged and with at least half a "
-                          "tank of fuel.",
-                  help="The amount charged is set per car under Fleet; this is the wording "
-                       "customers read."),
+                  default="The deposit is set by the driver who owns the car, and the amount "
+                          "for this car is shown on its page. It is refundable, and the "
+                          "driver agrees with you when it is paid, what it covers and when "
+                          "it comes back. Nothing is taken on this website, and the deposit "
+                          "is never part of our commission.",
+                  help="The amount is set per car by its driver; this is the wording "
+                       "customers read beside it."),
             Field("insurance_note", "Insurance", type="textarea", rows=3,
-                  default=f"{TBC} say whether the car carries an insurance policy, what it "
-                          f"covers and what the driver is liable for. A refundable deposit "
-                          f"is not insurance, so do not describe it as cover.",
-                  help="Customers rely on this. Leave it as a placeholder until you can "
-                       "state the real position."),
+                  default="Any cover on this car is the driver's own. Ask them what their "
+                          "policy covers, what the excess is and what you would be liable "
+                          "for, and get it confirmed before you drive away. GoGo Taxi does "
+                          "not provide insurance, and a refundable deposit is not cover.",
+                  help="Customers rely on this. Say what a customer should ask the driver "
+                       "— do not describe cover that is not yours to promise."),
             Field("payment_note", "How customers pay", type="textarea", rows=3,
-                  default=f"Nothing is charged on this website. You settle up with us "
-                          f"directly when you collect the car. {TBC} confirm which payment "
-                          f"methods you accept — cash, mobile money or card.",
-                  help="This site cannot take payments. Say how payment actually happens."),
+                  default="Nothing is charged on this website. You pay the driver directly, "
+                          "and they confirm with you what they accept and when it is due.",
+                  help="This site cannot take payments, and each driver is paid directly. "
+                       "Say how payment actually happens."),
             Field("booking_collect_note", "What to bring at collection", type="textarea", rows=3,
-                  default=f"{TBC} list what a driver must bring — driving licence, ID or "
-                          f"passport, and the deposit.",
-                  help="Shown on a confirmed booking."),
+                  default="Your driver confirms where to meet and what to bring. Expect to "
+                          "need your driving licence, photo identification and the deposit "
+                          "shown on the car's page — ask them whether they need anything "
+                          "else before the day.",
+                  help="Shown on a confirmed booking. Each driver sets their own "
+                       "requirements, so this says what to settle with them."),
             Field("booking_change_note", "Changing or cancelling", type="textarea", rows=3,
-                  default=f"{TBC} set out your cancellation terms — how much notice you "
-                          f"need and whether anything is charged.",
+                  default="Cancellation terms are set by the driver, so ask about them "
+                          "before you book. If your plans change, tell your driver as early "
+                          "as you can. If you cannot reach them, send us a message and we "
+                          "will help.",
                   help="Shown at the bottom of a booking page."),
         ],
     ),
@@ -317,48 +331,60 @@ SCHEMA = [
         [
             Field("about_eyebrow", "Small label", default="About us"),
             Field("about_heading", "Page heading",
-                  default="Self-drive hire, arranged with a person"),
-            Field("about_section1_heading", "First section heading", default="Who we are"),
+                  default="Drivers you choose, journeys you arrange with them"),
+            Field("about_section1_heading", "First section heading", default="What GoGo Taxi is"),
             Field("about_section1_body", "First section text", type="textarea", rows=8,
-                  default=f"{TBC} write a short introduction — who runs GoGo Taxi, where you "
-                          f"are based, and how long you have been hiring cars.\n\n"
-                          f"{TBC} add a second paragraph about the kind of trips your "
-                          f"customers take and how you help them plan."),
+                  default="GoGo Taxi is an online platform for The Gambia. It puts you in "
+                          "touch with independent drivers who offer rides, airport transfers "
+                          "and cars to rent. We do not own the cars and we do not drive "
+                          "them.\n\n"
+                          "You choose the driver yourself, by their price, their profile and "
+                          "the reviews left by people they have already driven. A driver "
+                          "appears here only after they have confirmed their phone number "
+                          "and been approved by us, and any car they rent out is checked "
+                          "before it is listed.",
+                  help="Say what the platform does. Do not claim premises, staff or a "
+                       "fleet of your own."),
             Field("about_section2_heading", "Second section heading",
-                  default="How we look after the cars"),
+                  default="Prices, deposits and terms"),
             Field("about_section2_body", "Second section text", type="textarea", rows=8,
-                  default=f"{TBC} describe how the cars are serviced and checked, who does "
-                          f"the work, and what happens between one hire and the next.\n\n"
-                          f"{TBC} say what a customer should do if something goes wrong while "
-                          f"they have the car."),
+                  default="Every price you see is set by the driver offering it, and it is "
+                          "shown in full before you request anything. Nothing is charged on "
+                          "this website: you settle up with the driver directly.\n\n"
+                          "A car's deposit is shown on its page, and insurance, mileage, "
+                          "extra drivers and cancellation terms are the driver's own. Agree "
+                          "them with your driver before you pay anything or drive away. If "
+                          "something goes wrong, contact your driver first; if you cannot "
+                          "reach them, send us a message and we will help."),
             Field("about_included_heading", "Included box — heading",
-                  default="What a day's hire includes"),
+                  default="What to check with the driver"),
             Field("about_included_items", "Included box — items", type="lines", rows=7,
-                  default=f"D10,000 a day\n"
-                          f"A refundable D5,000 deposit, back when the car returns "
-                          f"undamaged with at least half a tank\n"
-                          f"{TBC} insurance — what type, and the excess\n"
-                          f"{TBC} mileage limit, or unlimited\n"
-                          f"{TBC} extra drivers\n"
-                          f"{TBC} breakdown help\n"
-                          f"{TBC} cancellation terms"),
+                  default="The daily price, and what the total covers\n"
+                          "The deposit, and when it comes back\n"
+                          "What their insurance covers, and any excess\n"
+                          "Any limit on the distance you may drive\n"
+                          "Whether anyone else may drive the car\n"
+                          "What to do if the car breaks down\n"
+                          "Their terms if you have to cancel",
+                  help="One per line. These are the questions a customer should put to "
+                       "the driver before booking, not promises made on their behalf."),
             Field("about_requirements_heading", "Requirements box — heading",
-                  default="What we need from you"),
+                  default="What a driver will usually ask for"),
             Field("about_requirements_intro", "Requirements box — intro",
-                  default="Before you can drive away:"),
+                  default="Each driver sets their own requirements. Ask yours about:"),
             Field("about_requirements_items", "Requirements box — items", type="lines", rows=6,
-                  default=f"{TBC} minimum age, and how long the licence must be held\n"
-                          f"{TBC} which licences you accept, and whether visitors need an "
-                          f"international permit\n"
-                          f"{TBC} the deposit, and how it is paid\n"
-                          f"{TBC} ID or passport"),
+                  default="A driving licence they accept, and whether a visitor needs an "
+                          "international permit\n"
+                          "Any minimum age, and how long you must have held your licence\n"
+                          "Photo identification, such as a passport\n"
+                          "The deposit for the car, and how they want it paid"),
             Field("about_hours_heading", "Hours box — heading", default="Opening hours"),
-            Field("about_hours_body", "Hours box — text", type="textarea", rows=3,
-                  default=f"{TBC} add your days and hours, and say whether collection can be "
-                          f"arranged outside them."),
+            Field("about_hours_body", "Hours box — text", type="textarea", rows=3, default="",
+                  help="Optional. Drivers agree times directly with the customer, so the "
+                       "box stays hidden unless you put something here."),
             Field("about_cta_heading", "Closing heading", default="Have a look at the cars"),
             Field("about_cta_body", "Closing text", type="textarea", rows=2,
-                  default="{fleet_size} cars available to hire right now.",
+                  default="{fleet_size} cars listed by drivers right now.",
                   help="{fleet_size} is replaced with the number of cars currently listed."),
         ],
     ),
@@ -369,43 +395,51 @@ SCHEMA = [
             Field("contact_eyebrow", "Small label", default="Contact"),
             Field("contact_heading", "Page heading", default="Talk to a person"),
             Field("contact_intro", "Page intro", type="textarea", rows=2,
-                  default="Questions about a booking, a longer hire, or anything the site "
-                          "does not answer."),
+                  default="Questions about a booking, about becoming a driver, or anything "
+                          "the site does not answer. Your driver is the quickest way to "
+                          "settle anything about a journey they are taking you on."),
             Field("contact_form_heading", "Form heading", default="Send us a message"),
             Field("contact_success", "Message shown after sending", type="textarea", rows=2,
                   default="Thanks — we have your message and will come back to you."),
             Field("contact_reply_note", "Note under the form", type="textarea", rows=2,
-                  default=f"Messages reach us here on the site rather than by email, so "
-                          f"please leave a phone number if it is urgent. {TBC} say how "
-                          f"quickly you usually reply."),
+                  default="Messages reach us here on the site rather than by email, so "
+                          "please leave a phone number if it is urgent. To arrange a "
+                          "journey, it is quicker to choose a driver and request it.",
+                  help="Add how quickly you reply once you know what you can keep to."),
         ],
     ),
     Group(
-        "vehicle", "Fleet and car pages",
-        "The fleet listing header, plus the standard text shown on every car's page.",
+        "vehicle", "Car rental pages",
+        "The rental listing header, plus the standard text shown on every car's page. "
+        "The cars belong to the drivers who list them.",
         [
-            Field("fleet_page_eyebrow", "Fleet page — small label", default="Our cars"),
-            Field("fleet_page_heading", "Fleet page — heading", default="Cars available to hire"),
+            Field("fleet_page_eyebrow", "Fleet page — small label", default="Cars from independent drivers"),
+            Field("fleet_page_heading", "Fleet page — heading", default="Cars available to rent"),
             Field("fleet_page_intro", "Fleet page — intro", type="textarea", rows=2,
-                  default="Set your dates to see what is free and what the hire would come to."),
+                  default="Every car here is rented out by the driver who owns it. Set your "
+                          "dates to see what is free and what the rental would come to."),
             Field("vehicle_included_heading", "Included list — heading",
                   default="Good to know"),
             Field("vehicle_included_items", "Included list — items", type="lines", rows=6,
-                  default=f"Back with at least half a tank\n"
-                          f"Refundable D5,000 deposit\n"
-                          f"{TBC} what the insurance covers\n"
-                          f"{TBC} mileage limit, or unlimited\n"
-                          f"{TBC} extra drivers",
-                  help="Shown on every car page. Replace each line with the real answer."),
+                  default="The price and deposit are set by this car's driver\n"
+                          "Nothing is charged here — you pay the driver directly\n"
+                          "Ask what their insurance covers, and any excess\n"
+                          "Ask about any limit on the distance you may drive\n"
+                          "Ask whether anyone else may drive the car\n"
+                          "Agree with them where to collect and return it",
+                  help="Shown on every car page. Keep these to what is true of every "
+                       "listing; anything particular to one car belongs in its own "
+                       "description."),
             Field("vehicle_terms_note", "Deposit and licence note", type="textarea", rows=4,
-                  default=f"A refundable deposit of {{deposit}} is taken when you collect "
-                          f"the car, and returned when it comes back undamaged with at least "
-                          f"half a tank of fuel. {TBC} confirm the minimum age, how long a "
-                          f"licence must have been held, and which licences you accept.",
-                  help="{deposit} is replaced with that car's deposit."),
+                  default="The driver asks for a refundable deposit of {deposit} for this "
+                          "car, and tells you when it is paid and what brings it back in "
+                          "full. Confirm with them which licences they accept, any minimum "
+                          "age and how long you must have been driving, before you take the "
+                          "car.",
+                  help="{deposit} is replaced with that car's deposit, as its driver set it."),
             Field("vehicle_booking_note", "Note under the booking button", type="textarea", rows=2,
-                  default="Nothing to pay now — this is a request. We come back to you to "
-                          "confirm it."),
+                  default="Nothing to pay now — this is a request. The driver comes back to "
+                          "you to confirm it."),
         ],
     ),
     Group(
@@ -425,9 +459,11 @@ SCHEMA = [
                        "this moves future bookings only — commission already earned "
                        "keeps the rate it was recorded at."),
             Field("operator_payout_note", "How drivers settle commission", type="textarea", rows=3,
-                  default=f"{TBC} say how and when drivers pay the commission, and who covers "
-                          f"any transfer charges.",
-                  help="Shown to drivers in their dashboard."),
+                  default="Commission is charged on the fare of a completed booking, never "
+                          "on a refundable deposit. Nothing is deducted automatically: we "
+                          "agree with you directly how and when it is settled.",
+                  help="Shown to drivers in their dashboard. Add the method and timing "
+                       "once they are agreed."),
         ],
     ),
     Group(
@@ -449,14 +485,18 @@ SCHEMA = [
                        "with example prices."),
             Field("rides_request_note", "What happens after a request",
                   type="textarea", rows=3,
-                  default=f"Your request goes to the driver, who confirms it with you "
-                          f"directly. {TBC} say how quickly a customer should expect to "
-                          f"hear back."),
+                  default="Your request goes to the driver, who confirms it with you "
+                          "directly. Nothing is charged here, and you settle the fare with "
+                          "them.",
+                  help="Add how quickly a driver should reply once that is agreed with "
+                       "them — do not promise a time on their behalf."),
             Field("transfers_heading", "Airport transfers heading",
                   default="Airport transfers"),
             Field("transfers_intro", "Airport transfers intro", type="textarea", rows=3,
-                  default=f"{TBC} describe how airport pick-ups work — where the driver "
-                          f"meets you, and what happens if a flight is late."),
+                  default="Each transfer is run by the driver offering it, at the price "
+                          "shown. Give them your flight number when they get in touch, and "
+                          "ask where they will meet you and what they do if the flight is "
+                          "delayed."),
         ],
     ),
     Group(
@@ -491,8 +531,8 @@ SCHEMA = [
         "The bottom of every page.",
         [
             Field("footer_blurb", "Short description", type="textarea", rows=3,
-                  default=f"Self-drive car hire in The Gambia. {TBC} add a line about your "
-                          f"business."),
+                  default="Rides, airport transfers and car rental in The Gambia, from "
+                          "independent drivers you choose yourself."),
             Field("footer_company_heading", "First column heading", default="Company"),
             Field("footer_locations_heading", "Second column heading", default="Pick-up points"),
             Field("footer_contact_heading", "Third column heading", default="Get in touch"),

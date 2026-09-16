@@ -50,18 +50,31 @@
     </div>
 
     <div class="stack">
+      {# Only details that have actually been confirmed. A driver arranges the
+         journey itself, so there is nothing to show here until then. #}
       <div class="panel">
         <h3>Get in touch directly</h3>
-        <p style="margin-bottom:8px"><strong style="color:var(--ink)">Phone</strong><br>
-          <span data-edit="company_phone">{{ site.company_phone }}</span></p>
-        <p style="margin-bottom:8px"><strong style="color:var(--ink)">Email</strong><br>
-          <span data-edit="company_email">{{ site.company_email }}</span></p>
-        <p style="margin-bottom:0"><strong style="color:var(--ink)">Office</strong><br>
-          <span data-edit="company_address">{{ site.company_address }}</span></p>
+        {% if site.company_phone | stated or show_editbar %}
+          <p style="margin-bottom:8px"><strong style="color:var(--ink)">Phone</strong><br>
+            <span data-edit="company_phone">{{ site.company_phone }}</span></p>
+        {% endif %}
+        {% if site.company_email | stated or show_editbar %}
+          <p style="margin-bottom:8px"><strong style="color:var(--ink)">Email</strong><br>
+            <span data-edit="company_email">{{ site.company_email }}</span></p>
+        {% endif %}
+        {% if site.company_address | stated or show_editbar %}
+          <p style="margin-bottom:0"><strong style="color:var(--ink)">Office</strong><br>
+            <span data-edit="company_address">{{ site.company_address }}</span></p>
+        {% endif %}
+        {% if not (site.company_phone | stated or site.company_email | stated
+                   or site.company_address | stated) %}
+          <p style="margin-bottom:0">The form is the way to reach us at the moment. If your
+            question is about a journey, your driver can answer it fastest.</p>
+        {% endif %}
       </div>
 
       <div class="panel">
-        <h3>Where you can collect</h3>
+        <h3>Where drivers meet customers</h3>
         <ul class="feature-list" data-edit-list="locations" style="grid-template-columns:1fr">
           {% for location in locations %}
             <li data-edit-item>{{ pin(18) }} <span>{{ location }}</span></li>
@@ -69,10 +82,12 @@
         </ul>
       </div>
 
-      <div class="panel">
-        <h3 data-edit="about_hours_heading">{{ site.about_hours_heading }}</h3>
-        <p style="margin:0" data-edit="opening_hours">{{ site.opening_hours }}</p>
-      </div>
+      {% if site.opening_hours | stated or show_editbar %}
+        <div class="panel">
+          <h3 data-edit="about_hours_heading">{{ site.about_hours_heading }}</h3>
+          <p style="margin:0" data-edit="opening_hours">{{ site.opening_hours }}</p>
+        </div>
+      {% endif %}
     </div>
   </div>
 </section>

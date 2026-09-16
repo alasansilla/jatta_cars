@@ -108,8 +108,9 @@
       </div>
 
       <p class="small muted" style="margin-top:26px">
-        Need to change or cancel? Call {{ company_phone }} quoting
-        <span class="reference">{{ booking.reference }}</span>.
+        Need to change or cancel? Tell your driver as soon as you can, quoting
+        <span class="reference">{{ booking.reference }}</span>{% if company_phone | stated %},
+        or call us on {{ company_phone }}{% endif %}.
       </p>
       <p class="small muted" data-edit="booking_change_note">{{ site.booking_change_note }}</p>
       <p class="small muted" data-edit="payment_note">{{ site.payment_note }}</p>

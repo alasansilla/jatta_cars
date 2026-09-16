@@ -35,8 +35,14 @@
         <a href="{{ url_for('driver_auth.join') }}" class="{{ 'is-active' if here == 'driver_auth.join' }}">Become a driver</a>
         <a href="{{ url_for('driver_auth.sign_in') }}" class="{{ 'is-active' if here == 'driver_auth.sign_in' }}">Driver sign in</a>
       {% endif %}
-      <a class="btn btn--primary" href="{{ url_for('dispatch.ride') }}">Request a ride</a>
     </nav>
+    {# One phone screen cannot hold the full label beside the logo and the menu
+       button, so it shortens. The accessible name stays the whole phrase. #}
+    <a class="btn btn--primary header-cta" href="{{ url_for('dispatch.ride') }}"
+       aria-label="Request a ride">
+      <span class="header-cta__full">Request a ride</span>
+      <span class="header-cta__brief" aria-hidden="true">Ride</span>
+    </a>
     {% endif %}
   </div>
 </header>

@@ -196,7 +196,11 @@
       </div>
 
       <p class="center" style="margin-top:24px">
-        Prefer to talk? <a href="tel:{{ company_phone | replace(' ', '') }}"><strong>{{ company_phone }}</strong></a>
+        {% if company_phone | stated %}
+          Prefer to talk? <a href="tel:{{ company_phone | replace(' ', '') }}"><strong>{{ company_phone }}</strong></a>
+        {% else %}
+          Questions about this car? <a href="{{ url_for('dispatch.driver_profile', operator_id=vehicle.operator.id) if vehicle.operator else url_for('public.contact') }}">Ask the driver who rents it out</a>.
+        {% endif %}
       </p>
 
       <div class="edit-tools" data-edit-only hidden>

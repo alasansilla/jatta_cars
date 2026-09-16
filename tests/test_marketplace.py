@@ -703,3 +703,66 @@ class DistanceFareFormTests(MarketplaceCase):
             "csrf_token": token, "title": "No price", "kind": "ride",
             "from_location": "A", "to_location": "B", "pricing_model": "fixed"})
         self.assertIsNone(OperatorFare.query.filter_by(title="No price").first())
+
+
+# --- what approving a driver actually tells staff ----------------------------
+
+class ApprovalMessageTests(MarketplaceCase):
+    """A driver who joined by phone needs no password, and staff must not be
+    told to issue one. A driver with no way in at all still must be."""
+
+    def _admin(self):
+        admin = self.app.test_client()
+        admin.post("/admin/login", data={"username": "admin", "password": "admin-password-long"})
+        admin.get("/admin/operators")
+        with admin.session_transaction() as session:
+            self.token = session["_csrf_token"]
+        return admin
+
+    def _approve(self, operator):
+        admin = self._admin()
+        response = admin.post(f"/admin/operators/{operator.id}/decision",
+                              data={"csrf_token": self.token, "status": "approved"},
+                              follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        return response.get_data(as_text=True)
+
+    def _phone_driver(self, **extra):
+        driver = self._operator("Phone Driver", None, status="pending", password=None)
+        driver.phone_e164 = extra.get("phone", "+2208770000")
+        driver.phone_verified_at = extra.get("verified", datetime.utcnow())
+        db.session.commit()
+        return driver
+
+    def test_a_phone_verified_driver_is_not_asked_for_a_password(self):
+        driver = self._phone_driver()
+        page = self._approve(driver)
+        self.assertIn("can sign in with their phone number", page)
+        self.assertNotIn("issue a password below", page)
+        self.assertNotIn("cannot sign in", page)
+        refreshed = db.session.get(Operator, driver.id)
+        self.assertEqual(refreshed.status, "approved")
+        self.assertTrue(refreshed.signs_in_by_phone)
+        # Approval grants no access on its own: nothing was given a password.
+        self.assertIsNone(refreshed.password_hash)
+
+    def test_a_driver_with_no_way_in_is_still_flagged(self):
+        stranded = self._operator("No Way In", "noway@example.com", status="pending",
+                                  password=None)
+        page = self._approve(stranded)
+        self.assertIn("cannot sign in yet", page)
+        self.assertIn("issue a password below", page)
+        self.assertIn("Approved but cannot sign in yet", page)
+
+    def test_an_unconfirmed_number_is_not_treated_as_a_way_in(self):
+        pending_number = self._phone_driver(phone="+2208771111", verified=None)
+        self.assertFalse(db.session.get(Operator, pending_number.id).signs_in_by_phone)
+        page = self._approve(pending_number)
+        self.assertIn("cannot sign in yet", page)
+        self.assertIn("not confirmed", page)
+
+    def test_an_email_password_driver_reads_as_a_plain_approval(self):
+        with_password = self._operator("Has Password", "has@example.com", status="pending")
+        page = self._approve(with_password)
+        self.assertIn("is now approved", page)
+        self.assertNotIn("cannot sign in", page)

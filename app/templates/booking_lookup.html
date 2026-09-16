@@ -23,7 +23,9 @@
       </form>
 
       <p class="small muted center" style="margin:22px 0 0">
-        Lost the reference? Call us on {{ company_phone }}.
+        Lost the reference? {% if company_phone | stated %}Call us on {{ company_phone }}.
+        {% else %}<a href="{{ url_for('public.contact') }}">Send us a message</a> with the email
+        address you booked with.{% endif %}
       </p>
     </div>
   </div>

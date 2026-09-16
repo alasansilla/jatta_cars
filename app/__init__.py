@@ -205,6 +205,20 @@ def register_template_helpers(app):
                 parts.append(f"{symbol}{float(value) / float(rate):,.0f}")
         return "\u2248 " + " / ".join(parts) if parts else ""
 
+    @app.template_filter("stated")
+    def stated(value):
+        """True when a detail has really been given.
+
+        Empty means the business has none — no office, no published hours — and
+        the block that would show it is left out. A value still carrying the
+        placeholder marker has not been decided, and is never shown to a
+        customer as though it had been.
+        """
+        from .settings import PLACEHOLDER_MARKER
+
+        text = "\n".join(value) if isinstance(value, (list, tuple)) else str(value or "")
+        return bool(text.strip()) and PLACEHOLDER_MARKER not in text
+
     @app.template_filter("initial")
     def initial(text):
         """First letter of a name, ignoring the placeholder marker."""

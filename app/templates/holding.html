@@ -11,15 +11,23 @@
     <h1>{{ site.holding_heading }}</h1>
     <div class="lede" style="margin:0 auto 32px">{{ site.holding_body | paragraphs }}</div>
 
+    {% if company_phone | stated or company_email | stated or company_address | stated %}
     <div class="panel" style="text-align:left;max-width:420px;margin:0 auto">
       <h3 style="font-size:1.05rem">Get in touch</h3>
-      <p style="margin-bottom:8px"><strong style="color:var(--ink)">Phone</strong><br>
-        <a href="tel:{{ company_phone | replace(' ', '') }}">{{ company_phone }}</a></p>
-      <p style="margin-bottom:8px"><strong style="color:var(--ink)">Email</strong><br>
-        <a href="mailto:{{ company_email }}">{{ company_email }}</a></p>
-      <p style="margin-bottom:0"><strong style="color:var(--ink)">Where to find us</strong><br>
-        {{ company_address }}</p>
+      {% if company_phone | stated %}
+        <p style="margin-bottom:8px"><strong style="color:var(--ink)">Phone</strong><br>
+          <a href="tel:{{ company_phone | replace(' ', '') }}">{{ company_phone }}</a></p>
+      {% endif %}
+      {% if company_email | stated %}
+        <p style="margin-bottom:8px"><strong style="color:var(--ink)">Email</strong><br>
+          <a href="mailto:{{ company_email }}">{{ company_email }}</a></p>
+      {% endif %}
+      {% if company_address | stated %}
+        <p style="margin-bottom:0"><strong style="color:var(--ink)">Where to find us</strong><br>
+          {{ company_address }}</p>
+      {% endif %}
     </div>
+    {% endif %}
   </div>
 </section>
 {% endblock %}

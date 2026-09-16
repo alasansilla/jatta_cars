@@ -95,7 +95,9 @@ img { max-width: 100%; display: block; }
   border-bottom: 1px solid transparent;
   transition: box-shadow .2s ease;
 }
-.site-header .wrap { display: flex; align-items: center; gap: 24px; min-height: 92px; }
+/* The bar may run wider than the text column: the menu needs the width, and a
+   header that spans the screen still looks deliberate. */
+.site-header .wrap { display: flex; align-items: center; gap: 16px; min-height: 92px; max-width: 1400px; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand:hover { text-decoration: none; }
 .brand__mark { width: 52px; flex: none; }
@@ -113,14 +115,32 @@ img { max-width: 100%; display: block; }
 .nav { display: flex; gap: 2px; margin-left: auto; align-items: center; flex-wrap: wrap; }
 .nav a {
   color: var(--ink);
-  padding: 9px 16px;
+  /* Eight destinations have to share one row with the logo: the padding is as
+     generous as that allows while every label still reads in full. */
+  padding: 9px 9px;
   border-radius: var(--radius-sm);
   font-weight: 500;
-  font-size: .98rem;
+  font-size: .95rem;
+  white-space: nowrap;
 }
 .nav a:hover { color: var(--accent); text-decoration: none; }
 .nav a.is-active { color: var(--accent); font-weight: 600; }
-.nav .btn { margin-left: 10px; }
+/* The main action sits in the bar itself, not in the menu, so a phone still
+   offers it without the reader opening anything. Flex order places it after
+   the menu on a wide screen and before the burger on a narrow one. */
+.nav { order: 2; }
+.header-cta { order: 3; margin-left: 10px; white-space: nowrap; }
+.header-cta__brief { display: none; }
+.nav-burger { order: 4; }
+.brand { order: 1; }
+.brand__name { white-space: nowrap; }
+
+/* The tagline repeats in the footer, so on anything short of a wide desktop it
+   gives its width to the menu rather than pushing it onto a second row. */
+@media (max-width: 1400px) {
+  .brand__sub { display: none; }
+  body.is-editing .brand__sub { display: block; }
+}
 
 /* The burger only exists on narrow screens; the checkbox drives it, no JS. */
 .nav-toggle { position: absolute; opacity: 0; pointer-events: none; }
@@ -596,6 +616,29 @@ td.nowrap, th.nowrap { white-space: nowrap; }
 
 /* --- Responsive ----------------------------------------------------------- */
 
+/* Eight links and a button need more width than a tablet has. Left in a row
+   they wrapped onto three lines, and the header is sticky, so those lines
+   followed the reader down the page. Below this they fold into the burger. */
+@media (max-width: 1240px) {
+  .site-header .wrap { flex-wrap: wrap; gap: 12px; padding-top: 14px; padding-bottom: 14px; min-height: 0; }
+  .nav-burger { display: block; }
+  .nav {
+    display: none;
+    margin-left: 0;
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding-bottom: 8px;
+  }
+  .nav-toggle:checked ~ .nav { display: flex; }
+  .nav a { padding: 12px 4px; border-bottom: 1px solid var(--line); }
+  .header-cta { order: 2; margin-left: auto; }
+  .nav-burger { order: 3; margin-left: 4px; }
+  .nav { order: 4; }
+}
+
+/* Page layout, unchanged: these stack at their own width, not the menu's. */
 @media (max-width: 1000px) {
   .hero .wrap { grid-template-columns: 1fr; }
   .hero__art { order: -1; max-width: 560px; }
@@ -625,24 +668,24 @@ td.nowrap, th.nowrap { white-space: nowrap; }
 }
 
 @media (max-width: 640px) {
+  /* The logo tagline wrapped onto two lines here and made the sticky header a
+     fifth of the screen. The page's own heading says what the site offers, so
+     the tagline stands down until there is room for it. */
+  .site-header .wrap { gap: 10px; padding-top: 10px; padding-bottom: 10px; }
+  .brand__mark { width: 40px; }
+  .brand__name { font-size: 1.2rem; }
+  .header-cta { padding: 10px 14px; font-size: .92rem; margin-left: 8px; }
+
+  .header-cta__full { display: none; }
+  .header-cta__brief { display: inline; }
+  .brand__sub { display: none; }
+  /* Staff editing the site still need to see and change it. */
+  body.is-editing .brand__sub { display: block; }
+
   .section { padding: 64px 0; }
   .hero { padding: 40px 0 64px; }
   .booking-panel { padding: 28px 22px; }
   .booking-panel__ribbon { position: static; display: inline-block; margin-bottom: 18px; }
-  .site-header .wrap { flex-wrap: wrap; gap: 12px; padding-top: 14px; padding-bottom: 14px; min-height: 0; }
-  .nav-burger { display: block; }
-  .nav {
-    display: none;
-    margin-left: 0;
-    width: 100%;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 2px;
-    padding-bottom: 8px;
-  }
-  .nav-toggle:checked ~ .nav { display: flex; }
-  .nav a { padding: 12px 4px; border-bottom: 1px solid var(--line); }
-  .nav .btn { margin: 12px 0 0; border-bottom: none; justify-content: center; }
   .reason { grid-template-columns: 68px 1fr; gap: 18px; }
   .reason__icon { width: 68px; height: 68px; }
   .reason__icon svg { width: 32px; height: 32px; }
@@ -1194,6 +1237,12 @@ body.is-editing [data-edit-choice].is-changed { outline-color: var(--good); }
    a small phone: the number box takes all remaining width and the type steps
    down a little rather than cutting digits off. */
 .phone-input input { min-width: 0; width: 100%; }
+@media (max-width: 400px) {
+  .site-header .wrap { padding-left: 16px; padding-right: 16px; gap: 8px; }
+  .brand__name { font-size: 1.1rem; }
+  .brand { gap: 8px; }
+}
+
 @media (max-width: 420px) {
   .phone-input input { font-size: 1.15rem; padding: 13px 10px; letter-spacing: 0; }
 }

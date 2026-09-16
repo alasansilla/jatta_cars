@@ -109,6 +109,14 @@ class Operator(db.Model):
         return self.is_approved and bool(self.password_hash) and bool(self.email)
 
     @property
+    def signs_in_by_phone(self):
+        """Whether phone sign-in works: a number on the account that was proved
+        with a code. A number that was never confirmed is not a way in, and
+        approving a driver never grants access by itself.
+        """
+        return bool(self.phone_e164 and self.phone_verified_at)
+
+    @property
     def display_name(self):
         """What customers see: the person's name, falling back to the listing name."""
         return self.contact_name or self.name

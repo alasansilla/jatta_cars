@@ -45,9 +45,9 @@
       <div>
         <h4 data-edit="footer_contact_heading">{{ site.footer_contact_heading }}</h4>
         <ul>
-          {% if company_phone and "[TBC]" not in company_phone %}<li><a href="tel:{{ company_phone | replace(' ', '') }}" data-edit="company_phone">{{ company_phone }}</a></li>{% endif %}
-          {% if company_email and "[TBC]" not in company_email %}<li><a href="mailto:{{ company_email }}" data-edit="company_email">{{ company_email }}</a></li>{% endif %}
-          {% if company_address and "[TBC]" not in company_address %}<li data-edit="company_address">{{ company_address }}</li>{% endif %}<li><a href="{{ url_for('public.contact') }}">Send an enquiry</a></li>
+          {% if company_phone | stated %}<li><a href="tel:{{ company_phone | replace(' ', '') }}" data-edit="company_phone">{{ company_phone }}</a></li>{% endif %}
+          {% if company_email | stated %}<li><a href="mailto:{{ company_email }}" data-edit="company_email">{{ company_email }}</a></li>{% endif %}
+          {% if company_address | stated %}<li data-edit="company_address">{{ company_address }}</li>{% endif %}<li><a href="{{ url_for('public.contact') }}">Send an enquiry</a></li>
         </ul>
       </div>
     </div>

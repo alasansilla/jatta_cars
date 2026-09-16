@@ -43,10 +43,12 @@
         </ul>
       </div>
 
-      <div class="panel">
-        <h3 data-edit="about_hours_heading">{{ site.about_hours_heading }}</h3>
-        <p style="margin:0" data-edit="about_hours_body">{{ site.about_hours_body }}</p>
-      </div>
+      {% if site.about_hours_body | stated or show_editbar %}
+        <div class="panel">
+          <h3 data-edit="about_hours_heading">{{ site.about_hours_heading }}</h3>
+          <p style="margin:0" data-edit="about_hours_body">{{ site.about_hours_body }}</p>
+        </div>
+      {% endif %}
     </div>
   </div>
 </section>

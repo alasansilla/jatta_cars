@@ -60,17 +60,27 @@ class GambiaContentTests(unittest.TestCase):
     def test_unknown_details_are_marked_not_invented(self):
         """Contact details we were never told must read as placeholders."""
         settings = current_settings()
-        for key in ("company_phone", "company_email", "company_address",
-                    "opening_hours"):
+        for key in ("company_phone", "company_email"):
             self.assertIn(PLACEHOLDER_MARKER, settings[key], key)
 
+    def test_an_office_and_opening_hours_are_absent_rather_than_pending(self):
+        """The business has no premises and no published hours: drivers arrange
+        each journey themselves. Empty leaves those blocks off the page, where a
+        placeholder would imply an answer is coming."""
+        settings = current_settings()
+        for key in ("company_address", "opening_hours", "about_hours_body"):
+            self.assertEqual(settings[key], "", key)
+        page = self.client.get("/contact").get_data(as_text=True)
+        self.assertNotIn("Office", page)
+        self.assertNotIn(PLACEHOLDER_MARKER, page)
+
     def test_pickup_points_start_from_what_the_business_told_us(self):
-        """Kololi is a confirmed fact; the rest is left open rather than guessed."""
+        """Kololi is a confirmed fact; anywhere else is settled with the driver."""
         locations = current_settings()["locations"]
         self.assertIn("Kololi", locations)
         self.assertTrue(
-            any("agree it when we confirm" in item for item in locations),
-            "there should be an option for the other places they hand cars over",
+            any("agreed with your driver" in item for item in locations),
+            "there should be an option for meeting somewhere else",
         )
 
     def test_a_deposit_is_never_described_as_insurance(self):
@@ -78,8 +88,12 @@ class GambiaContentTests(unittest.TestCase):
         settings = current_settings()
         deposit_copy = (settings["deposit_policy"] + settings["reason_2_body"]).lower()
         self.assertNotIn("insurance", deposit_copy)
-        # Insurance itself stays an open question until the business answers it.
-        self.assertIn(PLACEHOLDER_MARKER, settings["insurance_note"])
+        # Cover belongs to the driver. The site states that plainly instead of
+        # promising cover it does not provide.
+        insurance = settings["insurance_note"]
+        self.assertIn("the driver's own", insurance)
+        self.assertIn("does not provide insurance", insurance)
+        self.assertIn("a refundable deposit is not cover", insurance.lower())
 
     def test_foreign_prices_appear_only_once_a_rate_is_entered(self):
         from app.settings import save_settings as save
@@ -117,25 +131,25 @@ class GambiaContentTests(unittest.TestCase):
         self.assertEqual(listed, expected)
         self.assertTrue(listed, "nothing left to confirm would be surprising")
 
-    def test_the_confirmed_terms_are_stated_not_left_open(self):
-        """D10,000 a day and a D5,000 deposit are settled, so they must read as facts."""
+    def test_deposit_wording_belongs_to_the_car_not_the_site(self):
+        """Each driver sets their own deposit, so no single figure is stated for
+        every car. The amount comes from the car being looked at."""
         settings = current_settings()
         deposit = settings["deposit_policy"]
-        self.assertIn("5,000", deposit)
-        self.assertIn("half a tank", deposit)
+        self.assertIn("set by the driver", deposit)
         self.assertNotIn(PLACEHOLDER_MARKER, deposit)
-        self.assertNotIn(PLACEHOLDER_MARKER, settings["rate_summary"])
-        self.assertIn("10,000", settings["rate_summary"])
+        self.assertNotIn("5,000", deposit)
+        page = self.client.get(f"/fleet/{self.car.id}").get_data(as_text=True)
+        self.assertIn("D10,000.00", page)   # this car's deposit, as its driver set it
 
     def test_kololi_is_stated_as_the_usual_pick_up(self):
         settings = current_settings()
         self.assertIn("Kololi", settings["reason_3_title"] + settings["reason_3_body"])
         self.assertIn("Kololi", settings["locations"])
 
-    def test_insurance_and_exchange_rates_are_still_unanswered(self):
-        """Confirming the deposit did not license inventing anything else."""
+    def test_excess_and_exchange_rates_are_still_unanswered(self):
+        """Saying cover is the driver's did not license inventing figures."""
         settings = current_settings()
-        self.assertIn(PLACEHOLDER_MARKER, settings["insurance_note"])
         self.assertEqual(settings["default_excess"], 0)
         self.assertEqual(settings["fx_eur_rate"], 0)
         self.assertEqual(settings["fx_gbp_rate"], 0)
