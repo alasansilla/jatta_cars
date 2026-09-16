@@ -375,7 +375,14 @@ def check_production_config(app):
             "Uploads would go to the local filesystem, which a serverless host "
             "throws away. Set JATTA_STORAGE=supabase and the SUPABASE_* variables."
         )
-    elif not app.config.get("SUPABASE_SERVICE_ROLE_KEY"):
+    documents_backend = app.config.get("DOCUMENT_STORAGE_BACKEND") or backend
+    if documents_backend != "supabase":
+        problems.append(
+            "Driver licences and identification would be written to the local "
+            "filesystem, which a hosted server discards on every deploy. Set "
+            "SUPABASE_DOCUMENTS_BUCKET to a bucket with public access OFF."
+        )
+    if not app.config.get("SUPABASE_SERVICE_ROLE_KEY"):
         problems.append(
             "SUPABASE_SERVICE_ROLE_KEY is missing, so no picture could be uploaded."
         )
