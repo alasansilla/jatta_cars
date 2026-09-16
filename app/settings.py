@@ -231,12 +231,21 @@ SCHEMA = [
                           "and cars to rent. We do not own the cars and we do not drive "
                           "them.\n\n"
                           "You choose the driver yourself, by their price, their profile and "
-                          "the reviews left by people they have already driven. A driver "
-                          "appears here only after they have confirmed their phone number "
-                          "and been approved by us, and any car they rent out is checked "
-                          "before it is listed.",
-                  help="Say what the platform does. Do not claim premises, staff or a "
-                       "fleet of your own."),
+                          "the reviews left by people they have already driven. Nobody is "
+                          "allocated to you, and no fare is quoted on anyone's behalf.\n\n"
+                          "A driver reaches this site by confirming their own phone number "
+                          "and then being approved by us, which is a person's decision "
+                          "rather than an automatic step. Every car is checked before it "
+                          "appears, and goes back for checking whenever its details change. "
+                          "A review can only be left by a customer whose trip or rental was "
+                          "completed, so a rating is built out of journeys that really "
+                          "happened. If a driver is suspended, their cars and prices come "
+                          "off the site straight away.\n\n"
+                          "While a trip is under way you can follow your driver on a map. "
+                          "Their location is shared only during that trip and is cleared "
+                          "when it ends.",
+                  help="Say what the platform does and how it is run. Do not claim "
+                       "premises, staff or a fleet of your own."),
             Field("about_section2_heading", "Second section heading",
                   default="Prices, deposits and terms"),
             Field("about_section2_body", "Second section text", type="textarea", rows=8,

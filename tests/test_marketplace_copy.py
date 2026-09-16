@@ -101,6 +101,22 @@ class WhatTheSiteClaims(CopyCase):
         # Approval is a real step, so it may be stated.
         self.assertIn("approved", body)
 
+    def test_the_about_page_only_claims_checks_the_site_actually_makes(self):
+        """Each of these is something the code does, not a promise about care."""
+        body = self.text("/about")
+        for claim in ["confirming their own phone number",
+                      "being approved by us",
+                      "Every car is checked before it appears",
+                      "goes back for checking whenever its details change",
+                      "review can only be left by a customer whose trip or rental was completed",
+                      "their cars and prices come off the site straight away",
+                      "shared only during that trip"]:
+            self.assertIn(claim, body, claim)
+        # Nothing about premises, staff, servicing or years in business.
+        for invented in ["years", "founded", "our workshop", "our mechanics", "since 20",
+                         "family business", "office"]:
+            self.assertNotIn(invented, body.lower(), invented)
+
     def test_placeholders_remain_only_where_the_owner_still_has_to_answer(self):
         unanswered = {key for key, value in DEFAULTS.items()
                       if PLACEHOLDER_MARKER in ("\n".join(value) if isinstance(value, list)
