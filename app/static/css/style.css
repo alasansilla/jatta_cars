@@ -240,10 +240,12 @@ textarea { resize: vertical; min-height: 140px; }
 .hero { background: var(--soft); padding: 72px 0 88px; overflow: hidden; }
 .hero .wrap {
   display: grid;
-  grid-template-columns: 1fr 1.25fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
   gap: 48px;
   align-items: center;
 }
+.hero .wrap > * { min-width: 0; }
+.hero .booking-panel .btn { white-space: normal; text-align: center; overflow-wrap: anywhere; }
 .hero h1 { max-width: 12ch; }
 .hero h1 em { font-style: normal; color: var(--accent); }
 .hero .lede { max-width: 46ch; }
@@ -302,8 +304,8 @@ textarea { resize: vertical; min-height: 140px; }
 /* --- Cards / grid --------------------------------------------------------- */
 
 .grid { display: grid; gap: 26px; }
-.grid--2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-.grid--3 { grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); }
+.grid--2 { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+.grid--3 { grid-template-columns: repeat(auto-fill, minmax(min(310px, 100%), 1fr)); }
 .grid--4 { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 
 .card {
@@ -640,7 +642,7 @@ td.nowrap, th.nowrap { white-space: nowrap; }
 
 /* Page layout, unchanged: these stack at their own width, not the menu's. */
 @media (max-width: 1000px) {
-  .hero .wrap { grid-template-columns: 1fr; }
+  .hero .wrap { grid-template-columns: minmax(0, 1fr); }
   .hero__art { order: -1; max-width: 560px; }
   .split { grid-template-columns: 1fr; gap: 44px; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
@@ -683,7 +685,15 @@ td.nowrap, th.nowrap { white-space: nowrap; }
   body.is-editing .brand__sub { display: block; }
 
   .section { padding: 64px 0; }
-  .hero { padding: 40px 0 64px; }
+  .hero { padding: 32px 0 40px; }
+  .hero .wrap { gap: 28px; }
+  .hero h1 { font-size: clamp(2rem, 9vw, 2.8rem); }
+  .hero h2 { font-size: 1.5rem; }
+  .hero__actions { gap: 12px; margin-top: 24px; }
+  .hero__actions .btn { flex: 1 1 100%; white-space: normal; text-align: center; }
+  .hero .booking-panel { padding: 24px 18px; }
+  .hero .booking-panel .btn { padding: 16px 14px; font-size: .95rem; line-height: 1.5; }
+  .hero .booking-panel p { margin: 16px 0 0; font-size: .9rem; }
   .booking-panel { padding: 28px 22px; }
   .booking-panel__ribbon { position: static; display: inline-block; margin-bottom: 18px; }
   .reason { grid-template-columns: 68px 1fr; gap: 18px; }
