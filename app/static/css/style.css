@@ -1303,7 +1303,7 @@ body.is-editing [data-edit-choice].is-changed { outline-color: var(--good); }
   .hero .wrap { gap: 18px; }
   .hero h1 { font-size: clamp(1.75rem, 8vw, 2.2rem); margin-bottom: 10px; }
   .hero .lede { margin-bottom: 0; }
-  .hero__actions { display: none; }
+  .hero .hero__actions { display: none; }
   .hero .booking-panel { padding: 18px 16px; }
   .hero .booking-panel h2 { font-size: 1.2rem; margin-bottom: 14px; }
   .journey-choices { gap: 10px; }
