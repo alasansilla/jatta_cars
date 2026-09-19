@@ -332,7 +332,10 @@ class MediaUrlTests(unittest.TestCase):
 
     def test_bundled_artwork_still_comes_from_static(self):
         with self.app.test_request_context():
-            self.assertEqual(media_url("img/car-economy.svg"), "/static/img/car-economy.svg")
+            # Served by the app, not the storage bucket — and, like every static
+            # file, addressed by a fingerprint of its content.
+            self.assertRegex(media_url("img/car-economy.svg"),
+                             r"^/static/img/car-economy\.svg\?v=[0-9a-f]{12}$")
 
     def test_an_empty_field_is_not_a_broken_image(self):
         with self.app.test_request_context():

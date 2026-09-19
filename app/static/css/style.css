@@ -40,6 +40,7 @@ body {
   font-family: var(--font);
   font-size: 16px;
   line-height: 1.75;
+  overflow-wrap: break-word;
   color: var(--body);
   background: var(--canvas);
   display: flex;
@@ -298,8 +299,15 @@ textarea { resize: vertical; min-height: 140px; }
 }
 .booking-panel__ribbon strong { color: #fff; }
 .booking-panel h2 { margin-bottom: 32px; }
-.booking-grid { display: grid; gap: 26px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
-.booking-grid--full { grid-template-columns: 1fr; }
+.booking-grid { display: grid; gap: 26px; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); }
+.booking-grid--full { grid-template-columns: minmax(0, 1fr); }
+
+/* A grid column of plain 1fr cannot shrink below the widest thing in it — a
+   large price, a row of buttons, a date field — so on a phone one of those
+   pushed the whole page wider than the screen. minmax(0, …) and min-width: 0
+   let every page layout shrink to the screen and wrap what is inside. */
+.split > *, .fleet-layout > *, .detail-layout > *, .booking-grid > *,
+.grid > *, .footer-grid > * { min-width: 0; }
 
 /* --- Cards / grid --------------------------------------------------------- */
 
@@ -338,7 +346,7 @@ textarea { resize: vertical; min-height: 140px; }
   padding: 5px 12px;
   border-radius: 999px;
 }
-.card__body { padding: 22px; display: flex; flex-direction: column; flex: 1; }
+.card__body { padding: 22px; display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .card__title { margin: 0 0 2px; font-size: 1.2rem; }
 .card__year { font-size: .9rem; color: var(--muted); margin-bottom: 16px; }
 .card__specs {
@@ -355,6 +363,7 @@ textarea { resize: vertical; min-height: 140px; }
 .card__footer {
   margin-top: auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: 14px;
@@ -644,11 +653,11 @@ td.nowrap, th.nowrap { white-space: nowrap; }
 @media (max-width: 1000px) {
   .hero .wrap { grid-template-columns: minmax(0, 1fr); }
   .hero__art { order: -1; max-width: 560px; }
-  .split { grid-template-columns: 1fr; gap: 44px; }
-  .footer-grid { grid-template-columns: 1fr 1fr; }
+  .split { grid-template-columns: minmax(0, 1fr); gap: 44px; }
+  .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
-  .fleet-layout, .detail-layout { grid-template-columns: 1fr; }
+  .fleet-layout, .detail-layout { grid-template-columns: minmax(0, 1fr); }
   .filters { position: static; }
 }
 /* A label/value table has nothing to gain from staying a grid on a phone, and
@@ -670,6 +679,12 @@ td.nowrap, th.nowrap { white-space: nowrap; }
 }
 
 @media (max-width: 640px) {
+  /* Buttons never wrap on a wide screen. On a phone — and more so with the
+     phone's text size turned up — a label such as "Request a ride with …"
+     can be wider than the screen, and nowrap pushed it past the edge. */
+  .btn { white-space: normal; max-width: 100%; text-align: center; }
+  .header-cta { white-space: nowrap; }
+
   /* The logo tagline wrapped onto two lines here and made the sticky header a
      fifth of the screen. The page's own heading says what the site offers, so
      the tagline stands down until there is room for it. */
@@ -699,7 +714,7 @@ td.nowrap, th.nowrap { white-space: nowrap; }
   .reason { grid-template-columns: 68px 1fr; gap: 18px; }
   .reason__icon { width: 68px; height: 68px; }
   .reason__icon svg { width: 32px; height: 32px; }
-  .footer-grid { grid-template-columns: 1fr; }
+  .footer-grid { grid-template-columns: minmax(0, 1fr); }
   .quote-card { padding: 28px; }
 }
 
@@ -1255,4 +1270,68 @@ body.is-editing [data-edit-choice].is-changed { outline-color: var(--good); }
 
 @media (max-width: 420px) {
   .phone-input input { font-size: 1.15rem; padding: 13px 10px; letter-spacing: 0; }
+}
+
+/* --- Compact phone layout ---------------------------------------------------
+
+   The desktop proportions — 3.9rem headlines, 96px between sections, a large
+   picture on every car — scaled down onto a phone made each section several
+   screens tall: one car card was a full screen, with its price and Book button
+   below the fold, and finding a ride meant scrolling past two sets of the same
+   buttons. On a phone everything here is tightened; nothing is hidden that a
+   customer needs, body text stays 16px, every button stays at least 44px
+   tall, and nothing is fixed-height, so larger text simply makes things taller. */
+
+.journey-choices { display: grid; gap: 18px; }
+.journey-alt { display: none; }
+
+@media (max-width: 640px) {
+  h1 { font-size: clamp(1.75rem, 8vw, 2.2rem); }
+  h2 { font-size: clamp(1.35rem, 6vw, 1.6rem); }
+  h3 { font-size: 1.12rem; }
+  .eyebrow { font-size: .8rem; margin-bottom: 8px; }
+  .lede { font-size: 1rem; line-height: 1.6; }
+
+  .section { padding: 36px 0; }
+  .section--tight { padding: 28px 0; }
+  .section-head { margin-bottom: 22px; }
+  .page-head { padding: 28px 0 20px; }
+
+  /* Hero: the journey panel is the one place to choose. The two buttons above
+     it repeated its first choice, so they give way to a single text link. */
+  .hero { padding: 20px 0 28px; }
+  .hero .wrap { gap: 18px; }
+  .hero h1 { font-size: clamp(1.75rem, 8vw, 2.2rem); margin-bottom: 10px; }
+  .hero .lede { margin-bottom: 0; }
+  .hero__actions { display: none; }
+  .hero .booking-panel { padding: 18px 16px; }
+  .hero .booking-panel h2 { font-size: 1.2rem; margin-bottom: 14px; }
+  .journey-choices { gap: 10px; }
+  .hero .booking-panel .btn { min-height: 48px; padding: 11px 14px; font-size: .95rem; }
+  .hero .booking-panel p { margin: 12px 0 0; font-size: .88rem; line-height: 1.5; }
+  .journey-alt { display: block; margin-top: 14px; font-weight: 600; padding: 6px 0; }
+
+  /* A car card is a summary: a short picture, the name, one line of detail,
+     and the price with Book always in view below it. */
+  .grid { gap: 16px; }
+  .card__media { aspect-ratio: 16 / 7; }
+  .card__media img { padding: 6px; }
+  .card__badge { top: 10px; left: 10px; font-size: .66rem; padding: 3px 9px; }
+  .card__body { padding: 14px 16px 16px; }
+  .card__title { font-size: 1.1rem; margin-bottom: 2px; }
+  .card__year { font-size: .85rem; margin-bottom: 4px; }
+  .card__meta { margin: 0 0 6px; line-height: 1.45; }
+  .card__body > p.small { margin-bottom: 6px; line-height: 1.45; }
+  /* The specs read as one quiet line — "5 seats · 4 doors · Petrol · 2 bags" —
+     rather than four pills that wrap onto two rows. */
+  .card__specs { gap: 0; margin: 0 0 12px; line-height: 1.45; }
+  .card__specs li { background: none; padding: 0; font-size: .85rem; color: var(--muted); }
+  .card__specs li + li::before { content: "·"; margin: 0 7px; }
+  .card__footer { padding-top: 12px; gap: 10px; align-items: center; }
+  .card__footer .price { font-size: 1.25rem; }
+  .card__footer .btn { min-height: 44px; padding: 10px 22px; }
+
+  /* The rental list: filters first, but not a screen of them. */
+  .filters { padding: 18px 16px; }
+  .results-bar { margin-bottom: 14px; }
 }

@@ -6,11 +6,14 @@
 <h1 data-edit="market_home_heading">{{ site.market_home_heading }}</h1>
 <p class="lede" data-edit="market_home_intro">{{ site.market_home_intro }}</p>
 <div class="hero__actions"><a class="btn btn--primary btn--lg" href="{{ url_for('dispatch.ride') }}">Where to? →</a><a class="btn btn--dark" href="{{ url_for('dispatch.drivers') }}">Choose a driver</a></div>
-</div><div class="booking-panel"><h2>Choose your journey</h2><div style="display:grid;gap:18px">
+</div><div class="booking-panel"><h2>Choose your journey</h2><div class="journey-choices">
 <a class="btn btn--primary btn--lg" href="{{ url_for('dispatch.ride') }}">Ride · pickup to destination</a>
 <a class="btn btn--dark btn--lg" href="{{ url_for('public.rides') }}#airport">Airport transfer · plan ahead</a>
 <a class="btn btn--dark btn--lg" href="{{ url_for('public.fleet') }}">Car rental · choose your dates</a>
-</div><p>Each driver sets their own ride price. Car rentals have daily rates.</p></div></div></section>
+</div>
+{# On a phone the two buttons above the panel repeat it, so they give way to this. #}
+<a class="journey-alt" href="{{ url_for('dispatch.drivers') }}">Or choose a driver yourself →</a>
+<p>Each driver sets their own ride price. Car rentals have daily rates.</p></div></div></section>
 {% if featured %}<section class="section"><div class="wrap"><h2>Available rental cars</h2><div class="grid grid--3">{% for vehicle in featured %}{% include 'partials/vehicle_card.html' %}{% endfor %}</div></div></section>{% endif %}
 <section class="section section--soft"><div class="wrap"><h2 data-edit="market_steps_heading">{{ site.market_steps_heading }}</h2><div class="grid grid--3">
 <article class="card"><div class="card__body"><h3>1. Choose your route</h3><p>Enter your pickup and destination to check the road route and estimated fare.</p></div></article>

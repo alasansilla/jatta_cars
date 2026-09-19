@@ -1,10 +1,12 @@
 """Application factory for the Jatta Cars site."""
+import hashlib
 import os
 import re
 import secrets
 from datetime import date
 
 from flask import Flask, render_template, request, session
+from werkzeug.security import safe_join
 from markupsafe import Markup, escape
 
 from config import Config, check_production_config
@@ -67,6 +69,7 @@ def create_app(config_object=Config):
     from .seo import bp as seo_bp
     app.register_blueprint(seo_bp)
 
+    register_static_versioning(app)
     register_template_helpers(app)
     from . import reviews
     reviews.register(app)
@@ -271,6 +274,66 @@ def csrf_token():
         token = secrets.token_urlsafe(32)
         session["_csrf_token"] = token
     return token
+
+
+def register_static_versioning(app):
+    """Give every static file a URL that changes when the file does.
+
+    The stylesheet used to be /static/css/style.css whatever it contained.
+    Flask asks browsers to check it every time, but Cloudflare replaces that
+    with its own four-hour browser cache — so after a release, a phone that had
+    visited recently kept the old CSS against the new HTML, and the page broke
+    for exactly the people who came back. No header the application sends can
+    win against that setting; a new address can.
+
+    So every url_for("static", ...) gets ?v=<first 12 hex of the file's
+    SHA-256>. A changed file is a new URL that nothing has cached; an unchanged
+    one keeps its URL and can be cached for a year. A request for a version
+    that is not the current one (an old page, a guessed link) is answered
+    without the long cache, so it can never pin stale bytes.
+    """
+    versions = {}
+
+    def version_of(filename):
+        path = safe_join(app.static_folder, filename) if filename else None
+        if not path:
+            return None
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return None
+        known = versions.get(path)
+        if known and known[0] == (stat.st_mtime_ns, stat.st_size):
+            return known[1]
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for block in iter(lambda: handle.read(65536), b""):
+                digest.update(block)
+        version = digest.hexdigest()[:12]
+        versions[path] = ((stat.st_mtime_ns, stat.st_size), version)
+        return version
+
+    app.static_version = version_of
+
+    @app.url_defaults
+    def versioned_static(endpoint, values):
+        if endpoint == "static" and values.get("filename") and "v" not in values:
+            version = version_of(values["filename"])
+            if version:
+                values["v"] = version
+
+    @app.after_request
+    def static_cache(response):
+        if request.endpoint != "static" or response.status_code != 200:
+            return response
+        filename = (request.view_args or {}).get("filename")
+        asked = request.args.get("v")
+        if asked and asked == version_of(filename):
+            # This exact content can never change at this address.
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def register_error_handlers(app):

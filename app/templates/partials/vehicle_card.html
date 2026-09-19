@@ -12,9 +12,11 @@
       <a href="{{ url_for('public.vehicle_detail', vehicle_id=vehicle.id, **card_query|default({})) }}" style="color:inherit">{{ vehicle.name }}</a>
     </h3>
     <p class="card__year">{{ vehicle.year }} &middot; {{ vehicle.transmission }}</p>
-    {% if vehicle.operator %}<p class="small muted">Driver: <a href="{{ url_for('dispatch.driver_profile', operator_id=vehicle.operator.id) }}">{{ vehicle.operator.display_name }}</a></p>{% endif %}
     {% set summary=review_summary(vehicle_id=vehicle.id) %}
-    <p class="small muted">{% if summary.rating %}{{ summary.rating }} / 5{% else %}New listing{% endif %} · {{ summary.review_count }} rental review{{ 's' if summary.review_count != 1 }}</p>
+    <p class="card__meta small muted">
+      {% if vehicle.operator %}Driver: <a href="{{ url_for('dispatch.driver_profile', operator_id=vehicle.operator.id) }}">{{ vehicle.operator.display_name }}</a> · {% endif %}
+      {% if summary.rating %}★ {{ summary.rating }} / 5 · {{ summary.review_count }} review{{ 's' if summary.review_count != 1 }}{% else %}New listing, no reviews yet{% endif %}
+    </p>
     <ul class="card__specs">
       <li>{{ vehicle.seats }} seats</li>
       <li>{{ vehicle.doors }} doors</li>
